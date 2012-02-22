@@ -17,8 +17,11 @@ package org.gradle.api.tasks;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.file.*;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.DefaultTask;
+import org.gradle.api.file.CopySpec;
+import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.FileCopyDetails;
+import org.gradle.api.file.FileTreeElement;
 import org.gradle.api.internal.file.copy.CopyActionImpl;
 import org.gradle.api.internal.file.copy.CopySpecSource;
 import org.gradle.api.internal.file.copy.ReadableCopySpec;
@@ -32,7 +35,7 @@ import java.util.regex.Pattern;
 /**
  * {@code AbstractCopyTask} is the base class for all copy tasks.
  */
-public abstract class AbstractCopyTask extends ConventionTask implements CopySpec, CopySpecSource {
+public abstract class AbstractCopyTask extends DefaultTask implements CopySpec, CopySpecSource {
 
     @TaskAction
     protected void copy() {

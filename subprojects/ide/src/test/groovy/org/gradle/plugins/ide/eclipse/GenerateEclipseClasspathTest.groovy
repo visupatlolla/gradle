@@ -16,7 +16,7 @@
 package org.gradle.plugins.ide.eclipse;
 
 
-import org.gradle.api.internal.ConventionTask
+import org.gradle.api.internal.AbstractTask
 import org.gradle.api.tasks.AbstractSpockTaskTest
 import org.gradle.plugins.ide.eclipse.model.EclipseClasspath
 
@@ -27,7 +27,7 @@ public class GenerateEclipseClasspathTest extends AbstractSpockTaskTest {
 
     private GenerateEclipseClasspath eclipseClasspath;
 
-    ConventionTask getTask() {
+    AbstractTask getTask() {
         return eclipseClasspath
     }
 

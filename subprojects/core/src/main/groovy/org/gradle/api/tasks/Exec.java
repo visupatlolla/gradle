@@ -15,7 +15,7 @@
  */
 package org.gradle.api.tasks;
 
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.DefaultTask;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.process.ExecResult;
 import org.gradle.process.ExecSpec;
@@ -45,7 +45,7 @@ import java.util.Map;
  * 
  * @author Hans Dockter
  */
-public class Exec extends ConventionTask implements ExecSpec {
+public class Exec extends DefaultTask implements ExecSpec {
     private ExecAction execAction;
     private ExecResult execResult;
 

@@ -45,7 +45,7 @@ public class ConventionAwareHelperTest {
 
     @Before public void setUp() {
         testTask = HelperUtil.createTask(TestTask.class);
-        conventionAware = new ConventionAwareHelper(testTask);
+        conventionAware = new ConventionAwareHelper((IConventionAware)testTask);
     }
 
     @Test public void canMapPropertiesUsingConventionValue() {

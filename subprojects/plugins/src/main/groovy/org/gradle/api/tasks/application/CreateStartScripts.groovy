@@ -15,8 +15,8 @@
  */
 package org.gradle.api.tasks.application
 
+import org.gradle.api.DefaultTask
 import org.gradle.api.file.FileCollection
-import org.gradle.api.internal.ConventionTask
 import org.gradle.api.internal.plugins.StartScriptGenerator
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
@@ -29,7 +29,7 @@ import org.gradle.util.GUtil
  *
  * @author Rene Groeschke
  */
-class CreateStartScripts extends ConventionTask {
+class CreateStartScripts extends DefaultTask {
 
     /**
      * The directory to write the scripts into.

@@ -16,8 +16,8 @@
 
 package org.gradle.api.tasks;
 
+import org.gradle.api.DefaultTask;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.ConventionTask;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -32,7 +32,7 @@ import java.util.Set;
  *
  * @author Hans Dockter
  */
-public class Delete extends ConventionTask {
+public class Delete extends DefaultTask {
     private Set<Object> delete = new LinkedHashSet<Object>();
 
     @TaskAction

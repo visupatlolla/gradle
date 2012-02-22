@@ -17,7 +17,7 @@
 package org.gradle.api.tasks;
 
 import org.gradle.api.file.DeleteAction;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.internal.AbstractTask;
 import org.gradle.api.internal.file.DefaultFileOperations;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.project.DefaultProject;
@@ -53,7 +53,7 @@ public class DeleteTest extends AbstractConventionTaskTest {
         fileOperations.setDeleteAction(deleteAction);
     }
 
-    public ConventionTask getTask() {
+    public AbstractTask getTask() {
         return delete;
     }
 

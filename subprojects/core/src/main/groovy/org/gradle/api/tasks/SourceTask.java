@@ -16,23 +16,22 @@
 
 package org.gradle.api.tasks;
 
+import groovy.lang.Closure;
+import org.gradle.api.DefaultTask;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.file.FileTreeElement;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.util.PatternFilterable;
 import org.gradle.api.tasks.util.PatternSet;
-import org.gradle.api.specs.Spec;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import groovy.lang.Closure;
-
 /**
  * A {@code SourceTask} performs some operation on source files.
  */
-public class SourceTask extends ConventionTask implements PatternFilterable {
+public class SourceTask extends DefaultTask implements PatternFilterable {
     private final List<Object> source = new ArrayList<Object>();
     private final PatternFilterable patternSet = new PatternSet();
 

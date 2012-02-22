@@ -17,10 +17,10 @@
 package org.gradle.api.tasks;
 
 import groovy.lang.Closure;
+import org.gradle.api.DefaultTask;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.internal.artifacts.ArtifactPublicationServices;
 import org.gradle.api.internal.artifacts.ArtifactPublisher;
 import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
@@ -35,7 +35,7 @@ import java.io.File;
  * 
  * @author Hans Dockter
  */
-public class Upload extends ConventionTask {
+public class Upload extends DefaultTask {
     private static Logger logger = LoggerFactory.getLogger(Upload.class);
 
     private Configuration configuration;

@@ -40,7 +40,7 @@ class TarTest extends AbstractArchiveTaskTest {
 
     @Test public void testDefaultValues() {
         assertThat(tar.compression, equalTo(Compression.NONE))
-        assertThat(tar.extension, equalTo('tar'))
+        assertThat(createTask(Tar).extension, equalTo('tar'))
     }
     
     @Test public void testCompressionDeterminesDefaultExtension() {

@@ -18,7 +18,7 @@ package org.gradle.api.tasks.compile;
 
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.internal.AbstractTask;
 import org.gradle.api.internal.tasks.compile.Compiler;
 import org.gradle.api.internal.tasks.compile.GroovyJavaJointCompileSpec;
 import org.gradle.api.tasks.WorkResult;
@@ -68,7 +68,7 @@ public class GroovyCompileTest extends AbstractCompileTest {
         GFileUtils.touch(new File(srcDir, "incl/file.groovy"));
     }
 
-    public ConventionTask getTask() {
+    public AbstractTask getTask() {
         return testObj;
     }
 

@@ -16,8 +16,9 @@
 
 package org.gradle.api.tasks.compile;
 
-import org.gradle.api.internal.ConventionTask;
-import org.gradle.api.internal.tasks.compile.*;
+import org.gradle.api.internal.AbstractTask;
+import org.gradle.api.internal.tasks.compile.Compiler;
+import org.gradle.api.internal.tasks.compile.JavaCompileSpec;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.util.GFileUtils;
 import org.gradle.util.JUnit4GroovyMockery;
@@ -32,7 +33,6 @@ import java.io.File;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import org.gradle.api.internal.tasks.compile.Compiler;
 
 /**
  * @author Hans Dockter
@@ -54,7 +54,7 @@ public class CompileTest extends AbstractCompileTest {
         GFileUtils.touch(new File(srcDir, "incl/file.java"));
     }
            
-    public ConventionTask getTask() {
+    public AbstractTask getTask() {
         return compile;
     }
 

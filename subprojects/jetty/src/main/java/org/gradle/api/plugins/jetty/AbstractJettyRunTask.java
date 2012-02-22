@@ -16,8 +16,8 @@
 
 package org.gradle.api.plugins.jetty;
 
+import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
-import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.plugins.jetty.internal.ConsoleScanner;
 import org.gradle.api.plugins.jetty.internal.JettyPluginServer;
 import org.gradle.api.plugins.jetty.internal.JettyPluginWebAppContext;
@@ -44,7 +44,7 @@ import java.util.*;
 /**
  * Base class for all tasks which deploy a web application to an embedded Jetty web container.
  */
-public abstract class AbstractJettyRunTask extends ConventionTask {
+public abstract class AbstractJettyRunTask extends DefaultTask {
     private static Logger logger = LoggerFactory.getLogger(AbstractJettyRunTask.class);
 
     private Iterable<File> additionalRuntimeJars = new ArrayList<File>();

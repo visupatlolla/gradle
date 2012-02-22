@@ -16,8 +16,8 @@
 package org.gradle.api.tasks.ant;
 
 import org.apache.tools.ant.Target;
+import org.gradle.api.DefaultTask;
 import org.gradle.api.Task;
-import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.TaskDependency;
 
@@ -29,7 +29,7 @@ import java.util.Set;
 /**
  * A task which executes an Ant target.
  */
-public class AntTarget extends ConventionTask {
+public class AntTarget extends DefaultTask {
     private Target target;
     private File baseDir;
 

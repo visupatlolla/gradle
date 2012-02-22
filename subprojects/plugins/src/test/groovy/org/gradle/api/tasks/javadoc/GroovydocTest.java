@@ -15,15 +15,15 @@
  */
 package org.gradle.api.tasks.javadoc;
 
-import java.util.Set;
-
 import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.internal.AbstractTask;
 import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.tasks.AbstractConventionTaskTest;
 import org.gradle.util.WrapUtil;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.Set;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertThat;
@@ -40,7 +40,7 @@ public class GroovydocTest extends AbstractConventionTaskTest {
         groovydoc = createTask(Groovydoc.class);
     }
 
-    public ConventionTask getTask() {
+    public AbstractTask getTask() {
         return groovydoc;
     }
 

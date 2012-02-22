@@ -18,11 +18,11 @@ package org.gradle.api.tasks.javadoc;
 
 import org.gradle.api.GradleException;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.internal.AbstractTask;
 import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.tasks.AbstractConventionTaskTest;
-import org.gradle.external.javadoc.internal.JavadocExecHandleBuilder;
 import org.gradle.external.javadoc.StandardJavadocDocletOptions;
+import org.gradle.external.javadoc.internal.JavadocExecHandleBuilder;
 import org.gradle.process.internal.ExecAction;
 import org.gradle.process.internal.ExecException;
 import org.gradle.util.GFileUtils;
@@ -39,7 +39,8 @@ import java.io.File;
 import java.util.Set;
 
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 
 @RunWith(org.jmock.integration.junit4.JMock.class)
 public class JavadocTest extends AbstractConventionTaskTest {
@@ -66,7 +67,7 @@ public class JavadocTest extends AbstractConventionTaskTest {
         GFileUtils.touch(new File(srcDir, "file.java"));
     }
 
-    public ConventionTask getTask() {
+    public AbstractTask getTask() {
         return task;
     }
 

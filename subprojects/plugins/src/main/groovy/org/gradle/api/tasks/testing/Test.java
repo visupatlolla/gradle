@@ -17,11 +17,11 @@
 package org.gradle.api.tasks.testing;
 
 import groovy.lang.Closure;
+import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.file.FileTreeElement;
-import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.tasks.testing.TestFramework;
 import org.gradle.api.internal.tasks.testing.TestResultProcessor;
@@ -88,7 +88,7 @@ import java.util.Set;
  *
  * @author Hans Dockter
  */
-public class Test extends ConventionTask implements JavaForkOptions, PatternFilterable, VerificationTask {
+public class Test extends DefaultTask implements JavaForkOptions, PatternFilterable, VerificationTask {
     private TestExecuter testExecuter;
     private final DefaultJavaForkOptions options;
     private List<File> testSrcDirs = new ArrayList<File>();

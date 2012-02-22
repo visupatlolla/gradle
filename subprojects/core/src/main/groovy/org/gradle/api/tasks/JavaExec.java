@@ -16,8 +16,8 @@
 
 package org.gradle.api.tasks;
 
+import org.gradle.api.DefaultTask;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.process.JavaExecSpec;
 import org.gradle.process.JavaForkOptions;
@@ -36,7 +36,7 @@ import java.util.Map;
  *
  * @author Hans Dockter
  */
-public class JavaExec extends ConventionTask implements JavaExecSpec {
+public class JavaExec extends DefaultTask implements JavaExecSpec {
     private JavaExecAction javaExecHandleBuilder;
 
     public JavaExec() {

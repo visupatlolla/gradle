@@ -15,7 +15,7 @@
  */
 package org.gradle.plugins.ide.eclipse
 
-import org.gradle.api.internal.ConventionTask
+import org.gradle.api.internal.AbstractTask
 import org.gradle.api.tasks.AbstractSpockTaskTest
 import org.gradle.plugins.ide.eclipse.model.EclipseWtpComponent
 import org.gradle.plugins.ide.eclipse.model.WbProperty
@@ -31,7 +31,7 @@ public class GenerateEclipseWtpComponentTest extends AbstractSpockTaskTest {
         eclipseComponent.component = new EclipseWtpComponent(project, null)
     }
 
-    ConventionTask getTask() { eclipseComponent }
+    AbstractTask getTask() { eclipseComponent }
 
     def "property should add"() {
         when:

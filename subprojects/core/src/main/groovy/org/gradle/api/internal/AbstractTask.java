@@ -370,6 +370,14 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
         return services;
     }
 
+    public ConventionMapping getConventionMapping() {
+        throw new IllegalStateException("Cannot get convention mapping for task '%s' as it's not convention aware. It was probably directly instantiated instead of being enhanced.");
+    }
+
+    public void setConventionMapping(ConventionMapping conventionMapping) {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("AbstractTask.setConventionMapping(ConventionMapping)");
+    }
+
     public boolean dependsOnTaskDidWork() {
         TaskDependency dependency = getTaskDependencies();
         for (Task depTask : dependency.getDependencies(this)) {

@@ -17,7 +17,7 @@ package org.gradle.api.tasks;
 
 import org.gradle.GradleLauncher;
 import org.gradle.StartParameter;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.DefaultTask;
 
 import java.io.File;
 import java.util.Collection;
@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * Executes a Gradle build.
  */
-public class GradleBuild extends ConventionTask {
+public class GradleBuild extends DefaultTask {
     private StartParameter startParameter;
 
     public GradleBuild() {

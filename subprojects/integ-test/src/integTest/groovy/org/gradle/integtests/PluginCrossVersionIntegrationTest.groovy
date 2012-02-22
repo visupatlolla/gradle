@@ -34,15 +34,25 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.internal.ConventionTask
 
 class SomePlugin implements Plugin<Project> {
     void apply(Project p) {
         p.tasks.add('do-stuff', CustomTask)
+        p.tasks.add('custom-copy', CustomCopyTask)
     }
 }
 
 class CustomTask extends DefaultTask {
     @TaskAction void go() { }
+}
+
+"""
+
+        file("producer/src/main/groovy/CustomCopyTask.java") << """
+import org.gradle.api.tasks.Copy;
+public class CustomCopyTask extends Copy {
+
 }
 """
 

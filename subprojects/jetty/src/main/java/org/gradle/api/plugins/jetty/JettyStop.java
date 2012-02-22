@@ -16,9 +16,9 @@
 
 package org.gradle.api.plugins.jetty;
 
+import org.gradle.api.DefaultTask;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.tasks.TaskAction;
-import org.gradle.api.internal.ConventionTask;
 import org.gradle.logging.ProgressLogger;
 import org.gradle.logging.ProgressLoggerFactory;
 import org.slf4j.Logger;
@@ -32,7 +32,7 @@ import java.net.Socket;
 /**
  * Stops the embedded Jetty web container, if it is running.
  */
-public class JettyStop extends ConventionTask {
+public class JettyStop extends DefaultTask {
     private static Logger logger = LoggerFactory.getLogger(JettyStop.class);
 
     private Integer stopPort;

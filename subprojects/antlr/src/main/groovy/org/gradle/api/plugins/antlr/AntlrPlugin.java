@@ -70,7 +70,7 @@ public class AntlrPlugin implements Plugin<ProjectInternal> {
                                 sourceSet.getName()));
 
                         // 3) set up convention mapping for default sources (allows user to not have to specify)
-                        antlrTask.conventionMapping("defaultSource", new Callable<Object>() {
+                        antlrTask.getConventionMapping().map("defaultSource", new Callable<Object>() {
                             public Object call() throws Exception {
                                 return antlrDirectoryDelegate.getAntlr();
                             }

@@ -16,12 +16,12 @@
 
 package org.gradle.util
 
-import org.gradle.api.internal.ConventionTask
+import org.gradle.api.DefaultTask
 
 /**
  * @author Hans Dockter
  */
-class TestTask extends ConventionTask  {
+class TestTask extends DefaultTask {
     TestTask self
     String customProp
     List list1

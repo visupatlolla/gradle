@@ -15,18 +15,17 @@
  */
 package org.gradle.api.plugins.sonar
 
-import org.sonar.batch.bootstrapper.Bootstrapper
-import org.gradle.api.internal.ConventionTask
+import org.gradle.api.DefaultTask
+import org.gradle.api.plugins.sonar.model.SonarRootModel
 import org.gradle.api.tasks.TaskAction
 import org.gradle.util.ClasspathUtil
-
-import org.gradle.api.plugins.sonar.model.SonarRootModel
+import org.sonar.batch.bootstrapper.Bootstrapper
 
 /**
  * Analyzes a project hierachy and writes the results to the
  * Sonar database.
  */
-class SonarAnalyze extends ConventionTask {
+class SonarAnalyze extends DefaultTask {
     /**
      * Entry point to Sonar configuration.
      */

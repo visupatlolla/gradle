@@ -17,7 +17,7 @@ package org.gradle.api.internal.project.taskfactory;
 
 import org.gradle.api.*;
 import org.gradle.api.internal.AsmBackedClassGenerator;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.internal.IConventionAware;
 import org.gradle.api.internal.project.DefaultProject;
 import org.gradle.api.tasks.TaskInstantiationException;
 import org.gradle.util.GUtil;
@@ -105,7 +105,7 @@ public class TaskFactoryTest {
 
         assertThat(task.getProperty(), nullValue());
 
-        task.getConventionMapping().map("property", new Callable<Object>() {
+        ((IConventionAware)task).getConventionMapping().map("property", new Callable<Object>() {
             public Object call() throws Exception {
                 return "conventionValue";
             }
@@ -120,7 +120,7 @@ public class TaskFactoryTest {
     @Test
     public void doesNotApplyConventionMappingToGettersDefinedByTaskInterface() {
         TestConventionTask task = (TestConventionTask) checkTask(taskFactory.createTask(testProject, GUtil.map(Task.TASK_NAME, "task", Task.TASK_TYPE, TestConventionTask.class)));
-        task.getConventionMapping().map("description", new Callable<Object>() {
+        ((IConventionAware)task).getConventionMapping().map("description", new Callable<Object>() {
             public Object call() throws Exception {
                 throw new UnsupportedOperationException();
             }
@@ -205,7 +205,7 @@ public class TaskFactoryTest {
     public static class TestDefaultTask extends DefaultTask {
     }
 
-    public static class TestConventionTask extends ConventionTask {
+    public static class TestConventionTask extends DefaultTask {
         private String property;
 
         public String getProperty() {

@@ -19,12 +19,12 @@ package org.gradle.api.tasks.testing;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
-import org.gradle.api.internal.ConventionTask;
+import org.gradle.api.internal.AbstractTask;
 import org.gradle.api.internal.file.CompositeFileTree;
 import org.gradle.api.internal.file.collections.DefaultFileCollectionResolveContext;
-import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.internal.file.collections.DirectoryFileTree;
 import org.gradle.api.internal.file.collections.FileTreeAdapter;
+import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.internal.tasks.testing.TestFramework;
 import org.gradle.api.internal.tasks.testing.detection.TestExecuter;
 import org.gradle.api.internal.tasks.testing.junit.JUnitTestFramework;
@@ -91,7 +91,7 @@ public class TestTest extends AbstractConventionTaskTest {
         test = createTask(Test.class);
     }
 
-    public ConventionTask getTask() {
+    public AbstractTask getTask() {
         return test;
     }
 

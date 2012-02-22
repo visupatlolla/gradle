@@ -16,6 +16,7 @@
 
 package org.gradle.api.tasks;
 
+import org.gradle.api.internal.ConventionMapping;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.copy.FileCopyActionImpl;
 import org.gradle.api.internal.file.copy.FileCopySpecVisitor;
@@ -100,5 +101,10 @@ public class Copy extends AbstractCopyTask {
      */
     public void setDestinationDir(File destinationDir) {
         into(destinationDir);
+    }
+
+    @Override
+    public void setConventionMapping(ConventionMapping conventionMapping) {
+        super.setConventionMapping(conventionMapping);    //To change body of overridden methods use File | Settings | File Templates.
     }
 }
