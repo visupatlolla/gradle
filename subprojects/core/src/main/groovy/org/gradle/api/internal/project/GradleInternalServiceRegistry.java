@@ -37,6 +37,7 @@ import static java.util.Arrays.asList;
  */
 public class GradleInternalServiceRegistry extends DefaultServiceRegistry implements ServiceRegistryFactory {
     private final GradleInternal gradle;
+    public ProjectEvaluationConfigurer evaluationConfigurer;
 
     public GradleInternalServiceRegistry(ServiceRegistry parent, final GradleInternal gradle) {
         super(parent);
@@ -46,7 +47,7 @@ public class GradleInternalServiceRegistry extends DefaultServiceRegistry implem
 
     protected BuildExecuter createBuildExecuter() {
         TaskNameResolvingBuildConfigurationAction action = new TaskNameResolvingBuildConfigurationAction();
-        action.evaluationConfigurer = get(ProjectEvaluationConfigurer.class);
+        action.evaluationConfigurer = evaluationConfigurer;
         return new DefaultBuildExecuter(
                 asList(new DefaultTasksBuildExecutionAction(),
                         new ExcludedTaskFilteringBuildConfigurationAction(),
