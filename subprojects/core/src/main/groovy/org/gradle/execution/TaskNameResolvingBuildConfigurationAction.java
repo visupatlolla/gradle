@@ -18,6 +18,7 @@ package org.gradle.execution;
 import com.google.common.collect.Multimap;
 import org.gradle.api.Task;
 import org.gradle.api.internal.GradleInternal;
+import org.gradle.configuration.ProjectEvaluationConfigurer;
 import org.gradle.execution.commandline.CommandLineTaskParser;
 import org.gradle.util.GUtil;
 import org.slf4j.Logger;
@@ -32,6 +33,7 @@ import java.util.List;
 public class TaskNameResolvingBuildConfigurationAction implements BuildConfigurationAction {
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskNameResolvingBuildConfigurationAction.class);
     private final TaskNameResolver taskNameResolver;
+    public ProjectEvaluationConfigurer evaluationConfigurer;
 
     public TaskNameResolvingBuildConfigurationAction() {
         this(new TaskNameResolver());
@@ -44,6 +46,12 @@ public class TaskNameResolvingBuildConfigurationAction implements BuildConfigura
     public void configure(BuildExecutionContext context) {
         GradleInternal gradle = context.getGradle();
         List<String> taskNames = gradle.getStartParameter().getTaskNames();
+        for (String taskName : taskNames) {
+            if (taskName.contains(":")) {
+                String projectPath = taskName.substring(0, taskName.lastIndexOf(":"));
+                evaluationConfigurer.evaluateNow(projectPath);
+            }
+        }
         Multimap<String, Task> selectedTasks = doSelect(gradle, taskNames, taskNameResolver);
 
         TaskGraphExecuter executer = gradle.getTaskGraph();

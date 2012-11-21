@@ -17,8 +17,11 @@ package org.gradle.api.internal.artifacts;
 
 import org.apache.ivy.core.module.id.ArtifactRevisionId;
 import org.gradle.StartParameter;
+import org.gradle.api.Action;
 import org.gradle.api.Transformer;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.ProjectDependency;
 import org.gradle.api.artifacts.dsl.ArtifactHandler;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.internal.ClassPathRegistry;
@@ -61,6 +64,7 @@ import org.gradle.api.internal.filestore.ivy.ArtifactRevisionIdFileStore;
 import org.gradle.api.internal.notations.*;
 import org.gradle.api.internal.notations.api.NotationParser;
 import org.gradle.cache.CacheRepository;
+import org.gradle.configuration.ProjectEvaluationConfigurer;
 import org.gradle.internal.Factory;
 import org.gradle.internal.SystemProperties;
 import org.gradle.internal.reflect.Instantiator;
@@ -75,6 +79,8 @@ import java.io.File;
 import java.util.List;
 
 public class DefaultDependencyManagementServices extends DefaultServiceRegistry implements DependencyManagementServices {
+
+    public ProjectEvaluationConfigurer evaluationConfigurer;
 
     public DefaultDependencyManagementServices(ServiceRegistry parent) {
         super(parent);
@@ -330,6 +336,18 @@ public class DefaultDependencyManagementServices extends DefaultServiceRegistry 
                 configurationContainer = instantiator.newInstance(DefaultConfigurationContainer.class,
                         dependencyResolver, instantiator, domainObjectContext, parent.get(ListenerManager.class),
                         dependencyMetaDataProvider);
+                configurationContainer.all(new Action<Configuration>() {
+                    public void execute(Configuration configuration) {
+                        configuration.getIncoming().getDependencies().all(new Action<Dependency>() {
+                            public void execute(Dependency dependency) {
+                                if (dependency instanceof ProjectDependency) {
+                                    ProjectDependency p = (ProjectDependency) dependency;
+                                    DefaultDependencyManagementServices.this.evaluationConfigurer.evaluateNow(p.getDependencyProject().getPath());
+                                }
+                            }
+                        });
+                    }
+                });
             }
             return configurationContainer;
         }

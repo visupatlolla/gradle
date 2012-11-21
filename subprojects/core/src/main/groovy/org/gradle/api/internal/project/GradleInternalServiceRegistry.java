@@ -22,6 +22,7 @@ import org.gradle.api.internal.changedetection.TaskArtifactStateCacheAccess;
 import org.gradle.api.internal.changedetection.TaskCacheLockHandlingBuildExecuter;
 import org.gradle.api.internal.plugins.DefaultPluginRegistry;
 import org.gradle.api.internal.plugins.PluginRegistry;
+import org.gradle.configuration.ProjectEvaluationConfigurer;
 import org.gradle.execution.*;
 import org.gradle.execution.taskgraph.DefaultTaskGraphExecuter;
 import org.gradle.execution.taskgraph.TaskPlanExecutor;
@@ -44,10 +45,12 @@ public class GradleInternalServiceRegistry extends DefaultServiceRegistry implem
     }
 
     protected BuildExecuter createBuildExecuter() {
+        TaskNameResolvingBuildConfigurationAction action = new TaskNameResolvingBuildConfigurationAction();
+        action.evaluationConfigurer = get(ProjectEvaluationConfigurer.class);
         return new DefaultBuildExecuter(
                 asList(new DefaultTasksBuildExecutionAction(),
                         new ExcludedTaskFilteringBuildConfigurationAction(),
-                        new TaskNameResolvingBuildConfigurationAction()),
+                        action),
                 asList(new DryRunBuildExecutionAction(),
                         new TaskCacheLockHandlingBuildExecuter(get(TaskArtifactStateCacheAccess.class)),
                         new SelectedTaskExecutionAction()));

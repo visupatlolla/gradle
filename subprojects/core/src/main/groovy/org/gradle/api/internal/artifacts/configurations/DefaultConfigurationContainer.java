@@ -36,7 +36,7 @@ import java.util.Set;
 public class DefaultConfigurationContainer extends AbstractNamedDomainObjectContainer<Configuration> 
         implements ConfigurationContainerInternal, ConfigurationsProvider {
     public static final String DETACHED_CONFIGURATION_DEFAULT_NAME = "detachedConfiguration";
-    
+
     private final ArtifactDependencyResolver dependencyResolver;
     private final Instantiator instantiator;
     private final DomainObjectContext context;
