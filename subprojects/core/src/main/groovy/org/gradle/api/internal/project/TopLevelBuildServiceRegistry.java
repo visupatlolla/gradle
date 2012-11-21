@@ -65,6 +65,7 @@ import org.gradle.profile.ProfileEventAdapter;
 import org.gradle.profile.ProfileListener;
 import org.gradle.util.ClassLoaderFactory;
 import org.gradle.util.MultiParentClassLoader;
+import org.gradle.util.ReflectionUtil;
 
 /**
  * Contains the singleton services which are shared by all builds executed by a single {@link org.gradle.GradleLauncher} invocation.
@@ -224,11 +225,21 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
                 new IdentityFileResolver(), new LongIdGenerator());
     }
 
+    //start with current & children
+    //while queue is not empty, evaluate
+        //evaluationDependsOn - adds to queue
+        //project dependencies
+        //task dependencies on other projects' tasks (*) optional
+
     protected BuildConfigurer createBuildConfigurer() {
         return new DefaultBuildConfigurer(
-                new ProjectEvaluationConfigurer(),
+                get(ProjectEvaluationConfigurer.class),
                 new ProjectDependencies2TaskResolver(),
                 new ImplicitTasksConfigurer());
+    }
+
+    protected ProjectEvaluationConfigurer createProjectEvaluationConfigurer() {
+        return new ProjectEvaluationConfigurer();
     }
 
     protected ProfileEventAdapter createProfileEventAdapter() {
@@ -238,12 +249,16 @@ public class TopLevelBuildServiceRegistry extends DefaultServiceRegistry impleme
     protected DependencyManagementServices createDependencyManagementServices() {
         ClassLoader coreImplClassLoader = get(ClassLoaderRegistry.class).getCoreImplClassLoader();
         ServiceLocator serviceLocator = new ServiceLocator(coreImplClassLoader);
-        return serviceLocator.getFactory(DependencyManagementServices.class).newInstance(this);
+        DependencyManagementServices dependencyManagementServices = serviceLocator.getFactory(DependencyManagementServices.class).newInstance(this);
+        ReflectionUtil.setProperty(dependencyManagementServices, "evaluationConfigurer", get(ProjectEvaluationConfigurer.class));
+        return dependencyManagementServices;
     }
 
     public ServiceRegistryFactory createFor(Object domainObject) {
         if (domainObject instanceof GradleInternal) {
-            return new GradleInternalServiceRegistry(this, (GradleInternal) domainObject);
+            GradleInternalServiceRegistry internalRegistry = new GradleInternalServiceRegistry(this, (GradleInternal) domainObject);
+            internalRegistry.evaluationConfigurer = get(ProjectEvaluationConfigurer.class);
+            return internalRegistry;
         }
         throw new IllegalArgumentException(String.format("Cannot create services for unknown domain object of type %s.",
                 domainObject.getClass().getSimpleName()));
