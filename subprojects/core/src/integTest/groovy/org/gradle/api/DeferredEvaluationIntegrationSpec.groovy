@@ -16,6 +16,8 @@
 
 
 
+
+
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
@@ -23,10 +25,10 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 /**
  * by Szczepan Faber, created at: 11/21/12
  */
-class MyTest extends AbstractIntegrationSpec {
+class DeferredEvaluationIntegrationSpec extends AbstractIntegrationSpec {
 
-    def "foo"() {
-        settingsFile << "include 'api', 'impl'"
+    def "projects are evaluated on demand"() {
+        settingsFile << "include 'api', 'impl', 'util'"
 
         file("api/src/main/java/Person.java") << """public interface Person {
     String getName();
@@ -41,7 +43,10 @@ class MyTest extends AbstractIntegrationSpec {
 
         buildFile << """
 allprojects {
-    task foo
+  task foo
+  afterEvaluate {
+    println "evaluated " + path
+  }
 }
 """
 
@@ -56,16 +61,48 @@ dependencies {
 }
 """
 
-//        when:
-//        def result = executer.withArguments("-i", "-m").withTasks(":api:foo", ":api:build").run()
-//
-//        then:
-//        result
-
         when:
-        def result2 = executer.withArguments("-i", "-m").withTasks(":impl:build").run()
+        run(":api:build")
 
         then:
-        result2
+        assertEvaluated(":", ":api")
+        assertNotEvaluated(":util", ":impl")
+
+        when:
+        run(":impl:build")
+
+        then:
+        assertEvaluated(":", ":api", ":impl")
+        assertNotEvaluated(":util")
+
+        when:
+        run(":foo")
+
+        then:
+        assertEvaluated(":")
+        assertNotEvaluated(":api", ":impl", ":util")
+
+//        when:
+//        run("foo")
+//
+//        then:
+//        assertEvaluated(":", ":api", ":impl", ":util")
     }
+
+    void assertEvaluated(String ... paths) {
+        paths.each {
+            assert output.contains("evaluated $it")
+        }
+    }
+
+    void assertNotEvaluated(String ... paths) {
+        paths.each {
+            assert !output.contains("evaluated $it")
+        }
+    }
+
+    //run task from root - only root evaluated
+    //run task from subproject - only this and dependent project evaluated
+    //run high level task from root - all projects evaluated
+    //
 }
