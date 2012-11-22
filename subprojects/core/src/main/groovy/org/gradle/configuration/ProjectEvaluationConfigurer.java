@@ -18,26 +18,24 @@ package org.gradle.configuration;
 import org.gradle.api.Action;
 import org.gradle.api.internal.project.ProjectInternal;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.*;
 
 public class ProjectEvaluationConfigurer implements Action<ProjectInternal> {
 
-    private Set<ProjectInternal> projects = new LinkedHashSet<ProjectInternal>();
+    private Map<String, ProjectInternal> projects = new HashMap<String, ProjectInternal>();
 
     public void execute(ProjectInternal projectInternal) {
         if (projectInternal.getPath().equals(":")) {
             projectInternal.evaluate();
         } else {
-            projects.add(projectInternal);
+            projects.put(projectInternal.getPath(), projectInternal);
         }
     }
 
     public void evaluateNow(String projectPath) {
-        for (ProjectInternal project : projects) {
-            if (project.getPath().equals(projectPath)) {
-                project.evaluate();
-            }
+        ProjectInternal p = projects.remove(projectPath);
+        if (p != null) {
+            p.evaluate();
         }
     }
 }
