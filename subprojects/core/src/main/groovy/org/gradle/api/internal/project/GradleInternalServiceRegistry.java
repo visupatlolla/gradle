@@ -46,12 +46,11 @@ public class GradleInternalServiceRegistry extends DefaultServiceRegistry implem
     }
 
     protected BuildExecuter createBuildExecuter() {
-        TaskNameResolvingBuildConfigurationAction action = new TaskNameResolvingBuildConfigurationAction();
-        action.evaluationConfigurer = evaluationConfigurer;
         return new DefaultBuildExecuter(
                 asList(new DefaultTasksBuildExecutionAction(),
+                        new DeferredProjectEvaluationAction(evaluationConfigurer),
                         new ExcludedTaskFilteringBuildConfigurationAction(),
-                        action),
+                        new TaskNameResolvingBuildConfigurationAction()),
                 asList(new DryRunBuildExecutionAction(),
                         new TaskCacheLockHandlingBuildExecuter(get(TaskArtifactStateCacheAccess.class)),
                         new SelectedTaskExecutionAction()));

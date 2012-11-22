@@ -82,11 +82,27 @@ dependencies {
         assertEvaluated(":")
         assertNotEvaluated(":api", ":impl", ":util")
 
-//        when:
-//        run("foo")
-//
-//        then:
-//        assertEvaluated(":", ":api", ":impl", ":util")
+        when:
+        run("foo")
+
+        then:
+        assertEvaluated(":", ":api", ":impl", ":util")
+
+        when:
+        inDirectory("api")
+        run("build")
+
+        then:
+        assertEvaluated(":", ":api")
+        assertNotEvaluated(":", ":impl", ":util")
+
+        when:
+        inDirectory("impl")
+        run("build")
+
+        then:
+        assertEvaluated(":", ":api", ":impl")
+        assertNotEvaluated(":", ":util")
     }
 
     void assertEvaluated(String ... paths) {
@@ -100,9 +116,4 @@ dependencies {
             assert !output.contains("evaluated $it")
         }
     }
-
-    //run task from root - only root evaluated
-    //run task from subproject - only this and dependent project evaluated
-    //run high level task from root - all projects evaluated
-    //
 }
