@@ -50,10 +50,7 @@ public class ResolutionResultBuilder implements ResolvedConfigurationListener {
 
     public void resolvedConfiguration(ModuleVersionIdentifier id, Collection<? extends InternalDependencyResult> dependencies) {
         for (InternalDependencyResult d : dependencies) {
-            DefaultResolvedModuleVersionResult from = modules.get(id);
-            if (from == null) {
-                throw new IllegalStateException("Something went wrong with building the dependency graph. Module [" + id + "] should have been visited.");
-            }
+            DefaultResolvedModuleVersionResult from = createOrGet(id, VersionSelectionReasons.REQUESTED);
             if (d.getFailure() != null) {
                 from.addDependency(dependencyResultFactory.createUnresolvedDependency(d.getRequested(), from, d.getFailure()));
             } else {
