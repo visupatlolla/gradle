@@ -18,28 +18,82 @@ package org.gradle.api.internal.artifacts.ivyservice;
 import org.apache.ivy.core.module.descriptor.DependencyDescriptor;
 import org.apache.ivy.core.module.id.ModuleId;
 import org.apache.ivy.core.module.id.ModuleRevisionId;
+import org.gradle.api.Action;
+import org.gradle.api.artifacts.ForcedModuleDetails;
 import org.gradle.api.artifacts.ModuleVersionSelector;
+import org.gradle.api.internal.artifacts.DefaultModuleVersionSelector;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class VersionForcingDependencyToModuleResolver implements DependencyToModuleVersionIdResolver {
     private final DependencyToModuleVersionIdResolver resolver;
-    private final Map<ModuleId, ModuleRevisionId> forcedModules = new HashMap<ModuleId, ModuleRevisionId>();
+    private final Set<Action<ForcedModuleDetails>> forcedModuleRules = new HashSet<Action<ForcedModuleDetails>>();
 
-    public VersionForcingDependencyToModuleResolver(DependencyToModuleVersionIdResolver resolver, Iterable<? extends ModuleVersionSelector> forcedModules) {
+    public VersionForcingDependencyToModuleResolver(DependencyToModuleVersionIdResolver resolver, Set<ModuleVersionSelector> forcedModules, Set<Action<ForcedModuleDetails>> forcedModuleRules) {
         this.resolver = resolver;
-        for (ModuleVersionSelector forcedModule : forcedModules) {
-            ModuleId moduleId = new ModuleId(forcedModule.getGroup(), forcedModule.getName());
-            this.forcedModules.put(moduleId, new ModuleRevisionId(moduleId, forcedModule.getVersion()));
+        this.forcedModuleRules.add(new ForcedVersionsRule(forcedModules));
+        this.forcedModuleRules.addAll(forcedModuleRules);
+    }
+
+    public static class ForcedVersionsRule implements Action<ForcedModuleDetails> {
+
+        private final Map<String, String> forcedModules = new HashMap<String, String>();
+
+        public ForcedVersionsRule(Iterable<? extends ModuleVersionSelector> forcedModules) {
+            for (ModuleVersionSelector module : forcedModules) {
+                this.forcedModules.put(key(module), module.getVersion());
+            }
+        }
+
+        public void execute(ForcedModuleDetails forcedModuleDetails) {
+            String key = key(forcedModuleDetails.getModule());
+            if (forcedModules.containsKey(key)) {
+                forcedModuleDetails.setVersion(forcedModules.get(key));
+            }
+        }
+
+        private String key(ModuleVersionSelector module) {
+            return module.getGroup() + ":" + module.getName();
+        }
+    }
+
+    public static class DefaultForcedModuleDetails implements ForcedModuleDetails {
+
+        private final ModuleVersionSelector module;
+        private String version;
+
+        public DefaultForcedModuleDetails(ModuleVersionSelector module) {
+            this.module = module;
+        }
+
+        public ModuleVersionSelector getModule() {
+            return module;
+        }
+
+        public void setVersion(String version) {
+            this.version = version;
+        }
+
+        public String getVersion() {
+            return version;
         }
     }
 
     public ModuleVersionIdResolveResult resolve(DependencyDescriptor dependencyDescriptor) {
-        ModuleRevisionId newRevisionId = forcedModules.get(dependencyDescriptor.getDependencyId());
-        if (newRevisionId != null) {
-            ModuleVersionIdResolveResult result = resolver.resolve(dependencyDescriptor.clone(newRevisionId));
-            return new ForcedModuleVersionIdResolveResult(result);
+        for (Action<ForcedModuleDetails> rule : forcedModuleRules) {
+            ModuleVersionSelector module = new DefaultModuleVersionSelector(dependencyDescriptor.getDependencyRevisionId().getOrganisation(), dependencyDescriptor.getDependencyRevisionId().getName(), dependencyDescriptor.getDependencyRevisionId().getRevision());
+            ForcedModuleDetails details = new DefaultForcedModuleDetails(module);
+            rule.execute(details);
+            if (details.getVersion() != null) {
+                ModuleId moduleId = new ModuleId(details.getModule().getGroup(), details.getModule().getName());
+                ModuleRevisionId revisionId = new ModuleRevisionId(moduleId, details.getVersion());
+                DependencyDescriptor descriptor = dependencyDescriptor.clone(revisionId);
+                ModuleVersionIdResolveResult result = resolver.resolve(descriptor);
+                return new ForcedModuleVersionIdResolveResult(result);
+            }
         }
         return resolver.resolve(dependencyDescriptor);
     }

@@ -16,7 +16,9 @@
 
 package org.gradle.api.internal.artifacts.configurations;
 
+import org.gradle.api.Action;
 import org.gradle.api.artifacts.ConflictResolution;
+import org.gradle.api.artifacts.ForcedModuleDetails;
 import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.ResolutionStrategy;
 import org.gradle.api.artifacts.cache.ResolutionRules;
@@ -25,6 +27,7 @@ import org.gradle.api.internal.artifacts.configurations.conflicts.StrictConflict
 import org.gradle.api.internal.artifacts.configurations.dynamicversion.CachePolicy;
 import org.gradle.api.internal.artifacts.configurations.dynamicversion.DefaultCachePolicy;
 
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -37,9 +40,14 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
     private Set<ModuleVersionSelector> forcedModules = new LinkedHashSet<ModuleVersionSelector>();
     private ConflictResolution conflictResolution = new LatestConflictResolution();
     private final DefaultCachePolicy cachePolicy = new DefaultCachePolicy();
+    private Set<Action<ForcedModuleDetails>> forcedModuleRules = new HashSet<Action<ForcedModuleDetails>>();
 
     public Set<ModuleVersionSelector> getForcedModules() {
         return forcedModules;
+    }
+
+    public Set<Action<ForcedModuleDetails>> getForcedModuleRules() {
+        return forcedModuleRules;
     }
 
     public ResolutionStrategy failOnVersionConflict() {
@@ -58,6 +66,11 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
     public DefaultResolutionStrategy force(Object... forcedModuleNotations) {
         assert forcedModuleNotations != null : "forcedModuleNotations cannot be null";
         this.forcedModules.addAll(new ForcedModuleNotationParser().parseNotation(forcedModuleNotations));
+        return this;
+    }
+
+    public DefaultResolutionStrategy forceRule(Action<ForcedModuleDetails> rule) {
+        this.forcedModuleRules.add(rule);
         return this;
     }
 
