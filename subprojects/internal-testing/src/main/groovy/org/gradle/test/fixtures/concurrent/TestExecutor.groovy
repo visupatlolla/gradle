@@ -25,13 +25,13 @@ class TestExecutor implements Executor {
     private final Lock lock = new ReentrantLock()
     private final Condition condition = lock.newCondition()
     private final Set<Thread> threads = new HashSet<Thread>()
-    private final TestThreadListener listener
+    private final TestLogger logger
     private Thread owner
     private Throwable failure
     private int threadNum
 
-    TestExecutor(TestThreadListener listener) {
-        this.listener = listener
+    TestExecutor(TestLogger logger) {
+        this.logger = logger
     }
 
     void start() {
@@ -51,10 +51,10 @@ class TestExecutor implements Executor {
             @Override
             void run() {
                 try {
-                    println "* ${Thread.currentThread().name} running"
+                    logger.log "running"
                     runnable.run()
                 } catch (Throwable throwable) {
-                    println "* ${Thread.currentThread().name} failed"
+                    logger.log "failed"
                     lock.lock()
                     try {
                         if (failure == null) {
@@ -64,8 +64,7 @@ class TestExecutor implements Executor {
                         lock.unlock()
                     }
                 } finally {
-                    println "* ${Thread.currentThread().name} finished"
-                    listener.threadFinished(Thread.currentThread())
+                    logger.log "finished"
                     lock.lock()
                     try {
                         threads.remove(Thread.currentThread())
@@ -85,7 +84,6 @@ class TestExecutor implements Executor {
             lock.unlock()
         }
 
-        listener.threadStarted(thread)
         thread.start()
     }
 
@@ -93,7 +91,7 @@ class TestExecutor implements Executor {
         lock.lock()
         try {
             if (!threads.isEmpty()) {
-                println "* waiting for ${threads.size()} test threads to complete."
+                logger.log "waiting for ${threads.size()} test threads to complete."
             }
 
             while (!threads.isEmpty()) {
@@ -103,7 +101,7 @@ class TestExecutor implements Executor {
             }
 
             if (!threads.isEmpty()) {
-                println "* timeout waiting for ${threads.size()} threads to complete"
+                logger.log "timeout waiting for ${threads.size()} threads to complete"
                 threads.each { thread ->
                     IllegalStateException e = new IllegalStateException("Timeout waiting for ${thread.name} to complete.")
                     e.stackTrace = thread.stackTrace

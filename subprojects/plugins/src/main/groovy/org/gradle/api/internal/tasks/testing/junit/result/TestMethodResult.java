@@ -18,40 +18,55 @@ package org.gradle.api.internal.tasks.testing.junit.result;
 
 import org.gradle.api.tasks.testing.TestResult;
 
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * by Szczepan Faber, created at: 11/13/12
- */
 public class TestMethodResult {
+    private final long id;
     private final String name;
-    private final TestResult.ResultType resultType;
-    private final long duration;
-    private final long endTime;
-    private final List<Throwable> exceptions;
+    private TestResult.ResultType resultType;
+    private long duration;
+    private long endTime;
+    private List<TestFailure> failures = new ArrayList<TestFailure>();
 
-    public TestMethodResult(String name, TestResult result) {
+    public TestMethodResult(long id, String name) {
+        this.id = id;
         this.name = name;
-        resultType = result.getResultType();
-        duration = result.getEndTime() - result.getStartTime();
-        endTime = result.getEndTime();
-        exceptions = result.getExceptions();
     }
 
-    public TestMethodResult(String name, TestResult.ResultType resultType, long duration, long endTime, List<Throwable> exceptions) {
+    public TestMethodResult(long id, String name, TestResult.ResultType resultType, long duration, long endTime) {
+        if (id < 1) {
+            throw new IllegalArgumentException("id must be > 0");
+        }
+        this.id = id;
         this.name = name;
         this.resultType = resultType;
         this.duration = duration;
         this.endTime = endTime;
-        this.exceptions = exceptions;
+    }
+
+    public TestMethodResult completed(TestResult result) {
+        resultType = result.getResultType();
+        duration = result.getEndTime() - result.getStartTime();
+        endTime = result.getEndTime();
+        return this;
+    }
+
+    public TestMethodResult addFailure(String message, String stackTrace, String exceptionType) {
+        this.failures.add(new TestFailure(message, stackTrace, exceptionType));
+        return this;
+    }
+
+    public long getId() {
+        return id;
     }
 
     public String getName() {
         return name;
     }
 
-    public List<Throwable> getExceptions() {
-        return exceptions;
+    public List<TestFailure> getFailures() {
+        return failures;
     }
 
     public TestResult.ResultType getResultType() {

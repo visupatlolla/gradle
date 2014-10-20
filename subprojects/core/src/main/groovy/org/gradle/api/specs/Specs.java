@@ -17,16 +17,12 @@ package org.gradle.api.specs;
 
 import groovy.lang.Closure;
 import org.gradle.api.specs.internal.ClosureSpec;
-import org.gradle.util.DeprecationLogger;
 
-import java.util.LinkedHashSet;
+import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Provides a number of {@link org.gradle.api.specs.Spec} implementations.
- *
- * @author Hans Dockter
  */
 public class Specs {
 
@@ -54,26 +50,24 @@ public class Specs {
         return (Spec<T>)SATISFIES_NONE;
     }
 
+    //TODO SF rename for consistency with Actions.toAction
     public static <T> Spec<T> convertClosureToSpec(final Closure closure) {
         return new ClosureSpec<T>(closure);
-    }
-
-    public static <T> Set<T> filterIterable(Iterable<? extends T> iterable, Spec<? super T> spec) {
-        DeprecationLogger.nagUserOfReplacedMethod("Specs.filterIterable", "CollectionUtils.filter");
-        Set<T> result = new LinkedHashSet<T>();
-        for (T t : iterable) {
-            if (spec.isSatisfiedBy(t)) {
-                result.add(t);
-            }
-        }
-        return result;
     }
 
     public static <T> AndSpec<T> and(Spec<? super T>... specs) {
         return new AndSpec<T>(specs);  
     }
 
+    public static <T> AndSpec<T> and(Collection<? extends Spec<? super T>> specs) {
+        return new AndSpec<T>(specs);
+    }
+
     public static <T> OrSpec<T> or(Spec<? super T>... specs) {
+        return new OrSpec<T>(specs);
+    }
+
+    public static <T> OrSpec<T> or(Collection<? extends Spec<? super T>> specs) {
         return new OrSpec<T>(specs);
     }
 

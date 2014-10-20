@@ -16,33 +16,29 @@
 
 package org.gradle.api.internal.tasks.testing.junit.result
 
-import org.gradle.api.tasks.testing.TestResult
+import org.gradle.api.Action
+import org.gradle.api.GradleException
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
-import org.gradle.api.GradleException
-import org.gradle.api.Action
 
-/**
- * by Szczepan Faber, created at: 11/19/12
- */
 class Binary2JUnitXmlReportGeneratorSpec extends Specification {
 
     @Rule private TestNameTestDirectoryProvider temp = new TestNameTestDirectoryProvider()
     private resultsProvider = Mock(TestResultsProvider)
-    private generator = new Binary2JUnitXmlReportGenerator(temp.testDirectory, resultsProvider)
+    private generator = new Binary2JUnitXmlReportGenerator(temp.testDirectory, resultsProvider, TestOutputAssociation.WITH_SUITE)
 
     def setup() {
         generator.saxWriter = Mock(JUnitXmlResultWriter)
     }
 
     def "writes results"() {
-        def fooTest = new TestClassResult('FooTest', 100)
-            .add(new TestMethodResult("foo", Mock(TestResult)))
+        def fooTest = new TestClassResult(1, 'FooTest', 100)
+            .add(new TestMethodResult(1, "foo"))
 
-        def barTest = new TestClassResult('BarTest', 100)
-            .add(new TestMethodResult("bar", Mock(TestResult)))
-            .add(new TestMethodResult("bar2", Mock(TestResult)))
+        def barTest = new TestClassResult(2, 'BarTest', 100)
+            .add(new TestMethodResult(2, "bar"))
+            .add(new TestMethodResult(3, "bar2"))
 
         resultsProvider.visitClasses(_) >> { Action action ->
             action.execute(fooTest)
@@ -59,8 +55,8 @@ class Binary2JUnitXmlReportGeneratorSpec extends Specification {
     }
 
     def "adds context information to the failure if something goes wrong"() {
-        def fooTest = new TestClassResult('FooTest', 100)
-                .add(new TestMethodResult("foo", Mock(TestResult)))
+        def fooTest = new TestClassResult(1, 'FooTest', 100)
+                .add(new TestMethodResult(1, "foo"))
 
         resultsProvider.visitClasses(_) >> { Action action ->
             action.execute(fooTest)

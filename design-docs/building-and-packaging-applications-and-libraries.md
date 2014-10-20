@@ -83,9 +83,9 @@ It should be possible to define a library or application that bundles or links t
 It should also be possible to define a project that does not contain any source, but simply aggregates together several libraries produced by other
 projects to produce a composite library or application.
 
-## Native executable
+## Native executable for JVM based application
 
-Gradle will be able to build a native launcher for an application, as an alternative to using launcher scripts.
+Gradle will be able to build a native launcher for a JVM based application, as an alternative to using launcher scripts.
 
 ## Executable Jar
 
@@ -107,7 +107,7 @@ More info in the [forum ticket](http://forums.gradle.org/gradle/topics/modeling_
 
 # Implementation Plan
 
-## Introduce a `java-library-distribution` plugin
+## Introduce a `java-library-distribution` plugin (DONE)
 
 An opinionated plugin that adds a single distribution that
 
@@ -148,7 +148,7 @@ An opinionated plugin that adds a single distribution that
 - add unit tests for the plugin, validate all the features (separate tests) declared in 'user visible changes' section.
 - documentation
     - add new plugin chapter and hook it up to the user guide
-    - add the xml for the new extension object
+    - add the XML for the new extension object
     - new extension object should have a javadoc with small code sample (using our 'autoTested').
         - say, apply plugin and configure the distribution.name
     - link the new extension from plugins.xml
@@ -159,13 +159,13 @@ Extract a general-purpose `distribution` plugin out of the `java-library-distrib
 
 1. Add a `distribution` plugin.
 2. Add a `Distribution` type that extends `Named` plus implementation class.
-3. Add a `DistributionsContainer` type that extends `NamedDomainObjectContainer<Distribution>` plus implementation class.
+3. Add a `DistributionContainer` type that extends `NamedDomainObjectContainer<Distribution>` plus implementation class.
 4. Change the `distribution` plugin to add this container as an extension called `distributions`.
 5. Change the `distribution` plugin to add a single instance called `main` to this container.
 7. Change the `java-library-distribution` plugin to apply the `distribution` plugin.
 8. Change the `distribution` plugin to add a ZIP task for each distribution in the container.
     - For the `main` distribution, this should be called `distZip`
-    - For other distributions, this should be caled `${dist.name}DistZip`.
+    - For other distributions, this should be called `${dist.name}DistZip`.
 9. Change the `java-library-distribution` plugin so that it no longer add a `distZip` task, but instead configures the `distZip`
    task instance that is added by the `distribution` plugin.
 
@@ -209,20 +209,22 @@ To generate multiple distributions:
 
 Running `gradle distZip customDistZip` will create the distribution ZIP files.
 
-## Allow customisation of the `distribution` plugin
+## Allow customization of the `distribution` plugin
 
 Allow the distributions defined by the `distribution` to be configured and remove the configuration options from the `java-library-distribution` plugin.
 
 1. Change the `Distribution` type to add a `baseName` property. This should default to:
     - `project.name` for the `main` distribution.
-    - `$project.name-${dist.name}` for other distributions.
-2. Change the `distribution` plugin to configure the dist zip task to add `into {$dist.baseName}`. Remove the corresponding configuration from the `java-library-distribution`
-    plugin and remove the `name` property from the `distribution` extension.
-3. Change the `Distribution` type to add a `contents` property of type `CopySpec`. This should default to:
-    - from `src/${dist.name}/dist`
-4. Change the `distribution` plugin to configure the dist zip task to add `from $dist.contents`.
-5. Change the `java-library-distribution` plugin to configure the main distribution's `contents` property instead of the dist zip task.
-6. Change the `java-library-distribution` plugin so that it no longer adds the `distribution` extension, and remove the implementation.
+    - `${project.name}-${dist.name}` for other distributions.
+2. Make `Distribution.name` immutable.
+3. Change the `distribution` plugin to configure the dist zip task to add `into {$dist.baseName}-${project.version}`. Remove the corresponding
+   configuration from the `java-library-distribution` plugin.
+4. Change the `java-library-distribution` plugin so that it no longer adds the `distribution` extension, and remove the `DistributionExtension`
+   implementation.
+5. Change the `Distribution` type to add a `contents` property of type `CopySpec`. This should default to: `from 'src/${dist.name}/dist'`
+6. Change the `distribution` plugin to configure the dist ZIP task to add `from $dist.contents`.
+7. Change the `java-library-distribution` plugin to configure the main distribution's `contents` property instead of the dist zip task.
+8. Change the `Distribution` plugin to apply the base plugin.
 
 ### DSL
 
@@ -230,14 +232,24 @@ To generate a distribution for a Java library:
 
     apply plugin: 'java-library-distribution` // implies `java` and `distribution` plugins
 
+    version = 1.2
+
     distributions {
         main {
             baseName = 'someName'
             contents {
-                from { ... }
+                from { 'src/dist' }
             }
         }
     }
+
+Given that the project name is `myproject`, then running `gradle distZip` will produce a ZIP file called `myproject-1.2.zip`, with the following
+contents:
+
+    myproject-1.2/
+        lib/
+            myproject-1.2.jar
+        ... some files from `src/dist` ...
 
 To generate an arbitrary distribution:
 
@@ -264,6 +276,15 @@ To generate multiple distributions:
         }
     }
 
+## Test coverage
+
+* ZIP file and prefix are correct when the project does and does not have a version specified.
+* ZIP file and prefix are correct when the distribution `baseName` has been specified.
+* ZIP file includes files from `src/main/${dist.name}`.
+* ZIP file includes additional files specified in `dist.contents`.
+* ZIP file is produced for custom distribution.
+* ZIP file is produced in the appropriate subdirectory of `build`.
+
 ## Allow distributions to be installed
 
 1. Change the `distribution` plugin to add an install task of type `Sync`.
@@ -271,29 +292,38 @@ To generate multiple distributions:
     - called `install${dist.name}Dist` for other distributions.
     - installs `dist.contents` into `$buildDir/install/${dist.baseName}`.
 
+## Generate a TAR distribution
+
+1. Change the `distribution` plugin to add a TAR task for each distribution, configured in a similar way to the ZIP task.
+
 ## Share distribution definitions with the `application` plugin
 
 1. Change the `application` plugin to apply the `distribution` plugin.
     - When `applicationPluginConvention.applicationName` is set, set the `main` distribution's `baseName` property.
     - Configures the `main` distribution's `contents` to add `from applicationPluginConvention.applicationDistribution`.
-    - No longer adds the `distZip` task.
+    - No longer adds the `distZip` or `distTar` tasks.
 
-## Generate a TAR distribution
+## All distribution archives are built when project is assembled
 
-1. Change the `distribution` plugin to add a TAR task for each distribution, configured in a similar way to the ZIP task.
+1. Running `gradle assemble` will build the ZIP and TAR archives for all distributions.
+2. Running `gradle assemble${name}Dist` will build the ZIP and TAR archives for the given distribution.
+
+## Allow distributions to be published
+
+1. Change the `distribution` plugin to add a `SoftwareComponent` instance for each distribution that is added.
+    - Publishes both the ZIP and TAR archives.
+    - Generated meta-data does not include any dependency declarations.
+    - Generated meta-data include details of components that have been bundled in the distribution.
 
 ## Deprecate distribution configuration from the `application` plugin
 
-1. Deprecate and later remove `ApplicationPluginConvention.applicationName` and `applicationDistribution`
-2. Deprecate and later remove the `installApp` task.
+1. Deprecate `ApplicationPluginConvention.applicationName` and `applicationDistribution` properties.
+2. Deprecate the `installApp` task.
 
 # Later steps
 
-Only after above is completed & integrated with the master we want to design and implement the following:
+See the use cases above.
 
-- Make the library plugin agnostic of implementation language.
-- Build a distribution by bundling other projects.
-- Add a source set for the extra files to include in a distribution.
-- (Very advanced) Allow the distributions to be published, instead of or as well as the jar.
-    This would need to mess with the generated pom.xml/ivy.xml to remove the dependency declarations
-    for those dependencies that have been bundled in the distribution.
+- Extract application definitions from the application plugin.
+- Allow java library, command-line application and web application components to be added to a distribution.
+- Include Java library API documentation in distribution.

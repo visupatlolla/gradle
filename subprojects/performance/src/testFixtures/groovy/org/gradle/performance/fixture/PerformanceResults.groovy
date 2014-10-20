@@ -18,36 +18,81 @@ package org.gradle.performance.fixture
 
 import org.gradle.api.logging.Logging
 
-import static org.gradle.performance.fixture.BaselineVersion.baseline
-
 public class PerformanceResults {
+    private final static LOGGER = Logging.getLogger(PerformanceResults.class)
 
-    private final static LOGGER = Logging.getLogger(PerformanceTestRunner.class)
+    String testId
+    String testProject
+    String[] args
+    String[] tasks
+    String jvm
+    String operatingSystem
+    long testTime
+    String versionUnderTest
+    String vcsBranch
+    String vcsCommit
 
-    List<BaselineVersion> baselineVersions = [ baseline("1.x")]
-    String displayName
-
-    final MeasuredOperationList current = new MeasuredOperationList(name:  "Current G.")
+    private final Map<String, BaselineVersion> baselineVersions = new LinkedHashMap<>()
+    final MeasuredOperationList current = new MeasuredOperationList(name: "Current Gradle")
+    private final results = new CurrentVersionResults(current)
 
     def clear() {
-        baselineVersions.each { it.clearResults() }
+        baselineVersions.values().each { it.clearResults() }
         current.clear()
+    }
+
+    @Override
+    String toString() {
+        return displayName
+    }
+
+    String getDisplayName() {
+        return "Results for test project '$testProject' with tasks ${tasks.join(', ')}"
+    }
+
+    Collection<BaselineVersion> getBaselineVersions() {
+        return baselineVersions.values()
+    }
+
+    /**
+     * Locates the given baseline version, adding it if not present.
+     */
+    BaselineVersion baseline(String version) {
+        def baselineVersion = baselineVersions[version]
+        if (baselineVersion == null) {
+            baselineVersion = new BaselineVersion(version)
+            baselineVersions[version] = baselineVersion
+        }
+        return baselineVersion
+    }
+
+    /**
+     * Locates the given version. Can use either a baseline version or the current branch name.
+     */
+    VersionResults version(String version) {
+        if (version.equals(vcsBranch)) {
+            return results
+        }
+        return baseline(version)
+    }
+
+    List<MeasuredOperationList> getFailures() {
+        def failures = []
+        baselineVersions.values().each {
+            failures.addAll it.results.findAll { it.exception }
+        }
+        failures.addAll current.findAll { it.exception }
+        return failures
     }
 
     void assertEveryBuildSucceeds() {
         LOGGER.info("Asserting all builds have succeeded...");
-        def failures = []
-        baselineVersions.each {
-            failures.addAll it.results.findAll { it.exception }
-        }
-        failures.addAll current.findAll { it.exception }
-
-        assert failures.collect { it.exception }.empty : "Some builds have failed."
+        assert failures.collect { it.exception }.empty: "Some builds have failed."
     }
 
     void assertCurrentVersionHasNotRegressed() {
-        def slower = checkBaselineVersion({it.fasterThan(current)},         {it.getSpeedStatsAgainst(displayName, current)})
-        def larger = checkBaselineVersion({it.usesLessMemoryThan(current)}, {it.getMemoryStatsAgainst(displayName, current)})
+        def slower = checkBaselineVersion({ it.fasterThan(current) }, { it.getSpeedStatsAgainst(displayName, current) })
+        def larger = checkBaselineVersion({ it.usesLessMemoryThan(current) }, { it.getMemoryStatsAgainst(displayName, current) })
         assertEveryBuildSucceeds()
         if (slower && larger) {
             throw new AssertionError("$slower\n$larger")
@@ -63,7 +108,7 @@ public class PerformanceResults {
     private String checkBaselineVersion(Closure fails, Closure provideMessage) {
         def failed = false
         def failure = new StringBuilder()
-        baselineVersions.each {
+        baselineVersions.values().each {
             String message = provideMessage(it)
             if (fails(it)) {
                 failed = true
@@ -72,5 +117,13 @@ public class PerformanceResults {
             println message
         }
         return failed ? failure.toString() : null
+    }
+
+    private static class CurrentVersionResults implements VersionResults {
+        final MeasuredOperationList results
+
+        CurrentVersionResults(MeasuredOperationList results) {
+            this.results = results
+        }
     }
 }

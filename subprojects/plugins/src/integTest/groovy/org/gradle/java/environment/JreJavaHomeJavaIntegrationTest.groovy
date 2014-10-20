@@ -25,18 +25,17 @@ import spock.lang.Unroll
 
 class JreJavaHomeJavaIntegrationTest extends AbstractIntegrationSpec {
 
-    @IgnoreIf({ AvailableJavaHomes.bestJre == null})
+    @IgnoreIf({ AvailableJavaHomes.bestJre == null })
     @Unroll
-    def "java compilation works in forking mode = #forkMode and useAnt = #useAnt when JAVA_HOME is set to JRE"() {
+    def "java compilation works in forking mode = #forkMode when JAVA_HOME is set to JRE"() {
         given:
         def jreJavaHome = AvailableJavaHomes.bestJre
         writeJavaTestSource("src/main/java");
         file('build.gradle') << """
         println "Used JRE: ${jreJavaHome.absolutePath.replace(File.separator, '/')}"
         apply plugin:'java'
-        compileJava{
+        compileJava {
             options.fork = ${forkMode}
-            DeprecationLogger.whileDisabled { options.useAnt = ${useAnt} }
         }
         """
         when:
@@ -45,20 +44,18 @@ class JreJavaHomeJavaIntegrationTest extends AbstractIntegrationSpec {
         file("build/classes/main/org/test/JavaClazz.class").exists()
 
         where:
-        forkMode << [false, true, false]
-        useAnt << [false, false, true]
+        forkMode << [true, false]
     }
 
     @Requires(TestPrecondition.WINDOWS)
     @Unroll
-    def "java compilation works in forking mode = #forkMode and useAnt = #useAnt when gradle is started with no JAVA_HOME defined"() {
+    def "java compilation works in forking mode = #forkMode when gradle is started with no JAVA_HOME defined"() {
         given:
         writeJavaTestSource("src/main/java");
         file('build.gradle') << """
-                    apply plugin:'java'
-                    compileJava{
-                        options.fork = ${forkMode}
-                        DeprecationLogger.whileDisabled { options.useAnt = ${useAnt} }
+        apply plugin:'java'
+        compileJava {
+            options.fork = ${forkMode}
         }
         """
         def envVars = System.getenv().findAll { !(it.key in ['GRADLE_OPTS', 'JAVA_HOME', 'Path']) }
@@ -68,8 +65,7 @@ class JreJavaHomeJavaIntegrationTest extends AbstractIntegrationSpec {
         then:
         file("build/classes/main/org/test/JavaClazz.class").exists()
         where:
-            forkMode << [false, true, false]
-            useAnt << [false, false, true]
+        forkMode << [true, false]
     }
 
     private writeJavaTestSource(String srcDir) {

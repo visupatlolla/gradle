@@ -16,52 +16,102 @@
 
 package org.gradle.tooling.internal.consumer.parameters
 
+import com.google.common.collect.Sets
+import org.gradle.tooling.internal.adapter.ProtocolToModelAdapter
+import org.gradle.tooling.internal.gradle.TaskListingLaunchable
+import org.gradle.tooling.internal.protocol.InternalLaunchable
+import org.gradle.tooling.model.TaskSelector
 import spock.lang.Specification
 
-/**
- * by Szczepan Faber, created at: 3/12/12
- */
 class ConsumerOperationParametersTest extends Specification {
-    
-    def params = new ConsumerOperationParameters(null)
-    
+
     def "null or empty arguments have the same meaning"() {
+        def params = ConsumerOperationParameters.builder()
         when:
         params.arguments = null
 
         then:
-        params.arguments == null
+        params.build().arguments == null
 
         when:
         params.arguments = []
 
         then:
-        params.arguments == null
+        params.build().arguments == null
 
         when:
         params.arguments = ['-Dfoo']
 
         then:
-        params.arguments == ['-Dfoo']
+        params.build().arguments == ['-Dfoo']
     }
 
     def "null or empty jvm arguments have the same meaning"() {
+        def params = ConsumerOperationParameters.builder()
         when:
         params.jvmArguments = null
 
         then:
-        params.jvmArguments == null
+        params.build().jvmArguments == null
 
         when:
         params.jvmArguments = []
 
         then:
-        params.jvmArguments == null
+        params.build().jvmArguments == null
 
         when:
         params.jvmArguments = ['-Xmx']
 
         then:
-        params.jvmArguments == ['-Xmx']
+        params.build().jvmArguments == ['-Xmx']
+    }
+
+    def "task names and empty launchables"() {
+        def builder = ConsumerOperationParameters.builder()
+        when:
+        builder.tasks = ['a', 'b']
+        def params = builder.build()
+
+        then:
+        params.tasks == ['a', 'b']
+        params.launchables == null
+    }
+
+    def "launchables from provider"() {
+        def builder = ConsumerOperationParameters.builder()
+        when:
+        def launchable1 = Mock(InternalLaunchable)
+        def launchable2 = Mock(InternalLaunchable)
+        builder.launchables = [adapt(launchable1), adapt(launchable2)]
+        def params = builder.build()
+
+        then:
+        params.tasks == []
+        params.launchables == [launchable1, launchable2]
+    }
+
+    def "launchables from adapters"() {
+        def builder = ConsumerOperationParameters.builder()
+        when:
+        def launchable1 = Mock(TaskListingLaunchable)
+        def paths1 = Sets.newTreeSet()
+        paths1.add(':a')
+        _ * launchable1.taskNames >> paths1
+        def launchable2 = Mock(TaskListingLaunchable)
+        def paths2 = Sets.newTreeSet()
+        paths2.add(':b')
+        paths2.add(':lib:b')
+        _ * launchable2.taskNames >> paths2
+        builder.launchables = [adapt(launchable1), adapt(launchable2)]
+        def params = builder.build()
+
+        then:
+        params.tasks == [':a', ':b', ':lib:b']
+        params.launchables == []
+    }
+
+    def adapt(def object) {
+        return new ProtocolToModelAdapter().adapt(TaskSelector, object)
     }
 }

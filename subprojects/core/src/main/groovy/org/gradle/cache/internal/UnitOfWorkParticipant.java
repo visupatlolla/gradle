@@ -21,11 +21,14 @@ package org.gradle.cache.internal;
 public interface UnitOfWorkParticipant {
     /**
      * Called just after the cache is locked. Called before any work has been performed.
+     *
+     * @param operationDisplayName operation
+     * @param currentCacheState the current cache state.
      */
-    void onStartWork(String operationDisplayName);
+    void onStartWork(String operationDisplayName, FileLock.State currentCacheState);
 
     /**
      * Called just before the cache is to be unlocked. Called after all work has been completed.
      */
-    void onEndWork();
+    void onEndWork(FileLock.State currentCacheState);
 }

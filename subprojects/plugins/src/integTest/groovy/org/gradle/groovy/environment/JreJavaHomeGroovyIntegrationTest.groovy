@@ -27,7 +27,7 @@ class JreJavaHomeGroovyIntegrationTest extends AbstractIntegrationSpec {
 
     @IgnoreIf({ AvailableJavaHomes.bestJre == null})
     @Unroll
-    def "groovy java cross compilation works in forking mode = #forkMode and useAnt = #useAnt when JAVA_HOME is set to JRE"() {
+    def "groovy java cross compilation works in forking mode = #forkMode when JAVA_HOME is set to JRE"() {
         given:
         def jreJavaHome = AvailableJavaHomes.bestJre
         writeJavaTestSource("src/main/groovy")
@@ -36,11 +36,10 @@ class JreJavaHomeGroovyIntegrationTest extends AbstractIntegrationSpec {
                 println "Used JRE: ${jreJavaHome.absolutePath.replace(File.separator, '/')}"
                 apply plugin:'groovy'
                 dependencies{
-                    groovy localGroovy()
+                    compile localGroovy()
                 }
                 compileGroovy{
                     options.fork = ${forkMode}
-                    DeprecationLogger.whileDisabled { options.useAnt = ${useAnt} }
                 }
                 """
         when:
@@ -50,27 +49,22 @@ class JreJavaHomeGroovyIntegrationTest extends AbstractIntegrationSpec {
         file("build/classes/main/org/test/GroovyClazz.class").exists()
 
         where:
-        forkMode << [false, true, false]
-        useAnt << [false, false, true]
+        forkMode << [true, false]
     }
 
     @Requires(TestPrecondition.WINDOWS)
     @Unroll
-    def "groovy compiler works when gradle is started with no JAVA_HOME defined in forking mode = #forkMode and useAnt = #useAnt"() {
+    def "groovy compiler works when gradle is started with no JAVA_HOME defined in forking mode = #forkMode"() {
         given:
         writeJavaTestSource("src/main/groovy")
         writeGroovyTestSource("src/main/groovy")
         file('build.gradle') << """
             apply plugin:'groovy'
-            dependencies{
-                groovy localGroovy()
+            dependencies {
+                compile localGroovy()
             }
-            compileGroovy{
+            compileGroovy {
                 options.fork = ${forkMode}
-                DeprecationLogger.whileDisabled {
-                    options.useAnt = ${useAnt}
-                    groovyOptions.useAnt = ${useAnt}
-                }
             }
             """
         when:
@@ -81,9 +75,9 @@ class JreJavaHomeGroovyIntegrationTest extends AbstractIntegrationSpec {
         then:
         file("build/classes/main/org/test/JavaClazz.class").exists()
         file("build/classes/main/org/test/GroovyClazz.class").exists()
+
         where:
-        forkMode << [false, true, false]
-        useAnt << [false, false, true]
+        forkMode << [true, false]
     }
 
     private writeJavaTestSource(String srcDir, String clazzName = "JavaClazz") {

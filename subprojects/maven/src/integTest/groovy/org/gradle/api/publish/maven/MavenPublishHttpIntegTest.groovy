@@ -18,9 +18,8 @@ package org.gradle.api.publish.maven
 
 import org.gradle.api.internal.artifacts.repositories.DefaultPasswordCredentials
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.executer.ProgressLoggingFixture
-import org.gradle.test.fixtures.maven.MavenHttpModule
-import org.gradle.test.fixtures.maven.MavenHttpRepository
+import org.gradle.test.fixtures.server.http.MavenHttpModule
+import org.gradle.test.fixtures.server.http.MavenHttpRepository
 import org.gradle.test.fixtures.server.http.HttpServer
 import org.hamcrest.Matchers
 import org.junit.Rule
@@ -29,7 +28,6 @@ import spock.lang.Unroll
 class MavenPublishHttpIntegTest extends AbstractIntegrationSpec {
 
     @Rule HttpServer server
-    @Rule ProgressLoggingFixture progressLogging
 
     MavenHttpRepository mavenRemoteRepo
     MavenHttpModule module

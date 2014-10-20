@@ -15,14 +15,19 @@
  */
 package org.gradle.api.plugins.quality
 
+import org.gradle.api.GradleException
+import org.gradle.api.Incubating
 import org.gradle.api.file.FileCollection
-import org.gradle.internal.reflect.Instantiator
 import org.gradle.api.internal.project.IsolatedAntBuilder
 import org.gradle.api.plugins.quality.internal.PmdReportsImpl
 import org.gradle.api.reporting.Reporting
+import org.gradle.api.resources.TextResource
 import org.gradle.api.tasks.*
+import org.gradle.internal.nativeintegration.console.ConsoleDetector
+import org.gradle.internal.nativeintegration.console.ConsoleMetaData
+import org.gradle.internal.nativeintegration.services.NativeServices
+import org.gradle.internal.reflect.Instantiator
 import org.gradle.logging.ConsoleRenderer
-import org.gradle.api.GradleException
 
 import javax.inject.Inject
 
@@ -48,6 +53,29 @@ class Pmd extends SourceTask implements VerificationTask, Reporting<PmdReports> 
     List<String> ruleSets
 
     /**
+     * The target JDK to use with PMD.
+     */
+    @Input
+    TargetJdk targetJdk
+
+    /**
+     * The custom rule set to be used (if any). Replaces {@code ruleSetFiles}, except that
+     * it does not currently support multiple rule sets.
+     *
+     * See the
+     * <a href="http://pmd.sourceforge.net/howtomakearuleset.html">official documentation</a>
+     * for how to author a rule set.
+     *
+     * Example: ruleSetConfig = resources.text.fromFile(resources.file("config/pmd/myRuleSets.xml"))
+     *
+     * @since 2.2
+     */
+    @Incubating
+    @Nested
+    @Optional
+    TextResource ruleSetConfig
+
+    /**
      * The custom rule set files to be used. See the <a href="http://pmd.sourceforge.net/howtomakearuleset.html">official documentation</a> for
      * how to author a rule set file.
      *
@@ -59,8 +87,6 @@ class Pmd extends SourceTask implements VerificationTask, Reporting<PmdReports> 
     @Nested
     private final PmdReportsImpl reports
 
-    private final IsolatedAntBuilder antBuilder
-
     /**
      * Whether or not to allow the build to continue if there are warnings.
      *
@@ -68,17 +94,47 @@ class Pmd extends SourceTask implements VerificationTask, Reporting<PmdReports> 
      */
     boolean ignoreFailures
 
-    @Inject
-    Pmd(Instantiator instantiator, IsolatedAntBuilder antBuilder) {
+    /**
+     * Whether or not to write PMD results to {@code System.out}.
+     */
+    @Incubating
+    boolean consoleOutput
+
+    Pmd() {
         reports = instantiator.newInstance(PmdReportsImpl, this)
-        this.antBuilder = antBuilder
+    }
+
+    @Inject
+    Instantiator getInstantiator() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    IsolatedAntBuilder getAntBuilder() {
+        throw new UnsupportedOperationException();
     }
 
     @TaskAction
     void run() {
-        antBuilder.withClasspath(getPmdClasspath()).execute {
+        def prePmd5 = getPmdClasspath().any {
+            it.name ==~ /pmd-([1-4]\.[0-9\.]+)\.jar/
+        }
+        def antPmdArgs = [failOnRuleViolation: false, failuresPropertyName: "pmdFailureCount"]
+        if (prePmd5) {
+            // NOTE: PMD 5.0.2 apparently introduces an element called "language" that serves the same purpose
+            // http://sourceforge.net/p/pmd/bugs/1004/
+            // http://java-pmd.30631.n5.nabble.com/pmd-pmd-db05bc-pmd-AntTask-support-for-language-td5710041.html
+            antPmdArgs["targetjdk"] = getTargetJdk().getName()
+        } else {
+            // allow PmdPlugin to set a version-independent default
+            if (getRuleSets() == ["basic"]) {
+                setRuleSets(["java-basic"])
+            }
+        }
+
+        antBuilder.withClasspath(getPmdClasspath()).execute { a ->
             ant.taskdef(name: 'pmd', classname: 'net.sourceforge.pmd.ant.PMDTask')
-            ant.pmd(failOnRuleViolation: false, failuresPropertyName: "pmdFailureCount") {
+            ant.pmd(antPmdArgs) {
                 getSource().addToAntBuilder(ant, 'fileset', FileCollection.AntType.FileSet)
                 getRuleSets().each {
                     ruleset(it)
@@ -86,16 +142,28 @@ class Pmd extends SourceTask implements VerificationTask, Reporting<PmdReports> 
                 getRuleSetFiles().each {
                     ruleset(it)
                 }
+                def ruleSetConfig = getRuleSetConfig()
+                if (ruleSetConfig != null) {
+                    ruleset(ruleSetConfig.asFile())
+                }
 
                 if (reports.html.enabled) {
                     assert reports.html.destination.parentFile.exists()
-                    formatter(type: 'betterhtml', toFile: reports.html.destination)
+                    formatter(type: prePmd5 ? "betterhtml" : "html", toFile: reports.html.destination)
                 }
                 if (reports.xml.enabled) {
                     formatter(type: 'xml', toFile: reports.xml.destination)
                 }
-            }
 
+                if (getConsoleOutput()) {
+                    def consoleOutputType = 'text'
+                    if (stdOutIsAttachedToTerminal()) {
+                        consoleOutputType = 'textcolor'
+                    }
+                    a.builder.saveStreams = false
+                    formatter(type: consoleOutputType, toConsole: true)
+                }
+            }
             def failureCount = ant.project.properties["pmdFailureCount"]
             if (failureCount) {
                 def message = "$failureCount PMD rule violations were found."
@@ -111,6 +179,12 @@ class Pmd extends SourceTask implements VerificationTask, Reporting<PmdReports> 
                 }
             }
         }
+    }
+
+    boolean stdOutIsAttachedToTerminal() {
+        ConsoleDetector consoleDetector = NativeServices.getInstance().get(ConsoleDetector.class)
+        ConsoleMetaData consoleMetaData = consoleDetector.getConsole()
+        consoleMetaData?.stdOut
     }
 
     /**

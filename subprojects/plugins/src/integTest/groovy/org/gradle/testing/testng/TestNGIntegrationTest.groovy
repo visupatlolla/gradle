@@ -29,16 +29,13 @@ import static org.gradle.util.Matchers.containsLine
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.assertThat
 
-/**
- * @author Tom Eyckmans
- */
 class TestNGIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public TestResources resources = new TestResources()
+    @Rule public TestResources resources = new TestResources(testDirectoryProvider)
 
     @Before
     public void before() {
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
     }
 
     @Test
@@ -58,8 +55,8 @@ class TestNGIntegrationTest extends AbstractIntegrationTest {
 
         assert containsLine(result.getOutput(), "START [tests] [Test Run]");
         assert containsLine(result.getOutput(), "FINISH [tests] [Test Run]");
-        assert containsLine(result.getOutput(), "START [test process 'Gradle Worker 1'] [Gradle Worker 1]");
-        assert containsLine(result.getOutput(), "FINISH [test process 'Gradle Worker 1'] [Gradle Worker 1]");
+        assert containsLine(result.getOutput(), "START [process 'Gradle Test Executor 1'] [Gradle Test Executor 1]");
+        assert containsLine(result.getOutput(), "FINISH [process 'Gradle Test Executor 1'] [Gradle Test Executor 1]");
         assert containsLine(result.getOutput(), "START [test 'Gradle test'] [Gradle test]");
         assert containsLine(result.getOutput(), "FINISH [test 'Gradle test'] [Gradle test]");
         assert containsLine(result.getOutput(), "START [test method pass(SomeTest)] [pass]");
@@ -163,5 +160,16 @@ test {
         def result = new DefaultTestExecutionResult(testDirectory)
         result.assertTestClassesExecuted('org.gradle.groups.SomeTest')
         result.testClass('org.gradle.groups.SomeTest').assertTestsExecuted("databaseTest")
+    }
+
+    @Test
+    void supportsTestFactory() {
+        executer.withTasks("test").run()
+        def result = new DefaultTestExecutionResult(testDirectory)
+        result.assertTestClassesExecuted('org.gradle.factory.FactoryTest')
+        result.testClass('org.gradle.factory.FactoryTest').assertTestCount(2, 0, 0)
+        result.testClass('org.gradle.factory.FactoryTest').assertStdout(containsString('TestingFirst'))
+        result.testClass('org.gradle.factory.FactoryTest').assertStdout(containsString('TestingSecond'))
+        result.testClass('org.gradle.factory.FactoryTest').assertStdout(not(containsString('Default test name')))
     }
 }

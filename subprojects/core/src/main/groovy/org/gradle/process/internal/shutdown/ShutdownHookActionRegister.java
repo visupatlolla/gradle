@@ -15,16 +15,9 @@
  */
 package org.gradle.process.internal.shutdown;
 
-import org.gradle.api.UncheckedIOException;
-
-import java.io.Closeable;
-import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/**
- * @author Tom Eyckmans
- */
 public class ShutdownHookActionRegister {
     private static final ShutdownHookActionRegister INSTANCE = new ShutdownHookActionRegister();
     private final List<Runnable> shutdownHookActions = new CopyOnWriteArrayList<Runnable>();
@@ -39,18 +32,6 @@ public class ShutdownHookActionRegister {
 
     public static void removeAction(Runnable shutdownHookAction) {
         INSTANCE.shutdownHookActions.remove(shutdownHookAction);
-    }
-
-    public static void closeOnExit(final Closeable closeable) {
-        addAction(new Runnable() {
-            public void run() {
-                try {
-                    closeable.close();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }
-        });
     }
 
     private class GradleShutdownHook implements Runnable {

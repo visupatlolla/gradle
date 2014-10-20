@@ -14,26 +14,28 @@
  * limitations under the License.
  */
 
-apply from: "$rootDir/gradle/providedConfiguration.gradle"
-
 configurations {
     reports
 }
 
 dependencies {
-    groovy libraries.groovy
+    compile libraries.groovy
 
     publishCompile libraries.slf4j_api
     publishCompile project(":baseServices")
+    publishCompile project(":baseServicesGroovy"), {
+        exclude group: "org.codehaus.groovy", module: "groovy-all"
+    }
     publishCompile project(":messaging")
+    publishCompile project(":resources")
 
-    compile project(":baseServicesGroovy")
+    compile project(":modelCore")
+    compile project(":modelGroovy")
     compile libraries.asm
     compile libraries.ant
     compile libraries.commons_collections
     compile libraries.commons_io
     compile libraries.commons_lang
-    compile libraries.ivy
     compile libraries.logback_core
     compile libraries.logback_classic
     compile libraries.guava
@@ -45,26 +47,29 @@ dependencies {
     compile project(":cli")
     compile project(":native")
 
+    runtime project(":docs")
+
     runtime libraries.log4j_to_slf4j
     runtime libraries.jcl_to_slf4j
 
     testCompile libraries.log4j_to_slf4j
     testCompile libraries.jcl_to_slf4j
+    testCompile libraries.jsoup
 
     testRuntime libraries.xerces
     testRuntime project(":diagnostics")
 
     testFixturesCompile project(":internalTesting")
-    testFixturesRuntime project(':coreImpl')
+    testFixturesCompile libraries.ivy
 
-    testCompile project(':coreImpl')
+    testFixturesRuntime project(':dependencyManagement')
+    testFixturesRuntime project(':pluginUse')
 
     integTestCompile project(":internalIntegTesting")
-
-    reports 'css3-pie:css3-pie:1.0beta3'
 }
 
 useTestFixtures()
+useTestFixtures(project: ":messaging")
 
 [compileGroovy, compileTestGroovy]*.groovyOptions*.fork(memoryInitialSize: '128M', memoryMaximumSize: '1G')
 
@@ -74,12 +79,6 @@ task buildReceiptResource(type: Copy, dependsOn: rootProject.createBuildReceipt)
 }
 
 sourceSets.main.output.dir generatedResourcesDir, builtBy: buildReceiptResource
-
-task reportResources(type: Copy) {
-    from configurations.reports
-    into "$generatedResourcesDir/org/gradle/reporting"
-}
-sourceSets.main.output.dir generatedResourcesDir, builtBy: reportResources
 
 task pluginsManifest(type: PluginsManifest)
 sourceSets.main.output.dir generatedResourcesDir, builtBy: pluginsManifest

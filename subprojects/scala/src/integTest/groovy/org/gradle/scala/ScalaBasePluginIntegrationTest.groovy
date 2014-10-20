@@ -14,11 +14,19 @@
  * limitations under the License.
  */
 package org.gradle.scala
+import org.gradle.integtests.fixtures.ForkScalaCompileInDaemonModeFixture
+import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
+import org.gradle.integtests.fixtures.TargetCoverage
+import org.gradle.integtests.fixtures.ScalaCoverage
+import org.junit.Rule
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import static org.hamcrest.Matchers.startsWith
 
-class ScalaBasePluginIntegrationTest extends AbstractIntegrationSpec {
-    def "defaults scalaClasspath to inferred Scala compiler dependency if scalaTools configuration is empty"() {
+@TargetCoverage({ScalaCoverage.DEFAULT})
+class ScalaBasePluginIntegrationTest extends MultiVersionIntegrationSpec {
+    @Rule public final ForkScalaCompileInDaemonModeFixture forkScalaCompileInDaemonModeFixture = new ForkScalaCompileInDaemonModeFixture(executer, temporaryFolder)
+
+    def "defaults scalaClasspath to inferred Scala compiler dependency"() {
         file("build.gradle") << """
 apply plugin: "scala-base"
 
@@ -29,8 +37,9 @@ sourceSets {
 repositories {
     mavenCentral()
 }
+
 dependencies {
-    customCompile "org.scala-lang:scala-library:2.9.2"
+    customCompile "org.scala-lang:scala-library:$version"
 }
 
 task scaladoc(type: ScalaDoc) {
@@ -38,9 +47,9 @@ task scaladoc(type: ScalaDoc) {
 }
 
 task verify << {
-    assert compileCustomScala.scalaClasspath.files.any { it.name == "scala-compiler-2.9.2.jar" }
-    assert scalaCustomConsole.classpath.files.any { it.name == "scala-compiler-2.9.2.jar" }
-    assert scaladoc.scalaClasspath.files.any { it.name == "scala-compiler-2.9.2.jar" }
+    assert compileCustomScala.scalaClasspath.files.any { it.name == "scala-compiler-${version}.jar" }
+    assert scalaCustomConsole.classpath.files.any { it.name == "scala-compiler-${version}.jar" }
+    assert scaladoc.scalaClasspath.files.any { it.name == "scala-compiler-${version}.jar" }
 }
 """
 
@@ -48,7 +57,7 @@ task verify << {
         succeeds("verify")
     }
 
-    def "defaults scalaClasspath to (empty) scalaTools configuration if Scala compiler dependency isn't found on class path"() {
+    def "only resolves source class path feeding into inferred Scala class path if/when the latter is actually used (but not during autowiring)"() {
         file("build.gradle") << """
 apply plugin: "scala-base"
 
@@ -60,16 +69,51 @@ repositories {
     mavenCentral()
 }
 
-task scaladoc(type: ScalaDoc)
+dependencies {
+    customCompile "org.scala-lang:scala-library:$version"
+}
+
+task scaladoc(type: ScalaDoc) {
+    classpath = sourceSets.custom.runtimeClasspath
+}
 
 task verify << {
-    assert compileCustomScala.scalaClasspath.is(configurations.scalaTools)
-    assert scalaCustomConsole.classpath.is(configurations.scalaTools)
-    assert scaladoc.scalaClasspath.is(configurations.scalaTools)
+    assert configurations.customCompile.state.toString() == "UNRESOLVED"
+    assert configurations.customRuntime.state.toString() == "UNRESOLVED"
 }
-"""
+        """
 
         expect:
         succeeds("verify")
     }
+
+    def "not specifying a scala runtime produces decent error message"() {
+        given:
+        buildFile << """
+            apply plugin: "scala-base"
+
+            sourceSets {
+                main {}
+            }
+
+            repositories {
+                mavenCentral()
+            }
+
+            dependencies {
+                compile "com.google.guava:guava:11.0.2"
+            }
+        """
+
+        file("src/main/scala/Thing.scala") << """
+            class Thing
+        """
+
+        when:
+        fails "compileScala"
+
+        then:
+        failure.assertThatDescription(startsWith("Cannot infer Scala class path because no Scala library Jar was found."))
+    }
+
 }

@@ -22,17 +22,37 @@ public interface ExecutionFailure extends ExecutionResult {
 
     ExecutionFailure assertHasFileName(String filename);
 
+    /**
+     * Asserts that the reported failure has the given cause (ie the bit after the description)
+     */
     ExecutionFailure assertHasCause(String description);
 
+    /**
+     * Asserts that the reported failure has the given cause (ie the bit after the description)
+     */
     ExecutionFailure assertThatCause(Matcher<String> matcher);
 
+    /**
+     * Asserts that the reported failure has the given description (ie the bit after '* What went wrong').
+     */
     ExecutionFailure assertHasDescription(String context);
 
+    /**
+     * Asserts that the reported failure has the given description (ie the bit after '* What went wrong').
+     */
     ExecutionFailure assertThatDescription(Matcher<String> matcher);
+
+    /**
+     * Asserts that the reported failure has the given resolution (ie the bit after '* Try').
+     */
+    ExecutionFailure assertHasResolution(String resolution);
 
     ExecutionFailure assertHasNoCause();
 
     ExecutionFailure assertTestsFailed();
 
-    DependencyResolutionFailure getDependencyResolutionFailure(); //TODO SF use this fixture where possible
+    /**
+     * @param configurationPath, for example ':compile'
+     */
+    DependencyResolutionFailure assertResolutionFailure(String configurationPath);
 }

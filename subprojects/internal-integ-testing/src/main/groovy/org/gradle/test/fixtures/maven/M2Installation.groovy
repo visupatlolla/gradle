@@ -27,19 +27,21 @@ class M2Installation implements Action<GradleExecuter> {
     final TestFile userM2Directory
     final TestFile userSettingsFile
     final TestFile globalMavenDirectory
+    final TestFile globalSettingsFile
 
     public M2Installation(TestFile m2Directory) {
         userHomeDir = m2Directory.createDir("maven_home")
         userM2Directory = userHomeDir.createDir(".m2")
         userSettingsFile = userM2Directory.file("settings.xml")
         globalMavenDirectory = userHomeDir.createDir("m2_home")
+        globalSettingsFile = globalMavenDirectory.file("conf/settings.xml")
     }
 
-    MavenFileRepository mavenRepo() {
-        new MavenFileRepository(userM2Directory.file("repository"))
+    MavenLocalRepository mavenRepo() {
+        new MavenLocalRepository(userM2Directory.file("repository"))
     }
 
-    M2Installation generateUserSettingsFile(MavenFileRepository userRepository) {
+    M2Installation generateUserSettingsFile(MavenLocalRepository userRepository) {
         userSettingsFile.text = """
 <settings>
     <localRepository>${userRepository.rootDir.absolutePath}</localRepository>
@@ -47,9 +49,8 @@ class M2Installation implements Action<GradleExecuter> {
         return this
     }
 
-    M2Installation generateGlobalSettingsFile(MavenFileRepository globalRepository = mavenRepo()) {
-        def settings = globalMavenDirectory.file("conf/settings.xml").createFile()
-        settings.text = """
+    M2Installation generateGlobalSettingsFile(MavenLocalRepository globalRepository = mavenRepo()) {
+        globalSettingsFile.createFile().text = """
 <settings>
     <localRepository>${globalRepository.rootDir.absolutePath}</localRepository>
 </settings>"""

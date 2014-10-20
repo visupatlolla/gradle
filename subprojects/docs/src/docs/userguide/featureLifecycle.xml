@@ -17,13 +17,13 @@
 <appendix id="feature_lifecycle">
     <title>The Feature Lifecycle</title>
     <para>
-        Gradle is under constant development and improvement. New versions are also delivered on a regular and frequent basis
+        Gradle is under constant development and improvement. New versions are delivered on a regular and frequent basis
         (approximately every 6 weeks). Continuous improvement combined with frequent delivery allows new features to be made available
         to users early and for invaluable real world feedback to be incorporated into the development process. Getting
         new functionality into the hands of users regularly is a core value of the Gradle platform.
         At the same time, API and feature stability is taken very seriously and is also considered a core value of the Gradle platform.
         This is something that is engineered into the development process by design choices and automated testing, and is formalised by
-        the <xref linkend='backwards_compatibility'>Backwards Compatibility Policy</xref>.
+        <xref linkend='backwards_compatibility'>Backwards Compatibility Policy</xref>.
     </para>
     <para>
         The Gradle
@@ -66,18 +66,17 @@
                 Internal features may evolve into public features.
             </para>
         </section>
-        <section>
+        <section id="sec:incubating_state">
             <title>Incubating</title>
             <para>
-                When new features are introduced to Gradle, they are usually introduced in an <firstterm>incubating</firstterm> state.
-                A feature in this state is intended to be used by Gradle users, but may change in future Gradle versions until it is no longer incubating.
-                Changes to incubating features for a Gradle release will be highlighted in the release notes for that release.
-                The incubation period for new features varies depending on the scope, complexity and nature of the feature.
-            </para>
-            <para>
-                Features are introduced in the incubating state to allow real world feedback to be incorporated into the feature before it is made public and
+                Features are introduced in the <firstterm>incubating</firstterm> state to allow real world feedback to be incorporated into the feature before it is made public and
                 locked down to provide backwards compatibility.
                 It also gives users who are willing to accept potential future changes early access to the feature so they can put it into use immediately.
+            </para>
+            <para>
+                A feature in an incubating state may change in future Gradle versions until it is no longer incubating.
+                Changes to incubating features for a Gradle release will be highlighted in the release notes for that release.
+                The incubation period for new features varies depending on the scope, complexity and nature of the feature.
             </para>
             <para>
                 Features in incubation are clearly indicated to be so. In the source code, all methods/properties/classes that are incubating are
@@ -108,10 +107,10 @@
             <para>
                 Deprecated features are clearly indicated to be so. In the source code, all methods/properties/classes that are deprecated are
                 annotated with
-                <literal>@java.lang.Deprecated</literal>
+                “<literal>@java.lang.Deprecated</literal>”
                 which is reflected in the DSL and API references.
                 In most cases, there is a replacement for the deprecated element, and this will be described in the documentation.
-                Using a deprecated feature will also result in runtime warning in Gradle's output.
+                Using a deprecated feature will also result in a runtime warning in Gradle's output.
             </para>
             <para>
                 Use of deprecated features should be avoided. The release notes for each release indicate any features that are being deprecated
@@ -122,7 +121,7 @@
     <section id="backwards_compatibility">
         <title>Backwards Compatibility Policy</title>
         <para>
-            Gradle provides backwards compatibility for across major versions (e.g. <literal>1.x</literal>, <literal>2.x</literal>
+            Gradle provides backwards compatibility across major versions (e.g. <literal>1.x</literal>, <literal>2.x</literal>,
             etc.).
             Once a public feature is introduced or promoted in a Gradle release it will remain indefinitely or until it is deprecated. Once
             deprecated, it may be removed in the next major release. Deprecated features may be supported across major

@@ -24,6 +24,11 @@ class JDependPluginIntegrationTest extends WellBehavedPluginTest {
     }
 
     @Override
+    String getPluginName() {
+        return "jdepend"
+    }
+
+    @Override
     String getMainTask() {
         return "check"
     }
@@ -106,6 +111,19 @@ class JDependPluginIntegrationTest extends WellBehavedPluginTest {
 
         and:
         failure.assertHasCause "JDepend tasks must have one report enabled"
+    }
+
+    def "does not fail if configuration is resolved before task execution"() {
+        when:
+        goodCode()
+
+        and:
+        buildFile << """
+            configurations.jdepend.files
+        """
+
+        then:
+        succeeds "jdependMain"
     }
 
     private goodCode() {

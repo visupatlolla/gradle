@@ -16,15 +16,12 @@
 package org.gradle.plugins.ide.eclipse.model
 
 import org.custommonkey.xmlunit.XMLUnit
-import org.gradle.api.internal.xml.XmlTransformer
+import org.gradle.internal.xml.XmlTransformer
 import org.gradle.plugins.ide.eclipse.model.Facet.FacetType
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
-/**
- * @author Hans Dockter
- */
 public class WtpFacetTest extends Specification {
     private static final List CUSTOM_FACETS = [new Facet(FacetType.fixed, 'jst.java', null), new Facet(FacetType.fixed, 'jst.web', null), new Facet(FacetType.installed, 'jst.web', '2.4'), new Facet(FacetType.installed, 'jst.java', '1.4')]
 

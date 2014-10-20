@@ -21,23 +21,36 @@ import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistributio
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.tooling.GradleConnector
+import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.internal.consumer.ConnectorServices
 import org.gradle.util.GradleVersion
 import org.gradle.util.SetSystemProperties
 import org.junit.Rule
-import org.junit.internal.AssumptionViolatedException
 import org.junit.runner.RunWith
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import spock.lang.Specification
 
+/**
+ * A spec that executes tests against all compatible versions of tooling API consumer and testDirectoryProvider, including the current Gradle version under test.
+ *
+ * <p>A test class or test method can be annotated with the following annotations to specify which versions the test is compatible with:
+ * </p>
+ *
+ * <ul>
+ *     <li>{@link ToolingApiVersion} - specifies the tooling API consumer versions that the test is compatible with.
+ *     <li>{@link TargetGradleVersion} - specifies the tooling API testDirectoryProvider versions that the test is compatible with.
+ * </ul>
+ */
 @RunWith(ToolingApiCompatibilitySuiteRunner)
+@ToolingApiVersion('>=1.2')
+@TargetGradleVersion('>=1.0-milestone-8')
 abstract class ToolingApiSpecification extends Specification {
-    static final Logger LOGGER = LoggerFactory.getLogger(ToolingApiSpecification)
-    @Rule public final SetSystemProperties sysProperties = new SetSystemProperties()
-    @Rule public final TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
+    @Rule
+    public final SetSystemProperties sysProperties = new SetSystemProperties()
+    @Rule
+    public final TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
     final GradleDistribution dist = new UnderDevelopmentGradleDistribution()
     final IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext()
-    final ToolingApi toolingApi = new ToolingApi(dist, temporaryFolder)
+    final ToolingApi toolingApi = new ToolingApi(targetDist, temporaryFolder)
     private static final ThreadLocal<GradleDistribution> VERSION = new ThreadLocal<GradleDistribution>()
 
     static void selectTargetDist(GradleDistribution version) {
@@ -48,44 +61,42 @@ abstract class ToolingApiSpecification extends Specification {
         VERSION.get()
     }
 
-    void setup() {
-        def consumerGradle = GradleVersion.current()
-        def target = GradleVersion.version(VERSION.get().version.version)
-        LOGGER.info(" Using Tooling API consumer ${consumerGradle}, provider ${target}")
-        boolean accept = accept(consumerGradle, target)
-        if (!accept) {
-            throw new AssumptionViolatedException("Test class ${getClass().name} does not work with tooling API ${consumerGradle} and Gradle ${target}.")
-        }
-        this.toolingApi.withConnector {
-            if (consumerGradle.version != target.version) {
-                LOGGER.info("Overriding daemon tooling API provider to use installation: " + target);
-                it.useInstallation(new File(getTargetDist().gradleHomeDir.absolutePath))
-                it.embedded(false)
-            }
-        }
+    void reset() {
+        new ConnectorServices().reset()
     }
 
-    /**
-     * Returns true if this test class works with the given combination of tooling API consumer and provider.
-     */
-    protected boolean accept(GradleVersion toolingApi, GradleVersion targetGradle) {
-        return true
+    public void withConnector(@DelegatesTo(GradleConnector) Closure cl) {
+        toolingApi.withConnector(cl)
     }
 
-    public <T> T withConnection(Closure<T> cl) {
+    public <T> T withConnection(@DelegatesTo(ProjectConnection) Closure<T> cl) {
         toolingApi.withConnection(cl)
     }
 
-    public <T> T withConnection(GradleConnector connector, Closure<T> cl) {
+    public <T> T withConnection(GradleConnector connector, @DelegatesTo(ProjectConnection) Closure<T> cl) {
         toolingApi.withConnection(connector, cl)
+    }
+
+    public ConfigurableOperation withModel(Class modelType, Closure cl = {}) {
+        withConnection {
+            def model = it.model(modelType)
+            cl(model)
+            new ConfigurableOperation(model).buildModel()
+        }
+    }
+
+    public ConfigurableOperation withBuild(Closure cl = {}) {
+        withConnection {
+            def build = it.newBuild()
+            cl(build)
+            def out = new ConfigurableOperation(build)
+            build.run()
+            out
+        }
     }
 
     def connector() {
         toolingApi.connector()
-    }
-
-    void maybeFailWithConnection(Closure cl) {
-        toolingApi.maybeFailWithConnection(cl)
     }
 
     TestFile getProjectDir() {
@@ -96,8 +107,66 @@ abstract class ToolingApiSpecification extends Specification {
         file("build.gradle")
     }
 
+    TestFile getSettingsFile() {
+        file("settings.gradle")
+    }
+
     TestFile file(Object... path) {
         projectDir.file(path)
     }
 
+    /**
+     * Returns the set of implicit task names expected for a non-root project for the target Gradle version.
+     */
+    Set<String> getImplicitTasks() {
+        if (GradleVersion.version(targetDist.version.baseVersion.version) >= GradleVersion.version("2.1")) {
+            return ['components', 'dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks']
+        } else {
+            return ['dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks']
+        }
+    }
+
+    /**
+     * Returns the set of implicit selector names expected for a non-root project for the target Gradle version.
+     *
+     * <p>Note that in some versions the handling of implicit selectors was broken, so this method may return a different value
+     * to {@link #getImplicitTasks()}.
+     */
+    Set<String> getImplicitSelectors() {
+        if (GradleVersion.version(targetDist.version.baseVersion.version) <= GradleVersion.version("2.0")) {
+            // Implicit tasks were ignored
+            return []
+        }
+        return getImplicitTasks()
+    }
+
+    /**
+     * Returns the set of implicit task names expected for a root project for the target Gradle version.
+     */
+    Set<String> getRootProjectImplicitTasks() {
+        def targetVersion = GradleVersion.version(targetDist.version.baseVersion.version)
+        if (targetVersion == GradleVersion.version("1.6")) {
+            return implicitTasks + ['setupBuild']
+        }
+        return implicitTasks + ['init', 'wrapper']
+    }
+
+    /**
+     * Returns the set of implicit selector names expected for a root project for the target Gradle version.
+     *
+     * <p>Note that in some versions the handling of implicit selectors was broken, so this method may return a different value
+     * to {@link #getRootProjectImplicitTasks()}.
+     */
+    Set<String> getRootProjectImplicitSelectors() {
+        def targetVersion = GradleVersion.version(targetDist.version.baseVersion.version)
+        if (targetVersion == GradleVersion.version("1.6")) {
+            // Implicit tasks were ignored, and setupBuild was added as a regular task
+            return ['setupBuild']
+        }
+        if (targetVersion <= GradleVersion.version("2.0")) {
+            // Implicit tasks were ignored
+            return []
+        }
+        return rootProjectImplicitTasks
+    }
 }

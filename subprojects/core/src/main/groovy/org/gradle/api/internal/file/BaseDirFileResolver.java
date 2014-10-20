@@ -17,7 +17,7 @@
 package org.gradle.api.internal.file;
 
 import org.apache.commons.lang.StringUtils;
-import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.internal.nativeintegration.filesystem.FileSystem;
 import org.gradle.util.CollectionUtils;
 import org.gradle.util.GUtil;
 
@@ -26,9 +26,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * @author Hans Dockter
- */
 public class BaseDirFileResolver extends AbstractFileResolver {
     private final File baseDir;
 

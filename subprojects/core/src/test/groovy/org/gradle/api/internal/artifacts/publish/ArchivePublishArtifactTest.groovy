@@ -15,69 +15,51 @@
  */
 package org.gradle.api.internal.artifacts.publish
 
-
-import org.gradle.api.artifacts.PublishArtifact
+import org.gradle.api.internal.file.copy.CopyAction
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
-import org.gradle.util.WrapUtil
-import org.jmock.Expectations
-import org.junit.Test
+import org.gradle.util.TestUtil
+import spock.lang.Specification
 
-import static org.hamcrest.Matchers.equalTo
-import static org.hamcrest.Matchers.sameInstance
-import static org.junit.Assert.assertThat
+public class ArchivePublishArtifactTest extends Specification {
 
-/**
- * @author Hans Dockter
- */
-public class ArchivePublishArtifactTest extends AbstractPublishArtifactTest {
-    private AbstractArchiveTask archiveTask = context.mock(AbstractArchiveTask.class)
+    def "provides sensible default values for quite empty archive tasks"() {
+        def quiteEmptyJar = TestUtil.createTask(DummyJar)
 
-    @Override
-    protected PublishArtifact createPublishArtifact(final String classifier) {
-        prepareMocks(classifier, "")
-        return new ArchivePublishArtifact(archiveTask)
+        when:
+        def a = new ArchivePublishArtifact(quiteEmptyJar)
+
+        then:
+        a.archiveTask == quiteEmptyJar
+        a.classifier == ""
+        a.date.time == quiteEmptyJar.archivePath.lastModified()
+        a.extension == "jar"
+        a.file == quiteEmptyJar.archivePath
+        a.type == "jar"
     }
 
-    private void prepareMocks(final String classifier, final String appendix) {
-        context.checking(new Expectations() {
-            {
-                allowing(archiveTask).getExtension()
-                will(returnValue(getTestExt()))
+    def "configures name correctly"() {
+        def noName = TestUtil.createTask(DummyJar)
+        def withArchiveName = TestUtil.createTask(DummyJar, [archiveName: "hey"])
+        def withBaseName = TestUtil.createTask(DummyJar, [baseName: "foo"])
+        def withAppendix = TestUtil.createTask(DummyJar, [baseName: "foo", appendix: "javadoc"])
+        def withAppendixOnly = TestUtil.createTask(DummyJar, [appendix: "javadoc"])
 
-                allowing(archiveTask).getBaseName()
-                will(returnValue(getTestName()))
-
-                allowing(archiveTask).getAppendix()
-                will(returnValue(appendix))
-
-                allowing(archiveTask).getArchivePath()
-                will(returnValue(getTestFile()))
-
-                allowing(archiveTask).getClassifier()
-                will(returnValue(classifier))
-            }
-        })
+        expect:
+        new ArchivePublishArtifact(noName).name == null
+        new ArchivePublishArtifact(withArchiveName).name == null
+        new ArchivePublishArtifact(withBaseName).name == "foo"
+        new ArchivePublishArtifact(withBaseName).setName("haha").name == "haha"
+        new ArchivePublishArtifact(withAppendix).name == "foo-javadoc"
+        new ArchivePublishArtifact(withAppendixOnly).name == "javadoc"
     }
 
-    @Override
-    protected String getTestType() {
-        return getTestExt()
-    }
+    static class DummyJar extends AbstractArchiveTask {
+        DummyJar() {
+            extension = "jar"
+        }
 
-    @Test
-    public void init() {
-        ArchivePublishArtifact publishArtifact = (ArchivePublishArtifact) createPublishArtifact(getTestClassifier())
-        assertThat((Set<AbstractArchiveTask>) publishArtifact.getBuildDependencies().getDependencies(null), equalTo(WrapUtil.toSet(archiveTask)))
-        assertCommonPropertiesAreSet(publishArtifact, true)
-        assertThat(publishArtifact.getArchiveTask(), sameInstance(archiveTask))
+        protected CopyAction createCopyAction() {
+            return null
+        }
     }
-
-    @Test
-    public void nameWithAppendix() {
-        String testAppendix = "appendix"
-        prepareMocks(getTestClassifier(), testAppendix)
-        PublishArtifact publishArtifact = new ArchivePublishArtifact(archiveTask)
-        assertThat(publishArtifact.getName(), equalTo(getTestName() + "-" + testAppendix))
-    }
-
 }

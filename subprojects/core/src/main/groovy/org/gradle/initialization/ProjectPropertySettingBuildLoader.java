@@ -16,9 +16,11 @@
 
 package org.gradle.initialization;
 
+import groovy.lang.MissingPropertyException;
 import org.gradle.api.Project;
 import org.gradle.api.initialization.ProjectDescriptor;
 import org.gradle.api.internal.GradleInternal;
+import org.gradle.api.internal.initialization.ClassLoaderScope;
 import org.gradle.api.internal.plugins.DslObject;
 import org.gradle.api.plugins.ExtraPropertiesExtension;
 import org.gradle.util.GUtil;
@@ -30,9 +32,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-/**
- * @author Hans Dockter
- */
 public class ProjectPropertySettingBuildLoader implements BuildLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(ProjectPropertySettingBuildLoader.class);
 
@@ -44,8 +43,8 @@ public class ProjectPropertySettingBuildLoader implements BuildLoader {
         this.propertiesLoader = propertiesLoader;
     }
 
-    public void load(ProjectDescriptor rootProjectDescriptor, GradleInternal gradle) {
-        buildLoader.load(rootProjectDescriptor, gradle);
+    public void load(ProjectDescriptor rootProjectDescriptor, ProjectDescriptor defaultProject, GradleInternal gradle, ClassLoaderScope classLoaderScope) {
+        buildLoader.load(rootProjectDescriptor, defaultProject, gradle, classLoaderScope);
         setProjectProperties(gradle.getRootProject());
     }
 
@@ -71,9 +70,13 @@ public class ProjectPropertySettingBuildLoader implements BuildLoader {
         Map<String, String> mergedProperties = propertiesLoader.mergeProperties(new HashMap(projectProperties));
         ExtraPropertiesExtension extraProperties = new DslObject(project).getExtensions().getExtraProperties();
         for (Map.Entry<String, String> entry: mergedProperties.entrySet()) {
-            if (project.hasProperty(entry.getKey())) {
-                project.setProperty(entry.getKey(), entry.getValue());    
-            } else {
+            try {
+                project.setProperty(entry.getKey(), entry.getValue());
+            } catch (MissingPropertyException e) {
+                if (!entry.getKey().equals(e.getProperty())) {
+                    throw e;
+                }
+                // Ignore and define as an extra property
                 extraProperties.set(entry.getKey(), entry.getValue());
             }
         }

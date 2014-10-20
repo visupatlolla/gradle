@@ -14,20 +14,16 @@
  * limitations under the License.
  */
 
-package org.gradle.api.internal.tasks;
+package org.gradle.api.internal.tasks
 
-
-import org.gradle.api.InvalidUserDataException
-import org.gradle.api.Rule
-import org.gradle.api.Task
-import org.gradle.api.UnknownTaskException
+import org.gradle.api.*
 import org.gradle.api.internal.TaskInternal
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.project.taskfactory.ITaskFactory
 import org.gradle.api.tasks.TaskDependency
+import org.gradle.initialization.ProjectAccessListener
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.util.GUtil
-import org.gradle.util.HelperUtil
 import spock.lang.Specification
 
 import static java.util.Collections.singletonMap
@@ -37,55 +33,72 @@ public class DefaultTaskContainerTest extends Specification {
     private taskFactory = Mock(ITaskFactory)
     private project = Mock(ProjectInternal, name: "<project>")
     private taskCount = 1;
-    private container = new DefaultTaskContainer(project, Mock(Instantiator), taskFactory)
+    private accessListener = Mock(ProjectAccessListener)
+    private container = new DefaultTaskContainer(project, Mock(Instantiator), taskFactory, accessListener)
 
-    void "adds by Map"() {
+    void "creates by Map"() {
         def options = singletonMap("option", "value")
         def task = task("task")
         taskFactory.createTask(options) >> task
 
         when:
-        def added = container.add(options)
+        def added = container.create(options)
 
         then:
         added == task
         container.getByName("task") == task
     }
 
-    void "adds by name"() {
+    void "creates by name"() {
         given:
         def options = singletonMap(Task.TASK_NAME, "task")
         def task = task("task")
         taskFactory.createTask(options) >> task
 
         expect:
-        container.add("task") == task
+        container.create("task") == task
     }
 
-    void "adds by name and type"() {
+    void "creates by name and type"() {
         given:
         def options = GUtil.map(Task.TASK_NAME, "task", Task.TASK_TYPE, Task.class)
         def task = task("task")
         taskFactory.createTask(options) >> task
 
         expect:
-        container.add("task", Task.class) == task
+        container.create("task", Task.class) == task
     }
 
-    void "adds by name and closure"() {
+    void "creates by name and closure"() {
         given:
-        final Closure action = HelperUtil.toClosure("{ description = 'description' }")
+        final Closure action = {}
         def options = singletonMap(Task.TASK_NAME, "task")
         def task = task("task")
 
         taskFactory.createTask(options) >> task
 
         when:
-        def added = container.add("task", action)
+        def added = container.create("task", action)
 
         then:
         added == task
         1 * task.configure(action) >> task
+    }
+
+    void "creates by name and action"() {
+        given:
+        def action = Mock(Action)
+        def options = singletonMap(Task.TASK_NAME, "task")
+        def task = task("task")
+
+        taskFactory.createTask(options) >> task
+
+        when:
+        def added = container.create("task", action)
+
+        then:
+        added == task
+        1 * action.execute(task)
     }
 
     void "replaces task by name"() {
@@ -121,7 +134,7 @@ public class DefaultTaskContainerTest extends Specification {
         taskFactory.createTask(options) >> task
 
         when:
-        container.add("task")
+        container.create("task")
 
         then:
         0 * rule._
@@ -133,7 +146,7 @@ public class DefaultTaskContainerTest extends Specification {
         taskFactory.createTask(singletonMap(Task.TASK_NAME, "task")) >> { this.task("task") }
 
         when:
-        container.add("task")
+        container.create("task")
 
         then:
         def ex = thrown(InvalidUserDataException)
@@ -207,7 +220,7 @@ public class DefaultTaskContainerTest extends Specification {
         container.findByPath(":other:task")
 
         then:
-        1 * otherProject.ensureEvaluated()
+        1 * accessListener.beforeRequestingTaskByPath(otherProject)
     }
 
     void "does not find unknown tasks by path"() {
@@ -250,7 +263,7 @@ public class DefaultTaskContainerTest extends Specification {
         expectTaskLookupInOtherProject(":", "task", task)
 
         then:
-        container.resolveTask(new StringBuilder(":task")) == task
+        container.resolveTask(":task") == task
     }
 
     void "actualizes task graph"() {
@@ -267,8 +280,10 @@ public class DefaultTaskContainerTest extends Specification {
 
         bTaskDependency.getDependencies(b) >> Collections.emptySet()
 
-        aTaskDependency.getDependencies(task) >> { container.add("b"); Collections.singleton(b) }
+        aTaskDependency.getDependencies(task) >> { container.create("b"); Collections.singleton(b) }
         task.dependsOn("b")
+
+        addPlaceholderTask("c")
 
         assert container.size() == 1
 
@@ -276,7 +291,79 @@ public class DefaultTaskContainerTest extends Specification {
         container.actualize()
 
         then:
-        container.size() == 2
+        container.size() == 3
+    }
+
+    void "can add task via placeholder action"() {
+        when:
+        addPlaceholderTask("task")
+        then:
+        container.getByName("task") != null
+    }
+
+    void "task priotized over placeholders"() {
+        given:
+        Task task = addTask("task")
+        Runnable placeholderAction = addPlaceholderTask("task")
+
+        when:
+        container.getByName("task") == task
+
+        then:
+        0 * placeholderAction.run()
+    }
+
+    void "getNames contains task and placeholder action names"() {
+        when:
+        addTask("task1")
+        Runnable placeholderAction = addPlaceholderTask("task2")
+        0 * placeholderAction.run()
+        then:
+        container.names ==  ['task1', 'task2'] as SortedSet
+    }
+
+    void "maybeCreate creates new task"() {
+        given:
+        def options = singletonMap(Task.TASK_NAME, "task")
+        def task = task("task")
+
+        taskFactory.createTask(options) >> task
+
+        when:
+        def added = container.maybeCreate("task")
+
+        then:
+        added == task
+    }
+
+    void "maybeCreate returns existing task"() {
+        when:
+        def task = addTask("task")
+
+        then:
+        container.maybeCreate("task") == task
+    }
+
+    void "maybeCreate creates new task with type"() {
+        given:
+        def options = [name: "task", type: CustomTask]
+        def task = task("task", CustomTask)
+
+        taskFactory.createTask(options) >> task
+
+        when:
+        def added = container.maybeCreate("task", CustomTask)
+
+        then:
+        added == task
+    }
+
+    void "maybeCreate returns existing task with type"() {
+        when:
+        def task = addTask("task", CustomTask)
+
+        then:
+        container.maybeCreate("task", CustomTask) == task
     }
 
     private ProjectInternal expectTaskLookupInOtherProject(final String projectPath, final String taskName, def task) {
@@ -292,16 +379,37 @@ public class DefaultTaskContainerTest extends Specification {
     }
 
     private TaskInternal task(final String name) {
-        Mock(TaskInternal, name: "[task" + ++taskCount + "]") {
+        task(name, TaskInternal)
+    }
+
+    private <U extends TaskInternal> U task(final String name, Class<U> type) {
+        Mock(type, name: "[task" + ++taskCount + "]") {
             getName() >> name
         }
+    }
+
+    private Runnable addPlaceholderTask(String placeholderName) {
+        Runnable runnable = Mock(Runnable)
+        runnable.run() >> { addTask(placeholderName) }
+        container.addPlaceholderAction(placeholderName, runnable)
+        runnable
     }
 
     private Task addTask(String name) {
         def task = task(name)
         def options = singletonMap(Task.TASK_NAME, name)
         taskFactory.createTask(options) >> task
-        container.add(name)
+        container.create(name)
         return task;
     }
+
+    private <U extends Task> U addTask(String name, Class<U> type) {
+        def task = task(name, type)
+        def options = [name: name, type: type]
+        taskFactory.createTask(options) >> task
+        container.create(name, type)
+        return task;
+    }
+
+    interface CustomTask extends TaskInternal {}
 }

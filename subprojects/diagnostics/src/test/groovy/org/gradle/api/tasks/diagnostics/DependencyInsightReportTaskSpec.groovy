@@ -18,16 +18,14 @@ package org.gradle.api.tasks.diagnostics
 
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.specs.Spec
-import org.gradle.util.HelperUtil
+import org.gradle.internal.typeconversion.UnsupportedNotationException
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
-/**
- * by Szczepan Faber, created at: 9/20/12
- */
 class DependencyInsightReportTaskSpec extends Specification {
 
-    def project = HelperUtil.createRootProject()
-    def task = HelperUtil.createTask(DependencyInsightReportTask, project)
+    def project = TestUtil.createRootProject()
+    def task = TestUtil.createTask(DependencyInsightReportTask, project)
 
     def "fails if configuration missing"() {
         when:
@@ -38,7 +36,7 @@ class DependencyInsightReportTaskSpec extends Specification {
     }
 
     def "fails if dependency to include missing"() {
-        def conf = project.configurations.add("foo")
+        def conf = project.configurations.create("foo")
         task.configuration = conf
 
         when:
@@ -53,12 +51,12 @@ class DependencyInsightReportTaskSpec extends Specification {
         task.setDependencySpec("")
 
         then:
-        thrown(InvalidUserDataException)
+        thrown(UnsupportedNotationException)
     }
 
     def "can set spec and configuration directly"() {
         when:
-        def conf = project.configurations.add("foo")
+        def conf = project.configurations.create("foo")
         task.configuration = conf
         task.dependencySpec = { true } as Spec
         then:
@@ -68,7 +66,7 @@ class DependencyInsightReportTaskSpec extends Specification {
 
     def "can set spec and configuration via methods"() {
         when:
-        project.configurations.add("foo")
+        project.configurations.create("foo")
         task.setConfiguration 'foo'
         task.setDependencySpec 'bar'
         then:

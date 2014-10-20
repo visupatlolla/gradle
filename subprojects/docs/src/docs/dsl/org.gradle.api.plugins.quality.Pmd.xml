@@ -17,12 +17,24 @@
                 <td><literal>project.pmd.ruleSets</literal></td>
             </tr>
             <tr>
+                <td>ruleSetConfig</td>
+                <td><literal>project.pmd.ruleSetConfig</literal></td>
+            </tr>
+            <tr>
                 <td>ruleSetFiles</td>
                 <td><literal>project.pmd.ruleSetFiles</literal></td>
             </tr>
             <tr>
                 <td>ignoreFailures</td>
                 <td><literal>project.pmd.ignoreFailures</literal></td>
+            </tr>
+            <tr>
+                <td>consoleOutput</td>
+                <td><literal>project.pmd.consoleOutput</literal></td>
+            </tr>
+            <tr>
+                <td>targetJdk</td>
+                <td><literal>project.pmd.targetJdk</literal></td>
             </tr>
             <tr>
                 <td>source</td>

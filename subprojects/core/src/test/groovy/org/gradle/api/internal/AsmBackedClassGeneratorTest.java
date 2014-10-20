@@ -17,6 +17,7 @@ package org.gradle.api.internal;
 
 import groovy.lang.Closure;
 import groovy.lang.GroovyObject;
+import groovy.lang.MissingMethodException;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.JavaVersion;
@@ -32,17 +33,18 @@ import spock.lang.Issue;
 import javax.inject.Inject;
 import java.io.IOException;
 import java.lang.reflect.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Callable;
 
-import static org.gradle.util.HelperUtil.TEST_CLOSURE;
-import static org.gradle.util.HelperUtil.call;
+import static org.gradle.api.internal.AbstractClassGeneratorTestGroovy.BeanWithGroovyBoolean;
 import static org.gradle.util.Matchers.isEmpty;
+import static org.gradle.util.TestUtil.TEST_CLOSURE;
+import static org.gradle.util.TestUtil.call;
 import static org.gradle.util.WrapUtil.toList;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
-
-import static org.gradle.api.internal.AbstractClassGeneratorTestGroovy.*;
 
 public class AsmBackedClassGeneratorTest {
     private final AbstractClassGenerator generator = new AsmBackedClassGenerator();
@@ -318,7 +320,7 @@ public class AsmBackedClassGeneratorTest {
     }
 
     @Test
-    public void appliesConventionMappingToEachGetter() throws Exception {
+    public void appliesConventionMappingToEachProperty() throws Exception {
         Class<? extends Bean> generatedClass = generator.generate(Bean.class);
         assertTrue(IConventionAware.class.isAssignableFrom(generatedClass));
         Bean bean = generatedClass.newInstance();
@@ -342,6 +344,85 @@ public class AsmBackedClassGeneratorTest {
     }
 
     @Test
+    public void appliesConventionMappingToPropertyWithMultipleSetters() throws Exception {
+        BeanWithVariousGettersAndSetters bean = generator.newInstance(BeanWithVariousGettersAndSetters.class);
+        new DslObject(bean).getConventionMapping().map("overloaded", new Callable<String>() {
+            public String call() {
+                return "conventionValue";
+            }
+        });
+
+        assertThat(bean.getOverloaded(), equalTo("conventionValue"));
+
+        bean.setOverloaded("value");
+        assertThat(bean.getOverloaded(), equalTo("chars = value"));
+
+        bean = generator.newInstance(BeanWithVariousGettersAndSetters.class);
+        new DslObject(bean).getConventionMapping().map("overloaded", new Callable<String>() {
+            public String call() {
+                return "conventionValue";
+            }
+        });
+
+        assertThat(bean.getOverloaded(), equalTo("conventionValue"));
+
+        bean.setOverloaded(12);
+        assertThat(bean.getOverloaded(), equalTo("number = 12"));
+
+        bean = generator.newInstance(BeanWithVariousGettersAndSetters.class);
+        new DslObject(bean).getConventionMapping().map("overloaded", new Callable<String>() {
+            public String call() {
+                return "conventionValue";
+            }
+        });
+
+        assertThat(bean.getOverloaded(), equalTo("conventionValue"));
+
+        bean.setOverloaded(true);
+        assertThat(bean.getOverloaded(), equalTo("object = true"));
+    }
+
+    @Test
+    public void appliesConventionMappingToPropertyWithGetterCovariantType() throws Exception {
+        CovariantPropertyTypes bean = generator.newInstance(CovariantPropertyTypes.class);
+
+        new DslObject(bean).getConventionMapping().map("value", new Callable<String>() {
+            public String call() {
+                return "conventionValue";
+            }
+        });
+
+        assertThat(bean.getValue(), equalTo("conventionValue"));
+
+        bean.setValue(12);
+        assertThat(bean.getValue(), equalTo("12"));
+    }
+
+    @Test
+    public void appliesConventionMappingToProtectedMethods() throws Exception {
+        BeanWithNonPublicProperties bean = generator.newInstance(BeanWithNonPublicProperties.class);
+
+        assertThat(bean.getPackageProtected(), equalTo("package-protected"));
+        assertThat(bean.getProtected(), equalTo("protected"));
+        assertThat(bean.getPrivate(), equalTo("private"));
+
+        IConventionAware conventionAware = (IConventionAware) bean;
+        conventionAware.getConventionMapping().map("packageProtected", new Callable<String>() {
+            public String call() {
+                return "1";
+            }
+        });
+        conventionAware.getConventionMapping().map("protected", new Callable<String>() {
+            public String call() {
+                return "2";
+            }
+        });
+
+        assertThat(bean.getPackageProtected(), equalTo("1"));
+        assertThat(bean.getProtected(), equalTo("2"));
+    }
+
+    @Test
     @Issue("GRADLE-2163")
     public void appliesConventionMappingToGroovyBoolean() throws Exception {
         BeanWithGroovyBoolean bean = generator.generate(BeanWithGroovyBoolean.class).newInstance();
@@ -349,6 +430,7 @@ public class AsmBackedClassGeneratorTest {
         assertTrue(bean instanceof IConventionAware);
         assertThat(bean.getSmallB(), equalTo(false));
         assertThat(bean.getBigB(), nullValue());
+        assertThat(bean.getMixedB(), equalTo(false));
 
         IConventionAware conventionAware = (IConventionAware) bean;
 
@@ -374,6 +456,15 @@ public class AsmBackedClassGeneratorTest {
         assertThat(bean.getBigB(), equalTo(Boolean.TRUE));
         bean.setBigB(Boolean.FALSE);
         assertThat(bean.getBigB(), equalTo(Boolean.FALSE));
+
+        conventionAware.getConventionMapping().map("mixedB", new Callable<Object>() {
+            public Object call() throws Exception {
+                return Boolean.TRUE;
+            }
+        });
+
+        assertThat(bean.getMixedB(), equalTo(true));
+        assertThat(bean.isMixedB(), equalTo(Boolean.TRUE));
     }
 
     @Test
@@ -543,8 +634,9 @@ public class AsmBackedClassGeneratorTest {
         bean.getAsDynamicObject().setProperty("prop", "value2");
         assertThat(call("{ it.prop }", bean), equalTo((Object) "value2"));
 
-        bean.getAsDynamicObject().setProperty("dynamicProp", "value");
-        assertThat(call("{ it.dynamicProp }", bean), equalTo((Object) "value"));
+        call("{ it.ext.anotherProp = 12 }", bean);
+        assertThat(bean.getAsDynamicObject().getProperty("anotherProp"), equalTo((Object) 12));
+        assertThat(call("{ it.anotherProp }", bean), equalTo((Object) 12));
     }
 
     @Test
@@ -569,6 +661,18 @@ public class AsmBackedClassGeneratorTest {
 
         call("{ it.primitive 12}", bean);
         assertThat(bean.getPrimitive(), equalTo(12));
+
+        call("{ it.bool true}", bean);
+        assertThat(bean.isBool(), equalTo(true));
+
+        call("{ it.overloaded 'value'}", bean);
+        assertThat(bean.getOverloaded(), equalTo("chars = value"));
+
+        call("{ it.overloaded 12}", bean);
+        assertThat(bean.getOverloaded(), equalTo("number = 12"));
+
+        call("{ it.overloaded true}", bean);
+        assertThat(bean.getOverloaded(), equalTo("object = true"));
     }
 
     @Test
@@ -645,11 +749,30 @@ public class AsmBackedClassGeneratorTest {
     }
 
     @Test
+    public void addsInsteadOfOverridesSetValueMethodIfOnlyMultiArgMethods() throws Exception {
+        BeanWithMultiArgDslMethods bean = generator.generate(BeanWithMultiArgDslMethods.class).newInstance();
+        // this method should have been added to the class
+        call("{ it.prop 'value'}", bean);
+        assertThat(bean.getProp(), equalTo("value"));
+    }
+
+    @Test
+    public void doesNotOverrideSetValueMethodForPropertyThatIsNotConventionMappingAware() throws Exception {
+        BeanWithMultiArgDslMethodsAndNoConventionMapping bean = generator.generate(BeanWithMultiArgDslMethodsAndNoConventionMapping.class).newInstance();
+        call("{ it.prop 'value'}", bean);
+        assertThat(bean.getProp(), equalTo("(value)"));
+    }
+
+    @Test
     public void mixesInClosureOverloadForActionMethod() throws Exception {
         Bean bean = generator.generate(Bean.class).newInstance();
         bean.prop = "value";
 
         call("{def value; it.doStuff { value = it }; assert value == \'value\' }", bean);
+
+        BeanWithOverriddenMethods subBean = generator.generate(BeanWithOverriddenMethods.class).newInstance();
+
+        call("{def value; it.doStuff { value = it }; assert value == \'overloaded\' }", subBean);
     }
 
     @Test
@@ -684,9 +807,64 @@ public class AsmBackedClassGeneratorTest {
         }
     }
 
+    public static class BeanWithOverriddenMethods extends Bean {
+        @Override
+        public String getProp() {
+            return super.getProp();
+        }
+
+        @Override
+        public void setProp(String prop) {
+            super.setProp(prop);
+        }
+
+        @Override
+        public String doStuff(String value) {
+            return super.doStuff(value);
+        }
+
+        @Override
+        public void doStuff(Action<String> action) {
+            action.execute("overloaded");
+        }
+    }
+
+    public static class ParentBean {
+        Object value;
+
+        public Object getValue() {
+            return value;
+        }
+
+        public void setValue(Object value) {
+            this.value = value;
+        }
+    }
+
+    public static class CovariantPropertyTypes extends ParentBean {
+        @Override
+        public String getValue() {
+            return String.valueOf(super.getValue());
+        }
+    }
+
     public static class BeanWithReadOnlyProperties {
         public String getProp() {
             return "value";
+        }
+    }
+
+    public static class BeanWithNonPublicProperties {
+        String getPackageProtected() {
+            return "package-protected";
+        }
+
+        protected String getProtected() {
+            return "protected";
+        }
+
+        private String getPrivate() {
+            return "private";
         }
     }
 
@@ -785,6 +963,53 @@ public class AsmBackedClassGeneratorTest {
 
         public void doStuff(Closure cl) {
             cl.call(String.format("[%s]", getProp()));
+        }
+    }
+
+    public static class BeanWithMultiArgDslMethods extends Bean {
+        private String prop;
+
+        public String getProp() {
+            return prop;
+        }
+
+        public void setProp(String prop) {
+            this.prop = prop;
+        }
+
+        public BeanWithMultiArgDslMethods prop(String part1, String part2) {
+            this.prop = String.format("<%s%s>", part1, part2);
+            return this;
+        }
+
+        public BeanWithMultiArgDslMethods prop(String part1, String part2, String part3) {
+            this.prop = String.format("[%s%s%s]", part1, part2, part3);
+            return this;
+        }
+    }
+
+    @NoConventionMapping
+    public static class BeanWithMultiArgDslMethodsAndNoConventionMapping extends Bean {
+        private String prop;
+
+        public String getProp() {
+            return prop;
+        }
+
+        public void setProp(String prop) {
+            this.prop = prop;
+        }
+
+        public void prop(String value) {
+            this.prop = String.format("(%s)", value);
+        }
+
+        public void prop(String part1, String part2) {
+            this.prop = String.format("<%s%s>", part1, part2);
+        }
+
+        public void prop(String part1, String part2, String part3) {
+            this.prop = String.format("[%s%s%s]", part1, part2, part3);
         }
     }
 
@@ -891,6 +1116,7 @@ public class AsmBackedClassGeneratorTest {
         private boolean bool;
         private String finalGetter;
         private Integer writeOnly;
+        private String overloaded;
 
         public int getPrimitive() {
             return primitive;
@@ -898,6 +1124,14 @@ public class AsmBackedClassGeneratorTest {
 
         public void setPrimitive(int primitive) {
             this.primitive = primitive;
+        }
+
+        public boolean isBool() {
+            return bool;
+        }
+
+        public void setBool(boolean bool) {
+            this.bool = bool;
         }
 
         public final String getFinalGetter() {
@@ -910,6 +1144,22 @@ public class AsmBackedClassGeneratorTest {
 
         public void setWriteOnly(Integer value) {
             writeOnly = value;
+        }
+
+        public String getOverloaded() {
+            return overloaded;
+        }
+
+        public void setOverloaded(Number overloaded) {
+            this.overloaded = String.format("number = %s", overloaded);
+        }
+
+        public void setOverloaded(CharSequence overloaded) {
+            this.overloaded = String.format("chars = %s", overloaded);
+        }
+
+        public void setOverloaded(Object overloaded) {
+            this.overloaded = String.format("object = %s", overloaded);
         }
     }
 

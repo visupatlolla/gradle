@@ -16,8 +16,8 @@
 package org.gradle.api.internal.file;
 
 import org.gradle.api.file.RelativePath;
-import org.gradle.internal.nativeplatform.filesystem.Chmod;
-import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.internal.nativeintegration.filesystem.Chmod;
+import org.gradle.internal.nativeintegration.filesystem.FileSystem;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.util.GFileUtils;
@@ -103,6 +103,7 @@ public class AbstractFileTreeElementTest {
         }
 
         public TestFileTreeElement(TestFile file, Integer mode) {
+            super(chmod);
             this.file = file;
             this.mode = mode;
         }
@@ -125,11 +126,6 @@ public class AbstractFileTreeElementTest {
 
         public long getSize() {
             return file.length();
-        }
-
-        @Override
-        protected Chmod getChmod() {
-            return chmod;
         }
 
         public RelativePath getRelativePath() {

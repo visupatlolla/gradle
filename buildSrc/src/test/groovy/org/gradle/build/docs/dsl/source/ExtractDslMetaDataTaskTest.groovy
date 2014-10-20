@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 package org.gradle.build.docs.dsl.source
-
 import org.gradle.api.Project
 import org.gradle.build.docs.dsl.source.model.ClassMetaData
 import org.gradle.build.docs.model.SimpleClassMetaDataRepository
@@ -23,7 +22,7 @@ import spock.lang.Specification
 
 class ExtractDslMetaDataTaskTest extends Specification {
     final Project project = new ProjectBuilder().build()
-    final ExtractDslMetaDataTask task = project.tasks.add('dsl', ExtractDslMetaDataTask.class)
+    final ExtractDslMetaDataTask task = project.tasks.create('dsl', ExtractDslMetaDataTask.class)
     final SimpleClassMetaDataRepository<ClassMetaData> repository = new SimpleClassMetaDataRepository<ClassMetaData>()
 
     def setup() {
@@ -46,6 +45,7 @@ class ExtractDslMetaDataTaskTest extends Specification {
         def groovyClass = repository.get('org.gradle.test.GroovyClass')
         groovyClass.groovy
         !groovyClass.isInterface()
+        !groovyClass.enum
         groovyClass.rawCommentText.contains('This is a groovy class.')
         groovyClass.superClassName == 'org.gradle.test.A'
         groovyClass.interfaceNames == ['org.gradle.test.GroovyInterface', 'org.gradle.test.JavaInterface']
@@ -54,6 +54,7 @@ class ExtractDslMetaDataTaskTest extends Specification {
         def groovyInterface = repository.get('org.gradle.test.GroovyInterface')
         groovyInterface.groovy
         groovyInterface.isInterface()
+        !groovyInterface.enum
         groovyInterface.superClassName == null
         groovyInterface.interfaceNames == ['org.gradle.test.Interface1', 'org.gradle.test.Interface2']
         groovyInterface.annotationTypeNames == []
@@ -75,6 +76,7 @@ class ExtractDslMetaDataTaskTest extends Specification {
         def javaClass = repository.get('org.gradle.test.JavaClass')
         !javaClass.groovy
         !javaClass.isInterface()
+        !javaClass.enum
         javaClass.rawCommentText.contains('This is a java class.')
         javaClass.superClassName == 'org.gradle.test.A'
         javaClass.interfaceNames == ['org.gradle.test.GroovyInterface', 'org.gradle.test.JavaInterface']
@@ -83,6 +85,7 @@ class ExtractDslMetaDataTaskTest extends Specification {
         def javaInterface = repository.get('org.gradle.test.JavaInterface')
         !javaInterface.groovy
         javaInterface.isInterface()
+        !javaInterface.enum
         javaInterface.superClassName == null
         javaInterface.interfaceNames == ['org.gradle.test.Interface1', 'org.gradle.test.Interface2']
         javaInterface.annotationTypeNames == []
@@ -302,6 +305,7 @@ class ExtractDslMetaDataTaskTest extends Specification {
         arrayMethod.parameters[0].name == 'strings'
         arrayMethod.parameters[0].type.signature == 'java.lang.String[]...'
         arrayMethod.parameters[0].type.arrayDimensions == 2
+        arrayMethod.parameters[0].type.varargs
 
         javaClass.declaredPropertyNames == ['intProp'] as Set
     }
@@ -438,6 +442,12 @@ class ExtractDslMetaDataTaskTest extends Specification {
         def groovyEnum = repository.get('org.gradle.test.GroovyEnum')
         groovyEnum.groovy
         !groovyEnum.isInterface()
+        groovyEnum.enum
+
+        and:
+        groovyEnum.getEnumConstant("A") != null
+        groovyEnum.getEnumConstant("B") != null
+        groovyEnum.getEnumConstant("C") == null
     }
 
     def handlesEnumTypesInJavaSource() {
@@ -451,6 +461,12 @@ class ExtractDslMetaDataTaskTest extends Specification {
         def javaEnum = repository.get('org.gradle.test.JavaEnum')
         !javaEnum.groovy
         !javaEnum.isInterface()
+        javaEnum.enum
+
+        and:
+        javaEnum.getEnumConstant("A") != null
+        javaEnum.getEnumConstant("B") != null
+        javaEnum.getEnumConstant("C") == null
     }
 
     def handlesAnnotationTypesInGroovySource() {

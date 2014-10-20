@@ -91,7 +91,7 @@ class CrossVersionTestRunner extends AbstractCompatibilityTestRunner {
         }
 
         @Override
-        protected boolean isEnabled() {
+        protected boolean isTestEnabled(AbstractMultiTestRunner.TestDetails testDetails) {
             return enabled
         }
     }

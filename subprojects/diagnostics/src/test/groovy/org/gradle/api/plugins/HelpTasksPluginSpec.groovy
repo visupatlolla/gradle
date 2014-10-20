@@ -16,31 +16,41 @@
 
 package org.gradle.api.plugins
 
-import org.gradle.configuration.Help
-import org.gradle.testfixtures.ProjectBuilder
-import spock.lang.Specification
+import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.api.reporting.components.ComponentReport
 import org.gradle.api.tasks.diagnostics.*
+import org.gradle.configuration.Help
+import org.gradle.util.TestUtil
+import spock.lang.Specification
 
-import static org.gradle.configuration.ImplicitTasksConfigurer.*
-
-/**
- * by Szczepan Faber, created at: 9/5/12
- */
 class HelpTasksPluginSpec extends Specification {
-
-    def project = new ProjectBuilder().build()
+    final project = TestUtil.createRootProject()
 
     def "adds help tasks"() {
         when:
         project.apply(plugin: 'help-tasks')
 
         then:
-        hasHelpTask(HELP_TASK, Help)
-        hasHelpTask(DEPENDENCY_INSIGHT_TASK, DependencyInsightReportTask)
-        hasHelpTask(DEPENDENCIES_TASK, DependencyReportTask)
-        hasHelpTask(PROJECTS_TASK, ProjectReportTask)
-        hasHelpTask(TASKS_TASK, TaskReportTask)
-        hasHelpTask(PROPERTIES_TASK, PropertyReportTask)
+        hasHelpTask(ProjectInternal.HELP_TASK, Help)
+        hasHelpTask(HelpTasksPlugin.DEPENDENCY_INSIGHT_TASK, DependencyInsightReportTask)
+        hasHelpTask(HelpTasksPlugin.DEPENDENCIES_TASK, DependencyReportTask)
+        hasHelpTask(ProjectInternal.PROJECTS_TASK, ProjectReportTask)
+        hasHelpTask(ProjectInternal.TASKS_TASK, TaskReportTask)
+        hasHelpTask(HelpTasksPlugin.PROPERTIES_TASK, PropertyReportTask)
+        hasHelpTask(HelpTasksPlugin.COMPONENTS_TASK, ComponentReport)
+    }
+
+    def "tasks description reflects whether project has sub-projects or not"() {
+        given:
+        def child = TestUtil.createChildProject(project, "child")
+
+        when:
+        project.apply(plugin: 'help-tasks')
+        child.apply(plugin: 'help-tasks')
+
+        then:
+        project.tasks[ProjectInternal.TASKS_TASK].description == "Displays the tasks runnable from root project 'test' (some of the displayed tasks may belong to subprojects)."
+        child.tasks[ProjectInternal.TASKS_TASK].description == "Displays the tasks runnable from project ':child'."
     }
 
     def "configures tasks for java plugin"() {
@@ -48,21 +58,23 @@ class HelpTasksPluginSpec extends Specification {
         project.apply(plugin: 'help-tasks')
 
         then:
-        !project.implicitTasks[DEPENDENCY_INSIGHT_TASK].configuration
+        !project.tasks[HelpTasksPlugin.DEPENDENCY_INSIGHT_TASK].configuration
 
         when:
         project.plugins.apply(JavaPlugin)
 
         then:
-        project.implicitTasks[DEPENDENCY_INSIGHT_TASK].configuration == project.configurations.compile
+        project.tasks[HelpTasksPlugin.DEPENDENCY_INSIGHT_TASK].configuration == project.configurations.compile
     }
 
-    private void hasHelpTask(String name, Class type) {
-        def task = project.implicitTasks.getByName(name)
+    private hasHelpTask(String name, Class type) {
+        def task = project.tasks.getByName(name)
         assert type.isInstance(task)
-        assert task.group == HELP_GROUP
+        assert task.group == HelpTasksPlugin.HELP_GROUP
+        assert task.impliesSubProjects
         if (type != Help.class) {
             assert task.description.contains(project.name)
         }
+        return task
     }
 }

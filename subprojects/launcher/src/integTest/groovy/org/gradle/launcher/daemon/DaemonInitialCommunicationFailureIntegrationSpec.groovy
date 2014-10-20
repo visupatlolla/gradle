@@ -18,25 +18,21 @@ package org.gradle.launcher.daemon
 
 import org.gradle.integtests.fixtures.KillProcessAvailability
 import org.gradle.launcher.daemon.logging.DaemonMessages
-import org.gradle.launcher.daemon.testing.DaemonLogsAnalyzer
-import org.gradle.test.fixtures.server.http.HttpServer
 import org.junit.Rule
+import org.junit.rules.ExternalResource
 import spock.lang.IgnoreIf
 import spock.lang.Issue
 
+import java.nio.ByteBuffer
+import java.nio.channels.ServerSocketChannel
+import java.nio.channels.SocketChannel
+
 import static org.gradle.test.fixtures.ConcurrentTestUtil.poll
 
-/**
- * by Szczepan Faber, created at: 1/20/12
- */
 @IgnoreIf({ !KillProcessAvailability.CAN_KILL })
 class DaemonInitialCommunicationFailureIntegrationSpec extends DaemonIntegrationSpec {
 
-    @Rule HttpServer server = new HttpServer()
-
-    def cleanup() {
-        stopDaemonsNow()
-    }
+    @Rule TestServer server = new TestServer()
 
     @Issue("GRADLE-2444")
     def "behaves if the registry contains connectable port without daemon on the other end"() {
@@ -45,18 +41,18 @@ class DaemonInitialCommunicationFailureIntegrationSpec extends DaemonIntegration
 
         then:
         //there should be one idle daemon
-        def daemon = new DaemonLogsAnalyzer(executer.daemonBaseDir).daemon
+        def daemon = daemons.daemon
 
         when:
-        // Wait until the daemon has finished updating the registry. Killing it halfway through the registry update will leave the registry corrupted,
+        // Ensure that the daemon has finished updating the registry. Killing it halfway through the registry update will leave the registry corrupted,
         // and the client will just throw the registry away and replace it with an empty one
-        daemon.waitUntilIdle()
+        daemon.assertIdle()
         daemon.kill()
 
         and:
         //starting some service on the daemon port
         poll {
-            server.start(daemon.port)
+            server.tryStart(daemon.port)
         }
 
         then:
@@ -76,18 +72,18 @@ class DaemonInitialCommunicationFailureIntegrationSpec extends DaemonIntegration
     }
 
     @Issue("GRADLE-2444")
-    def "stop() behaves if the registry contains connectable port without daemon on the other end"() {
+    def "stop behaves if the registry contains connectable port without daemon on the other end"() {
         when:
         buildSucceeds()
 
         then:
-        def daemon = new DaemonLogsAnalyzer(executer.daemonBaseDir).daemon
+        def daemon = daemons.daemon
 
         when:
-        daemon.waitUntilIdle()
+        daemon.assertIdle()
         daemon.kill()
         poll {
-            server.start(daemon.port)
+            server.tryStart(daemon.port)
         }
 
         then:
@@ -111,18 +107,54 @@ class DaemonInitialCommunicationFailureIntegrationSpec extends DaemonIntegration
         buildSucceeds()
 
         then:
-        def daemon = new DaemonLogsAnalyzer(executer.daemonBaseDir).daemon
+        def daemon = daemons.daemon
 
         when:
-        daemon.waitUntilIdle()
+        daemon.assertIdle()
         daemon.kill()
 
         then:
         buildSucceeds()
 
         and:
-        def analyzer = new DaemonLogsAnalyzer(executer.daemonBaseDir)
+        def analyzer = daemons
         analyzer.daemons.size() == 2        //2 daemon participated
-        analyzer.registry.all.size() == 1   //only one address in the registry
+        analyzer.visible.size() == 1        //only one address in the registry
+    }
+
+    private static class TestServer extends ExternalResource {
+        ServerSocketChannel socket;
+        Thread acceptor;
+
+        void tryStart(int port) {
+            socket = ServerSocketChannel.open()
+            socket.socket().bind(new InetSocketAddress(port))
+            acceptor = new Thread() {
+                @Override
+                void run() {
+                    while (true) {
+                        SocketChannel connection
+                        try {
+                            connection = socket.accept()
+                        } catch (IOException e) {
+                            return
+                        }
+                        try {
+                            connection.read(ByteBuffer.allocate(4096))
+                            connection.write(ByteBuffer.wrap("hello".bytes))
+                        } finally {
+                            connection.close()
+                        }
+                    }
+                }
+            }
+            acceptor.start()
+        }
+
+        @Override
+        protected void after() {
+            socket?.close()
+            acceptor?.join()
+        }
     }
 }

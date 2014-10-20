@@ -1,0 +1,12 @@
+dependencies {
+    compile project(":platformJvm")
+    compile project(":platformBase")
+
+    testCompile libraries.groovy
+
+    testRuntime project(":languageJava")
+}
+
+useClassycle()
+strictCompile()
+useTestFixtures()

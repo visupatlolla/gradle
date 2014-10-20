@@ -16,14 +16,19 @@
 package org.gradle.groovy.scripts.internal;
 
 import groovy.lang.Script;
+import org.codehaus.groovy.classgen.Verifier;
 import org.gradle.api.Action;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.CacheValidator;
 import org.gradle.cache.PersistentCache;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.groovy.scripts.Transformer;
-import org.gradle.util.hash.HashUtil;
+import org.gradle.internal.concurrent.CompositeStoppable;
+import org.gradle.internal.hash.HashUtil;
+import org.gradle.logging.ProgressLogger;
+import org.gradle.logging.ProgressLoggerFactory;
 
+import java.io.Closeable;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,18 +36,21 @@ import java.util.Map;
 /**
  * A {@link ScriptClassCompiler} which compiles scripts to a cache directory, and loads them from there.
  */
-public class FileCacheBackedScriptClassCompiler implements ScriptClassCompiler {
+public class FileCacheBackedScriptClassCompiler implements ScriptClassCompiler, Closeable {
     private final ScriptCompilationHandler scriptCompilationHandler;
+    private ProgressLoggerFactory progressLoggerFactory;
     private final CacheRepository cacheRepository;
     private final CacheValidator validator;
+    private final CompositeStoppable caches = new CompositeStoppable();
 
-    public FileCacheBackedScriptClassCompiler(CacheRepository cacheRepository, CacheValidator validator, ScriptCompilationHandler scriptCompilationHandler) {
+    public FileCacheBackedScriptClassCompiler(CacheRepository cacheRepository, CacheValidator validator, ScriptCompilationHandler scriptCompilationHandler, ProgressLoggerFactory progressLoggerFactory) {
         this.cacheRepository = cacheRepository;
         this.validator = validator;
         this.scriptCompilationHandler = scriptCompilationHandler;
+        this.progressLoggerFactory = progressLoggerFactory;
     }
 
-    public <T extends Script> Class<? extends T> compile(ScriptSource source, ClassLoader classLoader, Transformer transformer, Class<T> scriptBaseClass) {
+    public <T extends Script> Class<? extends T> compile(ScriptSource source, ClassLoader classLoader, Transformer transformer, Class<T> scriptBaseClass, Verifier verifier) {
         Map<String, Object> properties = new HashMap<String, Object>();
         properties.put("source.filename", source.getFileName());
         properties.put("source.hash", HashUtil.createCompactMD5(source.getResource().getText()));
@@ -52,10 +60,19 @@ public class FileCacheBackedScriptClassCompiler implements ScriptClassCompiler {
                 .withProperties(properties)
                 .withValidator(validator)
                 .withDisplayName(String.format("%s class cache for %s", transformer.getId(), source.getDisplayName()))
-                .withInitializer(new CacheInitializer(source, classLoader, transformer, scriptBaseClass)).open();
+                .withInitializer(new ProgressReportingInitializer(progressLoggerFactory, new CacheInitializer(source, classLoader, transformer, verifier, scriptBaseClass)))
+                .open();
+
+        // This isn't quite right. The cache will be closed at the end of the build, releasing the shared lock on the classes. Instead, the cache for a script should be
+        // closed once we no longer require the script classes. This may be earlier than the end of the current build, or it may used across multiple builds
+        caches.add(cache);
 
         File classesDir = classesDir(cache);
         return scriptCompilationHandler.loadFromDir(source, classLoader, classesDir, scriptBaseClass);
+    }
+
+    public void close() {
+        caches.stop();
     }
 
     private File classesDir(PersistentCache cache) {
@@ -63,21 +80,43 @@ public class FileCacheBackedScriptClassCompiler implements ScriptClassCompiler {
     }
 
     private class CacheInitializer implements Action<PersistentCache> {
+        private final Verifier verifier;
         private final Class<? extends Script> scriptBaseClass;
         private final ClassLoader classLoader;
         private final Transformer transformer;
         private final ScriptSource source;
 
-        private CacheInitializer(ScriptSource source, ClassLoader classLoader, Transformer transformer, Class<? extends Script> scriptBaseClass) {
+        private CacheInitializer(ScriptSource source, ClassLoader classLoader, Transformer transformer, Verifier verifier, Class<? extends Script> scriptBaseClass) {
             this.source = source;
             this.classLoader = classLoader;
             this.transformer = transformer;
+            this.verifier = verifier;
             this.scriptBaseClass = scriptBaseClass;
         }
 
         public void execute(PersistentCache cache) {
             File classesDir = classesDir(cache);
-            scriptCompilationHandler.compileToDir(source, classLoader, classesDir, transformer, scriptBaseClass);
+            scriptCompilationHandler.compileToDir(source, classLoader, classesDir, transformer, scriptBaseClass, verifier);
+        }
+    }
+
+    static class ProgressReportingInitializer implements Action<PersistentCache> {
+        private ProgressLoggerFactory progressLoggerFactory;
+        private Action<? super PersistentCache> delegate;
+
+        public ProgressReportingInitializer(ProgressLoggerFactory progressLoggerFactory, Action<PersistentCache> delegate) {
+            this.progressLoggerFactory = progressLoggerFactory;
+            this.delegate = delegate;
+        }
+
+        public void execute(PersistentCache cache) {
+            ProgressLogger op = progressLoggerFactory.newOperation(FileCacheBackedScriptClassCompiler.class)
+                    .start("Compile script into cache", "Compiling script into cache");
+            try {
+                delegate.execute(cache);
+            } finally {
+                op.completed();
+            }
         }
     }
 }

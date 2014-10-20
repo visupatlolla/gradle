@@ -16,26 +16,26 @@
 
 package org.gradle.plugins.ear
 
-import org.gradle.integtests.fixtures.AbstractIntegrationTest
-import org.junit.Before
-import org.junit.Test
+import org.gradle.api.JavaVersion
+import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.test.fixtures.archive.JarTestFixture
+import org.gradle.util.TextUtil
+import org.hamcrest.Matchers
+import spock.lang.Unroll
 
-/**
- * @author: Szczepan Faber, created at: 6/3/11
- */
-class EarPluginIntegrationTest extends AbstractIntegrationTest {
+import static org.testng.Assert.assertEquals
 
-    @Before
-    void "boring setup"() {
+class EarPluginIntegrationTest extends AbstractIntegrationSpec {
+
+    void "setup"() {
         file("rootLib.jar").createNewFile()
         file("earLib.jar").createNewFile()
 
         file("settings.gradle").write("rootProject.name='root'")
     }
 
-    @Test
     void "creates ear archive"() {
-        file("build.gradle").write("""
+        buildFile << """
 apply plugin: 'ear'
 
 dependencies {
@@ -43,21 +43,20 @@ dependencies {
     earlib files('earLib.jar')
 }
 
-""")
-        //when
-        executer.withTasks('assemble').run()
-        file("build/libs/root.ear").unzipTo(file("unzipped"))
+"""
+        when:
+        run 'assemble'
 
-        //then
-        file("unzipped/rootLib.jar").assertExists()
-        file("unzipped/META-INF/MANIFEST.MF").assertExists()
-        file("unzipped/META-INF/application.xml").assertExists()
-        file("unzipped/lib/earLib.jar").assertExists()
+        then:
+        def ear = new JarTestFixture(file('build/libs/root.ear'))
+        ear.assertContainsFile("META-INF/MANIFEST.MF")
+        ear.assertContainsFile("META-INF/application.xml")
+        ear.assertContainsFile("rootLib.jar")
+        ear.assertContainsFile("lib/earLib.jar")
     }
 
-    @Test
     void "customizes ear archive"() {
-        file("build.gradle").write("""
+        buildFile << """
 apply plugin: 'ear'
 
 dependencies {
@@ -72,72 +71,198 @@ ear {
     }
 }
 
-""")
-        //when
-        executer.withTasks('assemble').run()
-        file("build/libs/root.ear").unzipTo(file("unzipped"))
+"""
+        when:
+        run 'assemble'
 
-        //then
-        file("unzipped/CUSTOM/lib/earLib.jar").assertExists()
-        assert file("unzipped/META-INF/application.xml").text.contains('cool ear')
+        then:
+        def ear = new JarTestFixture(file('build/libs/root.ear'))
+        ear.assertContainsFile("CUSTOM/lib/earLib.jar")
+        ear.assertFileContent("META-INF/application.xml", Matchers.containsString("cool ear"))
     }
 
-    @Test
-    void "uses content found in specified app folder"() {
+    void "includes modules in deployment descriptor"() {
+        file('moduleA.jar').createFile()
+        file('moduleB.war').createFile()
+
+        buildFile << """
+apply plugin: 'ear'
+
+dependencies {
+    deploy files('moduleA.jar', 'moduleB.war')
+}
+"""
+        when:
+        run 'assemble'
+        file("build/libs/root.ear").unzipTo(file("unzipped"))
+
+        then:
+        def appXml = new XmlSlurper().parse(
+                file('unzipped/META-INF/application.xml'))
+        def modules = appXml.module
+        assertEquals(modules[0].ejb.text(), 'moduleA.jar')
+        assertEquals(modules[1].web.'web-uri'.text(), 'moduleB.war')
+    }
+
+    @Unroll
+    void "uses content from application xml located #location"() {
+        def xsi = ["xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"", "xsi:schemaLocation=\"http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/application_6.xsd\""]
+
+        if (JavaVersion.current().java8Compatible) {
+            xsi = xsi.reverse()
+        }
+
+        def applicationXml = """<?xml version="1.0"?>
+<application xmlns="http://java.sun.com/xml/ns/javaee" ${xsi.join(" ")} version="6">
+  <application-name>customear</application-name>
+  <display-name>displayname</display-name>
+  <library-directory>mylib</library-directory>
+</application>
+"""
+
+        file('META-INF/application.xml').createFile().write(applicationXml)
+        buildFile << """
+apply plugin: 'ear'
+ear {
+    $appConfig
+}
+"""
+
+        when:
+        run 'assemble'
+
+        then:
+        def ear = new JarTestFixture(file('build/libs/root.ear'))
+        // Since the application.xml file is generated (using the supplied content), it uses platform line separators
+        ear.assertFileContent("META-INF/application.xml", TextUtil.toPlatformLineSeparators(applicationXml))
+
+        where:
+        location                      | metaInfFolder   | appConfig
+        "in root folder"              | "META-INF"      | ""
+        "in specified metaInf folder" | "customMetaInf" | "metaInf { from 'customMetaInf' }"
+    }
+
+    @Unroll
+    void "uses content found in #location app folder, ignoring descriptor modification"() {
         def applicationXml = """<?xml version="1.0"?>
 <application xmlns="http://java.sun.com/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/application_6.xsd" version="6">
   <application-name>customear</application-name>
 </application>
 """
 
-        file('app/META-INF/application.xml').createFile().write(applicationXml)
-        file('app/someOtherFile.txt').createFile()
-        file('app/META-INF/stuff/yetAnotherFile.txt').createFile()
-        file("build.gradle").write("""
+        file("${appDirectory}/META-INF/application.xml").createFile().write(applicationXml)
+        file("${appDirectory}/someOtherFile.txt").createFile()
+        file("${appDirectory}/META-INF/stuff/yetAnotherFile.txt").createFile()
+        buildFile << """
 apply plugin: 'ear'
 
 ear {
-  appDirName 'app'
+    ${descriptorConfig}
+    deploymentDescriptor {
+        applicationName = 'descriptor modification will not have any affect when application.xml already exists in source'
+    }
 }
-""")
+"""
 
-        //when
-        executer.withTasks('assemble').run()
-        file("build/libs/root.ear").unzipTo(file("unzipped"))
+        when:
+        run 'assemble'
 
-        //then
-        assert file("unzipped/someOtherFile.txt").assertExists()
-        assert file("unzipped/META-INF/stuff/yetAnotherFile.txt").assertExists()
-        assert file("unzipped/META-INF/application.xml").text == applicationXml
+        then:
+        def ear = new JarTestFixture(file('build/libs/root.ear'))
+        ear.assertContainsFile("someOtherFile.txt")
+        ear.assertContainsFile("META-INF/stuff/yetAnotherFile.txt")
+        ear.assertFileContent("META-INF/application.xml", applicationXml)
+
+        where:
+        location    | descriptorConfig   | appDirectory
+        "specified" | "appDirName 'app'" | "app"
+        "default"   | ""                 | "src/main/application"
     }
 
-    @Test
-    void "uses content found in default app folder"() {
+    void "works with existing descriptor containing a doctype declaration"() {
+        // We serve the DTD locally because the the parser actually pulls on this URL,
+        // and we don't want it reaching out to the Internet in our tests
+        def dtdResource = getClass().getResource("application_1_3.dtd")
+        assert dtdResource != null
+
         def applicationXml = """<?xml version="1.0"?>
+<!DOCTYPE application PUBLIC "-//Sun Microsystems, Inc.//DTD J2EE Application 1.3//EN" "$dtdResource">
 <application xmlns="http://java.sun.com/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/application_6.xsd" version="6">
   <application-name>customear</application-name>
 </application>
 """
 
         file('src/main/application/META-INF/application.xml').createFile().write(applicationXml)
-        file('src/main/application/someOtherFile.txt').createFile()
-        file('src/main/application/META-INF/stuff/yetAnotherFile.txt').createFile()
-        file("build.gradle").write("""
+        buildFile << """
+apply plugin: 'ear'
+"""
+
+        when:
+        run 'assemble'
+
+        then:
+        def ear = new JarTestFixture(file('build/libs/root.ear'))
+        ear.assertFileContent("META-INF/application.xml", applicationXml)
+    }
+
+    void "exclude duplicates: lib has priority over other files"() {
+        file('bad-lib/file.txt').createFile().write('bad')
+        file('good-lib/file.txt').createFile().write('good')
+
+        buildFile << '''
 apply plugin: 'ear'
 ear {
-    deploymentDescriptor {
-        applicationName = 'descriptor modification will not have any affect when application.xml already exists in source'
-    }
-}
-""")
+   duplicatesStrategy = 'exclude'
+   into('lib') {
+       from 'bad-lib'
+   }
+   lib {
+       from 'good-lib'
+   }
+}'''
 
-        //when
-        executer.withTasks('assemble').run()
+        when:
+        run 'assemble';
+
+        then:
+        def ear = new JarTestFixture(file('build/libs/root.ear'))
+        ear.assertFileContent("lib/file.txt", "good")
+    }
+
+    void "use security role closure"() {
+        file('bad-lib/file.txt').createFile().write('bad')
+        file('good-lib/file.txt').createFile().write('good')
+
+        buildFile << '''
+apply plugin: 'ear'
+ear {
+  deploymentDescriptor {
+
+    securityRole {
+      roleName="superman"
+      description="This is the SUPERMAN role"
+     }
+
+    securityRole {
+      roleName="supergirl"
+      description="This is the SUPERGIRL role"
+    }
+  }
+}'''
+
+        when:
+        run 'assemble';
+
         file("build/libs/root.ear").unzipTo(file("unzipped"))
 
-        //then
-        assert file("unzipped/someOtherFile.txt").assertExists()
-        assert file("unzipped/META-INF/stuff/yetAnotherFile.txt").assertExists()
-        assert file("unzipped/META-INF/application.xml").text == applicationXml
+        then:
+        def appXml = new XmlSlurper().parse(
+                file('unzipped/META-INF/application.xml'))
+        def roles = appXml."security-role"
+        assertEquals(roles[0]."role-name".text(), 'superman')
+        assertEquals(roles[0].description.text(), 'This is the SUPERMAN role')
+        assertEquals(roles[1]."role-name".text(), 'supergirl')
+        assertEquals(roles[1].description.text(), 'This is the SUPERGIRL role')
     }
+
 }

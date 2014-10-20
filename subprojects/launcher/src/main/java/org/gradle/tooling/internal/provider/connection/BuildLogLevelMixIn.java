@@ -33,7 +33,6 @@ public class BuildLogLevelMixIn {
 
     public LogLevel getBuildLogLevel() {
         LoggingCommandLineConverter converter = new LoggingCommandLineConverter();
-        //TODO SF add unit test
         CommandLineParser parser = new CommandLineParser().allowUnknownOptions().allowMixedSubcommandsAndOptions();
         converter.configure(parser);
         ParsedCommandLine parsedCommandLine = parser.parse(parameters.getArguments(Collections.<String>emptyList()));
@@ -42,7 +41,7 @@ public class BuildLogLevelMixIn {
             return LogLevel.DEBUG;
         }
 
-        LoggingConfiguration loggingConfiguration = converter.convert(parsedCommandLine);
+        LoggingConfiguration loggingConfiguration = converter.convert(parsedCommandLine, new LoggingConfiguration());
         return loggingConfiguration.getLogLevel();
     }
 }

@@ -16,25 +16,20 @@
 
 package org.gradle.api.tasks.diagnostics.internal.graph.nodes;
 
-import org.gradle.api.artifacts.ModuleVersionIdentifier;
-import org.gradle.api.artifacts.ModuleVersionSelector;
-import org.gradle.api.internal.artifacts.DefaultModuleVersionSelector;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.artifacts.component.ComponentSelector;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class RequestedVersion extends AbstractRenderableDependencyResult {
-    private final ModuleVersionSelector requested;
-    private final ModuleVersionIdentifier actual;
+    private final ComponentSelector requested;
+    private final ComponentIdentifier actual;
     private final boolean resolvable;
     private final String description;
     private final Set<RenderableDependency> children = new LinkedHashSet<RenderableDependency>();
 
-    public RequestedVersion(ModuleVersionIdentifier actual, boolean resolvable, String description) {
-        this(DefaultModuleVersionSelector.newSelector(actual.getGroup(), actual.getName(), actual.getVersion()), actual, resolvable, description);
-    }
-
-    public RequestedVersion(ModuleVersionSelector requested, ModuleVersionIdentifier actual, boolean resolvable, String description) {
+    public RequestedVersion(ComponentSelector requested, ComponentIdentifier actual, boolean resolvable, String description) {
         this.requested = requested;
         this.actual = actual;
         this.resolvable = resolvable;
@@ -51,16 +46,15 @@ public class RequestedVersion extends AbstractRenderableDependencyResult {
     }
 
     @Override
-    protected ModuleVersionIdentifier getActual() {
+    protected ComponentIdentifier getActual() {
         return actual;
     }
 
     @Override
-    protected ModuleVersionSelector getRequested() {
+    protected ComponentSelector getRequested() {
         return requested;
     }
 
-    @Override
     public boolean isResolvable() {
         return resolvable;
     }

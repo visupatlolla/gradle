@@ -16,12 +16,12 @@
 
 package org.gradle.integtests
 
-import org.gradle.api.internal.artifacts.ivyservice.DefaultCacheLockingManager
+import org.gradle.api.internal.artifacts.ivyservice.CacheLayout
 import org.gradle.groovy.scripts.ScriptSource
 import org.gradle.groovy.scripts.UriScriptSource
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.test.fixtures.file.TestFile
-import org.gradle.test.fixtures.maven.MavenRepository
+import org.gradle.test.fixtures.server.http.MavenHttpRepository
 import org.gradle.test.fixtures.server.http.HttpServer
 import org.gradle.util.GradleVersion
 import org.junit.Before
@@ -30,9 +30,6 @@ import org.junit.Test
 
 import static org.junit.Assert.assertEquals
 
-/**
- * @author Hans Dockter
- */
 public class CacheProjectIntegrationTest extends AbstractIntegrationTest {
     static final String TEST_FILE = "build/test.txt"
 
@@ -45,7 +42,7 @@ public class CacheProjectIntegrationTest extends AbstractIntegrationTest {
     TestFile classFile
     TestFile artifactsCache
 
-    MavenRepository repo
+    MavenHttpRepository repo
 
     @Before
     public void setUp() {
@@ -55,18 +52,17 @@ public class CacheProjectIntegrationTest extends AbstractIntegrationTest {
         String version = GradleVersion.current().version
         projectDir = file("project")
         projectDir.mkdirs()
-        userHomeDir = new TestFile(executer.gradleUserHomeDir)
+        userHomeDir = executer.gradleUserHomeDir
         buildFile = projectDir.file('build.gradle')
         ScriptSource source = new UriScriptSource("build file", buildFile)
         propertiesFile = userHomeDir.file("caches/$version/scripts/$source.className/ProjectScript/no_buildscript/cache.properties")
         classFile = userHomeDir.file("caches/$version/scripts/$source.className/ProjectScript/no_buildscript/classes/${source.className}.class")
         artifactsCache = projectDir.file(".gradle/$version/taskArtifacts/taskArtifacts.bin")
 
-        def repoDir = file("repo")
-        repo = maven(repoDir)
-        server.allowGetOrHead("/repo", repo.rootDir)
-        repo.module("commons-io", "commons-io", "1.4").publish()
-        repo.module("commons-lang", "commons-lang", "2.6").publish()
+        repo = new MavenHttpRepository(server, mavenRepo)
+
+        repo.module("commons-io", "commons-io", "1.4").publish().allowAll()
+        repo.module("commons-lang", "commons-lang", "2.6").publish().allowAll()
 
         server.start()
     }
@@ -120,19 +116,6 @@ public class CacheProjectIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    public void "does not rebuild artifact cache when run with --cache rebuild"() {
-        createLargeBuildScript()
-        testBuild("hello1", "Hello 1")
-
-        TestFile dependenciesCache = findDependencyCacheDir()
-        assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
-
-        modifyLargeBuildScript()
-        testBuild("newTask", "I am new", "-Crebuild")
-        assert dependenciesCache.isDirectory() && dependenciesCache.listFiles().length > 0
-    }
-
-    @Test
     public void "does not rebuild artifact cache when run with --rerun-tasks"() {
         createLargeBuildScript()
         testBuild("hello1", "Hello 1")
@@ -146,8 +129,7 @@ public class CacheProjectIntegrationTest extends AbstractIntegrationTest {
     }
 
     private TestFile findDependencyCacheDir() {
-        def cacheVersion = DefaultCacheLockingManager.CACHE_LAYOUT_VERSION
-        def resolverArtifactCache = new TestFile(userHomeDir.file("caches/artifacts-${cacheVersion}/filestore"))
+        def resolverArtifactCache = new TestFile(userHomeDir.file("caches/${CacheLayout.ROOT.getKey()}/${CacheLayout.FILE_STORE.getKey()}"))
         return resolverArtifactCache.file("commons-io/commons-io/")
     }
 
@@ -167,7 +149,7 @@ public class CacheProjectIntegrationTest extends AbstractIntegrationTest {
         String content = """
 repositories {
     maven{
-        url "http://localhost:${server.port}/repo"
+        url "${repo.uri}"
     }
 }
 configurations { compile }

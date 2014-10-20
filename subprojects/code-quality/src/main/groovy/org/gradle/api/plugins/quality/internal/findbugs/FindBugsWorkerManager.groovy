@@ -28,6 +28,8 @@ class FindBugsWorkerManager {
 
         FindBugsWorkerClient clientCallBack = new FindBugsWorkerClient()
         process.connection.addIncoming(FindBugsWorkerClientProtocol.class, clientCallBack);
+        process.connection.connect()
+
         FindBugsResult result = clientCallBack.getResult();
 
         process.waitForStop();
@@ -36,10 +38,12 @@ class FindBugsWorkerManager {
 
     private WorkerProcess createWorkerProcess(File workingDir, Factory<WorkerProcessBuilder> workerFactory, FileCollection findBugsClasspath, FindBugsSpec spec) {
         WorkerProcessBuilder builder = workerFactory.create();
+        builder.setBaseName("Gradle FindBugs Worker")
         builder.applicationClasspath(findBugsClasspath);
         builder.sharedPackages(Arrays.asList("edu.umd.cs.findbugs"));
         JavaExecHandleBuilder javaCommand = builder.getJavaCommand();
         javaCommand.setWorkingDir(workingDir);
+        javaCommand.setMaxHeapSize(spec.getMaxHeapSize());
 
         WorkerProcess process = builder.worker(new FindBugsWorkerServer(spec)).build()
         return process

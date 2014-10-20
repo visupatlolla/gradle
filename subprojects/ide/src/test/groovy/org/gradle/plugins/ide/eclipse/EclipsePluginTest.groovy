@@ -23,14 +23,11 @@ import org.gradle.api.internal.project.DefaultProject
 import org.gradle.api.tasks.Delete
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.plugins.ide.eclipse.model.BuildCommand
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
-/**
- * @author Hans Dockter
- */
 class EclipsePluginTest extends Specification {
-    private final DefaultProject project = HelperUtil.createRootProject()
+    private final DefaultProject project = TestUtil.createRootProject()
     private final EclipsePlugin eclipsePlugin = new EclipsePlugin(project.services.get(Instantiator))
 
     def applyToBaseProject_shouldOnlyHaveEclipseProjectTask() {
@@ -138,15 +135,19 @@ class EclipsePluginTest extends Specification {
     }
 
     private void checkEclipseClasspath(def configurations, def additionalContainers = []) {
-        GenerateEclipseClasspath eclipseClasspath = project.tasks.eclipseClasspath
-        assert eclipseClasspath instanceof GenerateEclipseClasspath
-        assert project.tasks.eclipse.taskDependencies.getDependencies(project.tasks.eclipse).contains(eclipseClasspath)
-        assert eclipseClasspath.sourceSets == project.sourceSets
-        assert eclipseClasspath.plusConfigurations == configurations
-        assert eclipseClasspath.minusConfigurations == []
-        assert eclipseClasspath.containers == ['org.eclipse.jdt.launching.JRE_CONTAINER'] + additionalContainers as Set
-        assert eclipseClasspath.outputFile == project.file('.classpath')
-        assert eclipseClasspath.defaultOutputDir == new File(project.projectDir, 'bin')
+        def classpath = project.eclipse.classpath
+        def classpathTask = project.tasks.eclipseClasspath
+
+        assert classpathTask instanceof GenerateEclipseClasspath
+        assert classpathTask.classpath == classpath
+        assert classpathTask.outputFile == project.file('.classpath')
+        assert project.tasks.eclipse.taskDependencies.getDependencies(project.tasks.eclipse).contains(classpathTask)
+
+        assert classpath.sourceSets == project.sourceSets
+        assert classpath.plusConfigurations == configurations
+        assert classpath.minusConfigurations == []
+        assert classpath.containers == ['org.eclipse.jdt.launching.JRE_CONTAINER'] + additionalContainers as Set
+        assert classpath.defaultOutputDir == new File(project.projectDir, 'bin')
     }
 
     private void checkEclipseJdt() {

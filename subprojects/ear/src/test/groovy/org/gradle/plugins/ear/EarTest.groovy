@@ -16,21 +16,22 @@
 
 package org.gradle.plugins.ear
 
-import org.gradle.plugins.ear.descriptor.internal.DefaultDeploymentDescriptor
-import org.gradle.api.tasks.bundling.AbstractArchiveTaskTest
+import org.gradle.api.Action
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
+import org.gradle.api.tasks.bundling.AbstractArchiveTaskTest
+import org.gradle.plugins.ear.descriptor.EarSecurityRole
+import org.gradle.plugins.ear.descriptor.internal.DefaultDeploymentDescriptor
 import org.junit.Before
 import org.junit.Test
+
 import static org.junit.Assert.assertEquals
 
-/**
- * @author David Gileadi
- */
 class EarTest extends AbstractArchiveTaskTest {
 
     Ear ear
 
-    @Before public void setUp() {
+    @Before
+    public void setUp() {
         ear = createTask(Ear)
         configure(ear)
     }
@@ -39,21 +40,20 @@ class EarTest extends AbstractArchiveTaskTest {
         ear
     }
 
-    @Test public void testEar() {
+    @Test
+    public void testEar() {
         assertEquals(Ear.EAR_EXTENSION, ear.extension)
     }
 
-    @Test public void testLibDirName() {
-        ear.libDirName = "APP-INF/lib"
-        assertEquals(ear.libDirName, ear.lib.destPath as String)
-    }
 
-    @Test public void testDeploymentDescriptor() {
-        ear.deploymentDescriptor = new DefaultDeploymentDescriptor(null)
+    @Test
+    public void testDeploymentDescriptor() {
+        ear.deploymentDescriptor = new DefaultDeploymentDescriptor(null,instantiator)
         checkDeploymentDescriptor()
     }
 
-    @Test public void testDeploymentDescriptorWithNullManifest() {
+    @Test
+    public void testDeploymentDescriptorWithNullManifest() {
         ear.deploymentDescriptor = null
         checkDeploymentDescriptor()
     }
@@ -70,7 +70,11 @@ class EarTest extends AbstractArchiveTaskTest {
             module("my.jar", "java")
             webModule("my.war", "/")
             securityRole "admin"
-            securityRole "superadmin"
+            securityRole({ role->
+                role.roleName="superadmin"
+                role.description="Super Admin Role"
+            } as Action<EarSecurityRole>)
+
             withXml { provider ->
                 //just adds an action
             }
@@ -92,6 +96,7 @@ class EarTest extends AbstractArchiveTaskTest {
         assertEquals(2, d.securityRoles.size())
         assertEquals("admin", (d.securityRoles as List)[0].roleName)
         assertEquals("superadmin", (d.securityRoles as List)[1].roleName)
+        assertEquals("Super Admin Role", (d.securityRoles as List)[1].description)
         assertEquals(1, d.transformer.actions.size())
     }
 }

@@ -15,20 +15,14 @@
  */
 
 package org.gradle.api.publish.maven
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import spock.lang.Ignore
 
-class MavenPublishMultiProjectIntegTest extends AbstractIntegrationSpec {
-    def project1module = mavenRepo.module("org.gradle.test", "project1", "1.9")
+class MavenPublishMultiProjectIntegTest extends AbstractMavenPublishIntegTest {
+    def project1 = mavenRepo.module("org.gradle.test", "project1", "1.0")
+    def project2 = mavenRepo.module("org.gradle.test", "project2", "2.0")
+    def project3 = mavenRepo.module("org.gradle.test", "project3", "3.0")
 
     def "project dependency correctly reflected in POM"() {
-        createBuildScripts("""
-project(":project1") {
-    dependencies {
-        compile project(":project2")
-    }
-}
-        """)
+        createBuildScripts()
 
         when:
         run "publish"
@@ -37,14 +31,64 @@ project(":project1") {
         projectsCorrectlyPublished()
     }
 
-    def "maven-publish plugin does not take archivesBaseName into account when publishing"() {
+    def "project dependencies reference publication identity of dependent project"() {
+        def project3 = mavenRepo.module("changed.group", "changed-artifact-id", "changed")
+
         createBuildScripts("""
-project(":project1") {
-    dependencies {
-        compile project(":project2")
+project(":project3") {
+    publishing {
+        publications.maven {
+            groupId "changed.group"
+            artifactId "changed-artifact-id"
+            version "changed"
+        }
     }
 }
+""")
 
+        when:
+        run "publish"
+
+        then:
+        project1.assertPublishedAsJavaModule()
+        project1.parsedPom.scopes.runtime.assertDependsOn("changed.group:changed-artifact-id:changed", "org.gradle.test:project2:2.0")
+
+        project2.assertPublishedAsJavaModule()
+        project2.parsedPom.scopes.runtime.assertDependsOn("changed.group:changed-artifact-id:changed")
+
+        project3.assertPublishedAsJavaModule()
+        project3.parsedPom.scopes.runtime == null
+
+        and:
+        resolveArtifacts(project1) == ['changed-artifact-id-changed.jar', 'project1-1.0.jar', 'project2-2.0.jar']
+    }
+
+    def "reports failure when project dependency references a project with multiple publications"() {
+        createBuildScripts("""
+project(":project3") {
+    publishing {
+        publications {
+            extraMaven(MavenPublication) {
+                from components.java
+                groupId "extra.group"
+                artifactId "extra-artifact"
+                version "extra"
+            }
+        }
+    }
+}
+""")
+
+        when:
+        fails "publish"
+
+        then:
+        failure.assertHasDescription "A problem occurred configuring project ':project1'."
+        failure.assertHasCause "Publishing is not yet able to resolve a dependency on a project with multiple different publications."
+    }
+
+    def "maven-publish plugin does not take archivesBaseName into account when publishing"() {
+        createBuildScripts("""
 project(":project2") {
     archivesBaseName = "changed"
 }
@@ -59,18 +103,12 @@ project(":project2") {
 
     def "maven-publish plugin does not take mavenDeployer.pom.artifactId into account when publishing"() {
         createBuildScripts("""
-project(":project1") {
-    dependencies {
-        compile project(":project2")
-    }
-}
-
 project(":project2") {
     apply plugin: 'maven'
     uploadArchives {
         repositories {
             mavenDeployer {
-                repository(url: "file:///\$rootProject.projectDir/maven-repo")
+                repository(url: "${mavenRepo.uri}")
                 pom.artifactId = "changed"
             }
         }
@@ -86,11 +124,16 @@ project(":project2") {
     }
 
     private def projectsCorrectlyPublished() {
-        def project2 = mavenRepo.module("org.gradle.test", "project2", "1.9")
-        project2.assertPublishedAsJavaModule()
+        project1.assertPublishedAsJavaModule()
+        project1.parsedPom.scopes.runtime.assertDependsOn("org.gradle.test:project2:2.0", "org.gradle.test:project3:3.0")
 
-        def project1pom = project1module.parsedPom
-        project1pom.scopes.runtime.assertDependsOn("org.gradle.test", "project2", "1.9")
+        project2.assertPublishedAsJavaModule()
+        project2.parsedPom.scopes.runtime.assertDependsOn("org.gradle.test:project3:3.0")
+
+        project3.assertPublishedAsJavaModule()
+        project3.parsedPom.scopes == null
+
+        resolveArtifacts(project1) == ["project1-1.0.jar", "project2-2.0.jar", "project3-3.0.jar"]
 
         return true
     }
@@ -104,12 +147,13 @@ include "project1", "project2"
         buildFile << """
 allprojects {
     group = "org.gradle.test"
-    version = 1.9
 }
 
 project(":project1") {
     apply plugin: "java"
     apply plugin: "maven-publish"
+
+    version = "1.0"
 
     dependencies {
         compile project(":project2")
@@ -117,7 +161,7 @@ project(":project1") {
 
     publishing {
         repositories {
-            maven { url "file:///\$rootProject.projectDir/maven-repo" }
+            maven { url "${mavenRepo.uri}" }
         }
         publications {
             maven(MavenPublication) {
@@ -128,6 +172,7 @@ project(":project1") {
 }
 project(":project2") {
     apply plugin: 'maven'
+    version = "2.0"
     archivesBaseName = "changed"
 }
         """
@@ -137,70 +182,8 @@ project(":project2") {
 
         then:
 
-        project1module.assertPublishedAsJavaModule()
-        project1module.parsedPom.scopes.runtime.assertDependsOn("org.gradle.test", "project2", "1.9")
-    }
-
-    @Ignore("This does not work: fix this as part of making the project coordinates customisable via DSL") // TODO:DAZ
-    def "project dependency correctly reflected in POM if dependency publication pom is changed"() {
-        createBuildScripts("""
-project(":project1") {
-    dependencies {
-        compile project(":project2")
-    }
-}
-
-project(":project2") {
-    publishing {
-        publications {
-            maven {
-                pom.withXml {
-                    asNode().artifactId[0].value = "changed"
-                }
-            }
-        }
-    }
-}
-        """)
-
-        when:
-        run ":project1:publish"
-
-        then:
-        def pom = project1module.parsedPom
-        pom.scopes.runtime.assertDependsOn("org.gradle.test", "changed", "1.9")
-    }
-
-    def "multiple project dependencies correctly reflected in POMs"() {
-        createBuildScripts("""
-project(":project1") {
-    dependencies {
-        compile project(":project2")
-        compile project(":project3")
-    }
-}
-
-project(":project2") {
-    dependencies {
-        compile project(":project3")
-    }
-}
-        """)
-
-        when:
-        run "publish"
-
-        then:
-        def pom = project1module.parsedPom
-        pom.scopes.runtime.assertDependsOnArtifacts("project2", "project3")
-
-        and:
-        def pom2 = mavenRepo.module("org.gradle.test", "project2", "1.9").parsedPom
-        pom2.scopes.runtime.assertDependsOnArtifacts("project3")
-
-        and:
-        def pom3 = mavenRepo.module("org.gradle.test", "project3", "1.9").parsedPom
-        pom3.scopes.runtime == null
+        project1.assertPublishedAsJavaModule()
+        project1.parsedPom.scopes.runtime.assertDependsOn("org.gradle.test:project2:2.0")
     }
 
     private void createBuildScripts(String append = "") {
@@ -209,24 +192,38 @@ include "project1", "project2", "project3"
         """
 
         buildFile << """
-allprojects {
-    group = "org.gradle.test"
-    version = 1.9
-}
-
 subprojects {
     apply plugin: "java"
     apply plugin: "maven-publish"
 
     publishing {
         repositories {
-            maven { url "file:///\$rootProject.projectDir/maven-repo" }
+            maven { url "${mavenRepo.uri}" }
         }
         publications {
             maven(MavenPublication) {
                 from components.java
             }
         }
+    }
+}
+
+allprojects {
+    group = "org.gradle.test"
+    version = "3.0"
+}
+
+project(":project1") {
+    version = "1.0"
+    dependencies {
+        compile project(":project2")
+        compile project(":project3")
+    }
+}
+project(":project2") {
+    version = "2.0"
+    dependencies {
+        compile project(":project3")
     }
 }
 

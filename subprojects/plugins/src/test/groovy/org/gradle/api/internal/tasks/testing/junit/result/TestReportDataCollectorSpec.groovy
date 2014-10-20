@@ -18,9 +18,8 @@ package org.gradle.api.internal.tasks.testing.junit.result
 
 import org.gradle.api.internal.tasks.testing.*
 import org.gradle.api.internal.tasks.testing.results.DefaultTestResult
-import org.gradle.api.tasks.testing.TestOutputEvent
-import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
-import org.junit.Rule
+import org.gradle.messaging.remote.internal.PlaceholderException
+import spock.lang.Issue
 import spock.lang.Specification
 
 import static java.util.Arrays.asList
@@ -28,63 +27,17 @@ import static org.gradle.api.tasks.testing.TestOutputEvent.Destination.StdErr
 import static org.gradle.api.tasks.testing.TestOutputEvent.Destination.StdOut
 import static org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE
 import static org.gradle.api.tasks.testing.TestResult.ResultType.SUCCESS
-import org.gradle.api.Action
 
-/**
- * by Szczepan Faber, created at: 11/19/12
- */
 class TestReportDataCollectorSpec extends Specification {
-
-    @Rule
-    private TestNameTestDirectoryProvider temp = new TestNameTestDirectoryProvider()
-    private CachingFileWriter fileWriter = Mock()
-    private TestResultSerializer serializer = Mock()
-    private collector = new TestReportDataCollector(temp.testDirectory, fileWriter, serializer)
-
-    def "closes all files when root finishes"() {
-        def root = new DefaultTestSuiteDescriptor("1", "Suite")
-        def clazz = new DecoratingTestDescriptor(new DefaultTestClassDescriptor("1.1", "Class"), root)
-
-        def dummyResult = new DefaultTestResult(SUCCESS, 0, 0, 0, 0, 0, asList())
-
-        when:
-        collector.afterSuite(clazz, dummyResult)
-
-        then:
-        0 * fileWriter.closeAll()
-
-        when:
-        collector.afterSuite(root, dummyResult)
-
-        then:
-        1 * fileWriter.closeAll()
-    }
-
-    def "writes results when root finishes"() {
-        def root = new DefaultTestSuiteDescriptor("1", "Suite")
-        def clazz = new DecoratingTestDescriptor(new DefaultTestClassDescriptor("1.1", "Class"), root)
-
-        def dummyResult = new DefaultTestResult(SUCCESS, 0, 0, 0, 0, 0, asList())
-
-        when:
-        collector.afterSuite(clazz, dummyResult)
-
-        then:
-        0 * serializer._
-
-        when:
-        collector.afterSuite(root, dummyResult)
-
-        then:
-        1 * serializer.write(_, temp.testDirectory)
-        0 * serializer._
-    }
+    def Map<String, TestClassResult> results = [:]
+    def TestOutputStore.Writer writer = Mock()
+    def collector = new TestReportDataCollector(results, writer)
 
     def "keeps track of test results"() {
         def root = new DefaultTestSuiteDescriptor("1", "Suite")
         def clazz = new DecoratingTestDescriptor(new DefaultTestClassDescriptor("1.1", "FooTest"), root)
         def test1 = new DecoratingTestDescriptor(new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod"), clazz)
-        def result1 = new DefaultTestResult(SUCCESS, 100, 200, 1, 1, 0, asList())
+        def result1 = new DefaultTestResult(SUCCESS, 100, 200, 1, 1, 0, [])
 
         def test2 = new DecoratingTestDescriptor(new DefaultTestDescriptor("1.1.2", "FooTest", "testMethod2"), clazz)
         def result2 = new DefaultTestResult(FAILURE, 250, 300, 1, 0, 1, asList(new RuntimeException("Boo!")))
@@ -99,14 +52,11 @@ class TestReportDataCollectorSpec extends Specification {
         collector.afterTest(test1, result1)
         collector.afterTest(test2, result2)
 
-        collector.afterSuite(root, new DefaultTestResult(FAILURE, 0, 500, 2, 1, 1, asList(new RuntimeException("Boo!"))))
-
-        def results = []
-        collector.visitClasses({ results << it } as Action)
+        collector.afterSuite(root, new DefaultTestResult(FAILURE, 0, 500, 2, 1, 1, []))
 
         then:
         results.size() == 1
-        def fooTest = results[0]
+        def fooTest = results.values().toList().first()
         fooTest.className == 'FooTest'
         fooTest.startTime == 100
         fooTest.testsCount == 2
@@ -117,47 +67,156 @@ class TestReportDataCollectorSpec extends Specification {
         fooTest.results.find { it.name == 'testMethod2' && it.endTime == 300 && it.duration == 50 }
     }
 
-    def "keeps track of outputs"() {
+    def "writes test outputs for interleaved tests"() {
         def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
         def test2 = new DefaultTestDescriptor("1.1.2", "FooTest", "testMethod2")
         def suite = new DefaultTestSuiteDescriptor("1", "Suite")
 
         when:
-        collector.onOutput(suite, new DefaultTestOutputEvent(StdOut, "out"))
-        collector.onOutput(test, new DefaultTestOutputEvent(StdErr, "err"))
-        collector.onOutput(test2, new DefaultTestOutputEvent(StdOut, "out"))
+        collector.onOutput(suite, new DefaultTestOutputEvent(StdOut, "suite-out"))
+        collector.beforeTest(test)
+        collector.beforeTest(test2)
+        collector.onOutput(test, new DefaultTestOutputEvent(StdErr, "err-1"))
+        collector.onOutput(test2, new DefaultTestOutputEvent(StdOut, "out-2"))
+        collector.onOutput(test, new DefaultTestOutputEvent(StdOut, "out-1"))
 
         then:
-        1 * fileWriter.write(new File(temp.testDirectory, "FooTest.stderr"), "err")
-        1 * fileWriter.write(new File(temp.testDirectory, "FooTest.stdout"), "out")
-        0 * fileWriter._
+        1 * writer.onOutput(3, 1, new DefaultTestOutputEvent(StdErr, "err-1"))
+        1 * writer.onOutput(3, 2, new DefaultTestOutputEvent(StdOut, "out-2"))
+        1 * writer.onOutput(3, 1, new DefaultTestOutputEvent(StdOut, "out-1"))
+        0 * writer._
     }
 
-    def "provides outputs"() {
-        def collector = new TestReportDataCollector(temp.testDirectory)
-        def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
-        def test2 = new DefaultTestDescriptor("1.1.2", "FooTest", "testMethod2")
-        def test3 = new DefaultTestDescriptor("1.1.3", "BarTest", "testMethod")
+    def "writes test outputs for class"() {
+        def testClass = new DefaultTestClassDescriptor("1.1.1", "FooTest")
+        def suite = new DefaultTestSuiteDescriptor("1", "Suite")
 
         when:
-        collector.onOutput(test, new DefaultTestOutputEvent(StdErr, "err"))
-        collector.onOutput(test, new DefaultTestOutputEvent(StdErr, "err2"))
-        collector.onOutput(test2, new DefaultTestOutputEvent(StdOut, "out"))
-        collector.onOutput(test3, new DefaultTestOutputEvent(StdOut, "out, don't show"))
-
-        collector.afterSuite(new DefaultTestSuiteDescriptor("1", "suite"), null) //force closing of files
+        collector.onOutput(suite, new DefaultTestOutputEvent(StdOut, "suite-out"))
+        collector.onOutput(testClass, new DefaultTestOutputEvent(StdErr, "err-1"))
+        collector.onOutput(testClass, new DefaultTestOutputEvent(StdErr, "err-2"))
 
         then:
-        collectOutput("FooTest", StdErr) == 'errerr2'
-        collectOutput("FooTest", StdOut) == 'out'
-
-        collectOutput("TestWithoutOutputs", StdErr) == ''
-        collectOutput("TestWithoutOutputs", StdOut) == ''
+        1 * writer.onOutput(1, new DefaultTestOutputEvent(StdErr, "err-1"))
+        1 * writer.onOutput(1, new DefaultTestOutputEvent(StdErr, "err-2"))
+        0 * writer._
     }
 
-    String collectOutput(String className, TestOutputEvent.Destination destination) {
-        def writer = new StringWriter()
-        collector.writeOutputs(className, destination, writer)
-        return writer.toString()
+    def "collects failures for test"() {
+        def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
+        def failure1 = new RuntimeException("failure1")
+        def failure2 = new IOException("failure2")
+        def result = new DefaultTestResult(SUCCESS, 0, 0, 1, 0, 1, [failure1, failure2])
+
+        when:
+        collector.beforeTest(test)
+        collector.afterTest(test, result)
+
+        then:
+        def failures = results["FooTest"].results[0].failures
+        failures.size() == 2
+        failures[0].exceptionType == RuntimeException.name
+        failures[0].message == failure1.toString()
+        failures[0].stackTrace.startsWith(failure1.toString())
+        failures[1].exceptionType == IOException.name
+        failures[1].message == failure2.toString()
+        failures[1].stackTrace.startsWith(failure2.toString())
+    }
+
+    def "handle PlaceholderExceptions for test failures"() {
+        def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
+        def failure = new PlaceholderException("OriginalClassName", "failure2", null, "toString()", null, null)
+        def result = new DefaultTestResult(SUCCESS, 0, 0, 1, 0, 1, [failure])
+
+        when:
+        collector.beforeTest(test)
+        collector.afterTest(test, result)
+
+        then:
+        def failures = results["FooTest"].results[0].failures
+        failures.size() == 1
+        failures[0].exceptionType == "OriginalClassName"
+        failures[0].message == "toString()"
+        failures[0].stackTrace.startsWith("toString()")
+    }
+
+    def "handles exception whose toString() method fails"() {
+        def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
+        def failure2 = new RuntimeException("failure2")
+        def failure1 = new RuntimeException("failure1") {
+            @Override
+            String toString() {
+                throw failure2
+            }
+        }
+        def result = new DefaultTestResult(SUCCESS, 0, 0, 1, 0, 1, [failure1])
+
+        when:
+        collector.beforeTest(test)
+        collector.afterTest(test, result)
+
+        then:
+        def failures = results["FooTest"].results[0].failures
+        failures.size() == 1
+        failures[0].message == "Could not determine failure message for exception of type ${failure1.class.name}: ${failure2.toString()}"
+        failures[0].stackTrace.startsWith(failure2.toString())
+    }
+
+    def "handles exception whose printStackTrace() method fails"() {
+        def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
+        def failure2 = new RuntimeException("failure2")
+        def failure1 = new RuntimeException("failure1") {
+            @Override
+            void printStackTrace(PrintWriter s) {
+                throw failure2
+            }
+        }
+        def result = new DefaultTestResult(SUCCESS, 0, 0, 1, 0, 1, [failure1])
+
+        when:
+        collector.beforeTest(test)
+        collector.afterTest(test, result)
+
+        then:
+        def failures = results["FooTest"].results[0].failures
+        failures.size() == 1
+        failures[0].message == failure1.toString()
+        failures[0].stackTrace.startsWith(failure2.toString())
+    }
+
+    def "reports suite failures"() {
+        def root = new DefaultTestSuiteDescriptor("1", "Suite")
+        def testWorker = new DefaultTestSuiteDescriptor("2", "Test Worker 1")
+
+        when:
+        //simulating a scenario with suite failing badly enough so that no tests are executed
+        collector.beforeSuite(root)
+        collector.beforeSuite(testWorker)
+        collector.afterSuite(testWorker, new DefaultTestResult(FAILURE, 50, 450, 2, 1, 1, [new RuntimeException("Boo!")]))
+        collector.afterSuite(root, new DefaultTestResult(FAILURE, 0, 500, 2, 1, 1, []))
+
+        then:
+        results.size() == 1
+        def result = results.values().toList().first()
+        result.className == 'Test Worker 1'
+        result.startTime == 50
+        result.testsCount == 1
+        result.failuresCount == 1
+        result.duration == 400
+        result.results.size() == 1
+        result.results[0].failures.size() == 1
+    }
+
+    @Issue("GRADLE-2730")
+    def "test case timestamp is correct even if output received for given class"() {
+        def test = new DefaultTestDescriptor("1.1.1", "FooTest", "testMethod")
+
+        when:
+        collector.beforeTest(test)
+        collector.onOutput(test, new DefaultTestOutputEvent(StdOut, "suite-out"))
+        collector.afterTest(test, new DefaultTestResult(SUCCESS, 100, 200, 1, 1, 0, asList()))
+
+        then:
+        results.get("FooTest").startTime == 100
     }
 }

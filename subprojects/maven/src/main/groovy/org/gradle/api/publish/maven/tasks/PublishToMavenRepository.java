@@ -23,10 +23,11 @@ import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.publish.internal.PublishOperation;
 import org.gradle.api.publish.maven.MavenPublication;
-import org.gradle.api.publish.maven.internal.AntTaskBackedMavenPublisher;
-import org.gradle.api.publish.maven.internal.MavenPublicationInternal;
-import org.gradle.api.publish.maven.internal.MavenPublisher;
-import org.gradle.api.publish.maven.internal.StaticLockingMavenPublisher;
+import org.gradle.api.publish.maven.internal.publication.MavenPublicationInternal;
+import org.gradle.api.publish.maven.internal.publisher.AntTaskBackedMavenPublisher;
+import org.gradle.api.publish.maven.internal.publisher.MavenPublisher;
+import org.gradle.api.publish.maven.internal.publisher.StaticLockingMavenPublisher;
+import org.gradle.api.publish.maven.internal.publisher.ValidatingMavenPublisher;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.internal.Factory;
 import org.gradle.logging.LoggingManagerInternal;
@@ -45,13 +46,7 @@ public class PublishToMavenRepository extends DefaultTask {
     private MavenPublicationInternal publication;
     private MavenArtifactRepository repository;
 
-    private final Factory<LoggingManagerInternal> loggingManagerFactory;
-
-    @Inject
-    public PublishToMavenRepository(Factory<LoggingManagerInternal> loggingManagerFactory) {
-        this.loggingManagerFactory = loggingManagerFactory;
-
-
+    public PublishToMavenRepository() {
         // Allow the publication to participate in incremental build
         getInputs().files(new Callable<FileCollection>() {
             public FileCollection call() throws Exception {
@@ -138,13 +133,19 @@ public class PublishToMavenRepository extends DefaultTask {
         doPublish(publicationInternal, repository);
     }
 
-    private void doPublish(final MavenPublicationInternal publication, final MavenArtifactRepository repository) {
+    @Inject
+    protected Factory<LoggingManagerInternal> getLoggingManagerFactory() {
+        throw new UnsupportedOperationException();
+    }
+
+    protected void doPublish(final MavenPublicationInternal publication, final MavenArtifactRepository repository) {
         new PublishOperation(publication, repository) {
             @Override
             protected void publish() throws Exception {
-                MavenPublisher antBackedPublisher = new AntTaskBackedMavenPublisher(loggingManagerFactory, getTemporaryDirFactory());
+                MavenPublisher antBackedPublisher = new AntTaskBackedMavenPublisher(getLoggingManagerFactory(), getTemporaryDirFactory());
                 MavenPublisher staticLockingPublisher = new StaticLockingMavenPublisher(antBackedPublisher);
-                staticLockingPublisher.publish(publication.asNormalisedPublication(), repository);
+                MavenPublisher validatingPublisher = new ValidatingMavenPublisher(staticLockingPublisher);
+                validatingPublisher.publish(publication.asNormalisedPublication(), repository);
             }
         }.run();
     }

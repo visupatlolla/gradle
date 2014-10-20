@@ -28,34 +28,39 @@ class DependencyReportTaskIntegrationTest extends AbstractIntegrationSpec {
         given:
         file("settings.gradle") << "include 'client', 'a', 'b', 'c'"
 
-        [a: "b", b: "c", c: "a"].each { module, dep ->
-            def upped = module.toUpperCase()
-            file(module, "build.gradle") << """
-                apply plugin: 'java'
-                group = "group"
-                version = 1.0
+        buildFile << """
+allprojects {
+    configurations { compile; "default" { extendsFrom compile } }
+    group = "group"
+    version = 1.0
+}
 
-                dependencies {
-                    compile project(":$dep")
-                }
-            """
-            file(module, "src", "main", "java", "${upped}.java") << "public class $upped {}"
-        }
+project(":a") {
+    dependencies { compile project(":b") }
+    dependencies { compile project(":c") }
+}
 
-        and:
-        file("client", "build.gradle") << """
-            apply plugin: 'java'
-            
-            dependencies {
-                compile project(":a")
-            }
-        """
-        
+project(":b") {
+    dependencies { compile project(":c") }
+}
+
+project(":c") {
+    dependencies { compile project(":a") }
+}
+"""
+
         when:
-        run ":client:dependencies"
-        
+        run ":c:dependencies"
+
         then:
-        output.contains "(*) - dependencies omitted (listed previously)"
+        output.contains(toPlatformLineSeparators("""
+compile
+\\--- project :a
+     +--- project :b
+     |    \\--- project :c (*)
+     \\--- project :c (*)
+"""))
+        output.contains '(*) - dependencies omitted (listed previously)'
     }
 
     def "marks modules that can't be resolved as 'FAILED'"() {
@@ -75,7 +80,7 @@ class DependencyReportTaskIntegrationTest extends AbstractIntegrationSpec {
         """
 
         when:
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
         run "dependencies"
 
         then:
@@ -107,7 +112,7 @@ foo
         """
 
         when:
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
         run "dependencies"
 
         then:
@@ -140,7 +145,7 @@ foo
         """
 
         when:
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
         run "dependencies"
 
         then:
@@ -177,7 +182,7 @@ config
         """
 
         when:
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
         run "dependencies"
 
         then:
@@ -240,33 +245,33 @@ rootProject.name = 'root'
             }
 
             project(":a") {
-               dependencies {
+                dependencies {
                     compile 'foo:bar:1.0'
                 }
             }
 
             project(":b") {
-               dependencies {
+                dependencies {
                     compile 'foo:bar:0.5.dont.exist'
                 }
             }
 
             project(":c") {
-               dependencies {
+                dependencies {
                     compile 'foo:bar:3.0'
-               }
+                }
             }
 
             project(":d") {
-               dependencies {
+                dependencies {
                     compile 'foo:bar:2.0'
-               }
+                }
             }
 
             project(":e") {
-               dependencies {
+                dependencies {
                     compile 'foo:bar:3.0'
-               }
+                }
             }
 
             dependencies {
@@ -278,19 +283,19 @@ rootProject.name = 'root'
         run ":dependencies"
 
         then:
-        output.contains 'compile - Classpath for compiling the main sources.'
+        output.contains "compile - Compile classpath for source set 'main'."
 
         output.contains(toPlatformLineSeparators("""
-+--- root:a:1.0
++--- project :a
 |    \\--- foo:bar:1.0 -> 3.0
 |         \\--- foo:baz:5.0
-+--- root:b:1.0
++--- project :b
 |    \\--- foo:bar:0.5.dont.exist -> 3.0 (*)
-+--- root:c:1.0
++--- project :c
 |    \\--- foo:bar:3.0 (*)
-+--- root:d:1.0
++--- project :d
 |    \\--- foo:bar:2.0 -> 3.0 (*)
-\\--- root:e:1.0
+\\--- project :e
      \\--- foo:bar:3.0 (*)
 """))
     }
@@ -325,6 +330,7 @@ rootProject.name = 'root'
 
         then:
         output.contains(toPlatformLineSeparators("""
+conf
 \\--- org:toplevel:1.0
      +--- org:middle1:1.0
      |    +--- org:leaf1:1.0
@@ -366,6 +372,7 @@ rootProject.name = 'root'
 
         then:
         output.contains(toPlatformLineSeparators("""
+conf
 +--- bar:bar:5.0 -> 6.0
 |    \\--- foo:foo:3.0
 +--- bar:bar:6.0 (*)
@@ -402,6 +409,7 @@ rootProject.name = 'root'
 
         then:
         output.contains(toPlatformLineSeparators("""
+conf
 +--- foo:foo:1+ -> 2.5
 |    \\--- foo:bar:2.0
 \\--- foo:foo:2+ -> 2.5 (*)
@@ -411,13 +419,13 @@ rootProject.name = 'root'
     def "renders ivy tree with custom configurations"() {
         given:
         def module = ivyRepo.module("org", "child")
-        module.configurations['first'] = [extendsFrom: ['second'], transitive: true]
-        module.configurations['second'] = [extendsFrom: [], transitive: true]
+        module.configuration('first', extendsFrom: ['second'])
+        module.configuration('second')
         module.publish()
 
         module = ivyRepo.module("org", "parent").dependsOn('child')
-        module.configurations['first'] = [extendsFrom: ['second'], transitive: true]
-        module.configurations['second'] = [extendsFrom: [], transitive: true]
+        module.configuration('first', extendsFrom: ['second'])
+        module.configuration('second')
         module.publish()
 
         file("build.gradle") << """
@@ -436,7 +444,11 @@ rootProject.name = 'root'
         run ":dependencies"
 
         then:
-        output.contains "org:child:1.0"
+        output.contains(toPlatformLineSeparators("""
+conf
+\\--- org:parent:1.0
+     \\--- org:child:1.0
+"""))
     }
 
     def "renders the ivy tree with conflicts"() {
@@ -471,6 +483,7 @@ rootProject.name = 'root'
 
         then:
         output.contains(toPlatformLineSeparators("""
+conf
 +--- org:toplevel:1.0
 |    +--- org:middle1:1.0
 |    |    +--- org:leaf1:1.0
@@ -481,6 +494,7 @@ rootProject.name = 'root'
 \\--- org:leaf4:2.0
 """))
     }
+
     def "tells if there are no dependencies"() {
         given:
         buildFile << "configurations { foo }"
@@ -489,7 +503,10 @@ rootProject.name = 'root'
         run "dependencies"
 
         then:
-        output.contains "No dependencies"
+        output.contains(toPlatformLineSeparators("""
+foo
+No dependencies
+"""))
     }
 
     def "tells if there are no configurations"() {
@@ -585,8 +602,82 @@ conf2
         run "dependencies"
 
         then:
-        output.contains(toPlatformLineSeparators("""conf
+        output.contains(toPlatformLineSeparators("""
+conf
 \\--- org.utils:impl:1.3 FAILED
+"""))
+    }
+
+    def "renders a mix of project and external dependencies"() {
+        given:
+        mavenRepo.module("foo", "bar", 1.0).publish()
+        mavenRepo.module("foo", "bar", 2.0).publish()
+
+        file("settings.gradle") << """include 'a', 'b', 'a:c', 'd', 'e'
+rootProject.name = 'root'
+"""
+
+        file("build.gradle") << """
+            allprojects {
+                apply plugin: 'java'
+                version = '1.0'
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+            }
+
+            project(":a") {
+               dependencies {
+                    compile 'foo:bar:1.0'
+                }
+            }
+
+            project(":b") {
+               dependencies {
+                    compile 'foo:bar:0.5.dont.exist'
+                }
+            }
+
+            project(":a:c") {
+               dependencies {
+                    compile 'foo:bar:2.0'
+               }
+            }
+
+            project(":d") {
+               dependencies {
+                    compile project(":e")
+                }
+            }
+
+            project(":e") {
+               dependencies {
+                    compile 'foo:bar:2.0'
+                }
+            }
+
+            dependencies {
+                compile project(":a"), project(":b"), project(":a:c"), project(":d")
+            }
+        """
+
+        when:
+        run ":dependencies"
+
+        then:
+        output.contains "compile - Compile classpath for source set 'main'."
+
+        output.contains(toPlatformLineSeparators("""
+compile - Compile classpath for source set 'main'.
++--- project :a
+|    \\--- foo:bar:1.0 -> 2.0
++--- project :b
+|    \\--- foo:bar:0.5.dont.exist -> 2.0
++--- project :a:c
+|    \\--- foo:bar:2.0
+\\--- project :d
+     \\--- project :e
+          \\--- foo:bar:2.0
 """))
     }
 }

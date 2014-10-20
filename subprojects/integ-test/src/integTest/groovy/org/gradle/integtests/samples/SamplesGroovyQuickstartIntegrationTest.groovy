@@ -25,7 +25,7 @@ import org.junit.Test
 
 class SamplesGroovyQuickstartIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('groovy/quickstart')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'groovy/quickstart')
 
     @Test
     public void groovyProjectQuickstartSample() {
@@ -33,7 +33,7 @@ class SamplesGroovyQuickstartIntegrationTest extends AbstractIntegrationTest {
         executer.inDirectory(groovyProjectDir).withTasks('clean', 'build').run()
 
         // Check tests have run
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(groovyProjectDir)
+        def result = new DefaultTestExecutionResult(groovyProjectDir)
         result.assertTestClassesExecuted('org.gradle.PersonTest')
 
         // Check contents of jar

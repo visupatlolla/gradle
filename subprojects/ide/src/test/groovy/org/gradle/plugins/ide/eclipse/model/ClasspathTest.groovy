@@ -15,15 +15,12 @@
  */
 package org.gradle.plugins.ide.eclipse.model
 
-import org.gradle.api.internal.xml.XmlTransformer
+import org.gradle.internal.xml.XmlTransformer
 import org.gradle.plugins.ide.eclipse.model.internal.FileReferenceFactory
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
-/**
- * @author Hans Dockter
- */
 public class ClasspathTest extends Specification {
     final fileReferenceFactory = new FileReferenceFactory()
     final customEntries = [

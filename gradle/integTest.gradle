@@ -22,24 +22,127 @@ dependencies {
 
 ext.integTestTasks = tasks.withType(Test).matching { it.name.toLowerCase().endsWith('integtest') }
 
+import org.gradle.util.GradleVersion
+
+import java.util.regex.Pattern
+
+def removeOldVersionsFromDir(File dir, def shouldDelete, def dirPrefix = "", def dirSuffix = "") {
+    if (dir.directory) {
+
+        for (File cacheDir: dir.listFiles()) {
+            if (!cacheDir.name.startsWith(dirPrefix) || !cacheDir.name.endsWith(dirSuffix)) {
+                continue
+            }
+            def dirVersion = cacheDir.name.substring(dirPrefix.length(), cacheDir.name.length() - dirSuffix.length())
+            if (!dirVersion.matches("\\d+\\.\\d+(\\.\\d+)?(-\\w+)*(-\\d{14}[+-]\\d{4})?")) {
+                continue
+            }
+
+            def cacheVersion
+            try {
+                cacheVersion = GradleVersion.version(dirVersion)
+            } catch (IllegalArgumentException e) {
+                // Ignore
+                continue
+            }
+
+            if (shouldDelete(cacheVersion)) {
+                println "Removing old cache directory : ${cacheDir}"
+                delete(cacheDir)
+            }
+        }
+    }
+}
+
+project(":") {
+    if (tasks.findByName('cleanUpCaches')) {
+        return
+    }
+
+    task cleanUpCaches {
+        dependsOn ':createBuildReceipt'
+        doLast {
+            def executingVersion = GradleVersion.version(gradle.gradleVersion)
+
+            def versionProps = readBuildReceipt("${buildDir}/${buildReceiptFileName}")
+            def testedVersion = GradleVersion.version(versionProps.versionNumber)
+
+            // Expire .gradle cache where major version is older than executing version
+            def expireTaskCache = { def candidateVersion ->
+                return candidateVersion.baseVersion < executingVersion.baseVersion
+            }
+
+            // Expire intTestImage cache snapshots that are older than the tested version
+            def expireIntegTestCache = { def candidateVersion ->
+                return candidateVersion.snapshot && candidateVersion < testedVersion
+            }
+
+            removeOldVersionsFromDir(file("buildSrc/.gradle"), expireTaskCache)
+            removeOldVersionsFromDir(file(".gradle"), expireTaskCache)
+            removeOldVersionsFromDir(file("intTestHomeDir/worker-1/caches"), expireIntegTestCache)
+            removeOldVersionsFromDir(file("intTestHomeDir/worker-1/daemon"), expireIntegTestCache)
+            removeOldVersionsFromDir(file("intTestHomeDir/worker-1/wrapper/dists"), expireIntegTestCache, "gradle-", "-bin")
+            delete(file("intTestHomeDir/worker-1/wrapper/dists/dist"))
+        }
+    }
+}
+
+project(":") {
+    if (tasks.findByName('cleanUpDaemons')) {
+        return
+    }
+    task cleanUpDaemons {
+        onlyIf { !org.gradle.internal.jvm.Jvm.current().ibmJvm }
+        doLast {
+            def output = new ByteArrayOutputStream()
+            exec {
+                commandLine(org.gradle.internal.jvm.Jvm.current().getExecutable("jps").absolutePath, "-m")
+                standardOutput = output
+            }
+            def pattern = Pattern.compile("(\\d+)\\s+GradleDaemon\\s+(\\S+)\\s+(.+)")
+            output.toString().readLines().each { String line ->
+                def matcher = pattern.matcher(line)
+                if (!matcher.matches()) {
+                    return
+                }
+                def remainder = matcher.group(3)
+                if (!remainder.startsWith("${project.projectDir}${File.separator}")) {
+                    return
+                }
+                def pid = matcher.group(1)
+                println "killing daemon with pid $pid"
+                exec {
+                    if (org.gradle.internal.os.OperatingSystem.current().windows) {
+                        commandLine = ["taskkill.exe", "/F", "/T", "/PID", pid]
+                    } else {
+                        commandLine = ["kill", pid]
+                    }
+                }
+            }
+        }
+    }
+}
+
 integTestTasks.all { Test task ->
-    dependsOn ':intTestImage'
+    dependsOn ':intTestImage', ':cleanUpCaches'
+    finalizedBy ':cleanUpDaemons'
+    shouldRunAfter 'test'
+    
     testClassesDir = sourceSets.integTest.output.classesDir
     classpath = sourceSets.integTest.runtimeClasspath
     testSrcDirs = []
     jvmArgs '-Xmx512m', '-XX:MaxPermSize=256m', '-XX:+HeapDumpOnOutOfMemoryError'
 
-    testResultsDir = file("${project.testResultsDir}/$name")
+    reports.junitXml.destination = file("${project.testResultsDir}/$name")
 
-    systemProperties['org.gradle.integtest.versions'] = project.hasProperty("testAllVersions") ? 'all' : 'latest'
-    if (project.hasProperty('crossVersionTestsOnly')) {
-        include '**/*CrossVersion*'
-        forkEvery = 1
-    }
+    // use -PtestVersions=all or -PtestVersions=1.2,1.3…
+    systemProperties['org.gradle.integtest.versions'] = project.hasProperty('testVersions') ? project.testVersions : 'latest'
+
+    systemProperties['org.gradle.integtest.cpp.toolChains'] = project.hasProperty("testAllPlatforms") ? 'all' : 'default';
 
     dependsOn project.task("configure${task.name.capitalize()}") << {
         configure(task) {
-            testReportDir = file("${project.reporting.baseDir}/$name")
+            reports.html.destination = file("${project.reporting.baseDir}/$name")
             systemProperties['integTest.gradleHomeDir'] = rootProject.intTestImage.destinationDir.absolutePath
             systemProperties['integTest.gradleUserHomeDir'] = rootProject.file('intTestHomeDir').absolutePath
             systemProperties['integTest.libsRepo'] = rootProject.file('build/repo')
@@ -53,6 +156,10 @@ integTestTasks.all { Test task ->
             systemProperties['org.gradle.integtest.daemon.registry'] = file("$rootProject.buildDir/daemon").absolutePath
         }
     }
+
+    allTestTasksForFastFeedbackOrder { testTask ->
+        task.shouldRunAfter testTask
+    }
 }
 
 task integTest(type: Test) {
@@ -63,12 +170,22 @@ check.dependsOn(integTest)
 
 ['embedded', 'forking', 'daemon', 'embeddedDaemon', 'parallel'].each { mode ->
     def taskName = "${mode}IntegTest"
-    tasks.addRule(taskName) { name ->
-        if (name == taskName) { 
-            tasks.add(taskName, Test).configure {
-                systemProperties['org.gradle.integtest.executer'] = mode
-            }
-        }
+    tasks.create(taskName, Test).configure {
+        systemProperties['org.gradle.integtest.executer'] = mode
+    }
+}
+
+task crossVersionIntegTest {
+    description "Runs the cross version tests against all Gradle versions"
+}
+
+releasedVersions.allVersions.each { targetVersion ->
+    tasks.create("gradle${targetVersion}IntegTest", Test).configure {
+        crossVersionIntegTest.dependsOn path
+        description "Runs the cross version tests against Gradle ${targetVersion}"
+        systemProperties['org.gradle.integtest.versions'] = targetVersion
+        systemProperties['org.gradle.integtest.executer'] = 'forking'
+        include '**/*CrossVersion*'
     }
 }
 

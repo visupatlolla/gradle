@@ -21,6 +21,7 @@ import org.gradle.internal.os.OperatingSystem;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.util.GradleVersion;
+import org.gradle.util.VersionNumber;
 
 public class DefaultGradleDistribution implements GradleDistribution {
 
@@ -32,6 +33,11 @@ public class DefaultGradleDistribution implements GradleDistribution {
         this.version = gradleVersion;
         this.gradleHomeDir = gradleHomeDir;
         this.binDistribution = binDistribution;
+    }
+
+    @Override
+    public String toString() {
+        return version.toString();
     }
 
     public TestFile getGradleHomeDir() {
@@ -52,21 +58,23 @@ public class DefaultGradleDistribution implements GradleDistribution {
 
     public boolean worksWith(Jvm jvm) {
         // Milestone 4 was broken on the IBM jvm
-        if (jvm.isIbmJvm() && version == GradleVersion.version("1.0-milestone-4")) {
+        if (jvm.isIbmJvm() && isVersion("1.0-milestone-4")) {
             return false;
         }
         // 0.9-rc-1 was broken for Java 5
-        if (version == GradleVersion.version("0.9-rc-1")) {
+        if (isVersion("0.9-rc-1")) {
             return jvm.getJavaVersion().isJava6Compatible();
         }
-
-        return jvm.getJavaVersion().isJava5Compatible();
+        if (isSameOrOlder("1.12")) {
+            return jvm.getJavaVersion().isJava5Compatible();
+        }
+        return jvm.getJavaVersion().isJava6Compatible();
     }
 
     public boolean worksWith(OperatingSystem os) {
         // 1.0-milestone-5 was broken where jna was not available
         //noinspection SimplifiableIfStatement
-        if (version == GradleVersion.version("1.0-milestone-5")) {
+        if (isVersion("1.0-milestone-5")) {
             return os.isWindows() || os.isMacOsX() || os.isLinux();
         } else {
             return true;
@@ -75,7 +83,7 @@ public class DefaultGradleDistribution implements GradleDistribution {
 
     public boolean isDaemonSupported() {
         // Milestone 7 was broken on the IBM jvm
-        if (Jvm.current().isIbmJvm() && version == GradleVersion.version("1.0-milestone-7")) {
+        if (Jvm.current().isIbmJvm() && isVersion("1.0-milestone-7")) {
             return false;
         }
 
@@ -93,20 +101,49 @@ public class DefaultGradleDistribution implements GradleDistribution {
     }
 
     public boolean isOpenApiSupported() {
-        return isSameOrNewer("0.9-rc-1");
+        return isSameOrNewer("0.9-rc-1") && !isSameOrNewer("2.0-rc-1");
     }
 
     public boolean isToolingApiSupported() {
         return isSameOrNewer("1.0-milestone-3");
     }
 
-    public int getArtifactCacheLayoutVersion() {
-        if (isSameOrNewer("1.4")) {
-            return 23;
+    public boolean isToolingApiNonAsciiOutputSupported() {
+        if (OperatingSystem.current().isWindows()) {
+            return !isVersion("1.0-milestone-7") && !isVersion("1.0-milestone-8") && !isVersion("1.0-milestone-8a");
+        }
+        return true;
+    }
+
+    public boolean isToolingApiDaemonBaseDirSupported() {
+        return isSameOrNewer("2.2");
+    }
+
+    public VersionNumber getArtifactCacheLayoutVersion() {
+        if (isSameOrNewer("2.2-rc-1")) {
+            return VersionNumber.parse("2.14");
+        } else if (isSameOrNewer("2.1-rc-3")) {
+            return VersionNumber.parse("2.13");
+        } else if (isSameOrNewer("2.0-rc-1")) {
+            return VersionNumber.parse("2.12");
+        } else if (isSameOrNewer("1.12-rc-1")) {
+            return VersionNumber.parse("2.6");
+        } else if (isSameOrNewer("1.11-rc-1")) {
+            return VersionNumber.parse("2.2");
+        } else if (isSameOrNewer("1.9-rc-2")) {
+            return VersionNumber.parse("2.1");
+        } else if (isSameOrNewer("1.9-rc-1")) {
+            return VersionNumber.parse("1.31");
+        } else if (isSameOrNewer("1.7-rc-1")) {
+            return VersionNumber.parse("0.26");
+        } else if (isSameOrNewer("1.6-rc-1")) {
+            return VersionNumber.parse("0.24");
+        } else if (isSameOrNewer("1.4-rc-1")) {
+            return VersionNumber.parse("0.23");
         } else if (isSameOrNewer("1.3")) {
-            return 15;
+            return VersionNumber.parse("0.15");
         } else {
-            return 1;
+            return VersionNumber.parse("0.1");
         }
     }
 
@@ -128,8 +165,16 @@ public class DefaultGradleDistribution implements GradleDistribution {
         return true;
     }
 
+    public boolean isWrapperSupportsGradleUserHomeCommandLineOption() {
+        return isSameOrNewer("1.7");
+    }
+
     public boolean isSupportsSpacesInGradleAndJavaOpts() {
         return isSameOrNewer("1.0-milestone-5");
+    }
+
+    public boolean isFullySupportsIvyRepository() {
+        return isSameOrNewer("1.0-milestone-7");
     }
 
     protected boolean isSameOrNewer(String otherVersion) {
@@ -140,8 +185,9 @@ public class DefaultGradleDistribution implements GradleDistribution {
         return isVersion(otherVersion) || version.compareTo(GradleVersion.version(otherVersion)) <= 0;
     }
 
-    protected boolean isVersion(String otherVersion) {
-        return version.compareTo(GradleVersion.version(otherVersion)) == 0 || (version.isSnapshot() && version.getVersionBase().equals(otherVersion));
+    protected boolean isVersion(String otherVersionString) {
+        GradleVersion otherVersion = GradleVersion.version(otherVersionString);
+        return version.compareTo(otherVersion) == 0 || (version.isSnapshot() && version.getBaseVersion().equals(otherVersion.getBaseVersion()));
     }
 
 }

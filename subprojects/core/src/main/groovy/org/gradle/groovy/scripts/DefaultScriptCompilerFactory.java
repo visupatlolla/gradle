@@ -15,14 +15,12 @@
  */
 package org.gradle.groovy.scripts;
 
-import org.gradle.internal.reflect.DirectInstantiator;
-import org.gradle.internal.reflect.Instantiator;
+import org.codehaus.groovy.classgen.Verifier;
 import org.gradle.groovy.scripts.internal.ScriptClassCompiler;
 import org.gradle.groovy.scripts.internal.ScriptRunnerFactory;
+import org.gradle.internal.reflect.DirectInstantiator;
+import org.gradle.internal.reflect.Instantiator;
 
-/**
- * @author Hans Dockter
- */
 public class DefaultScriptCompilerFactory implements ScriptCompilerFactory {
     private final ScriptRunnerFactory scriptRunnerFactory;
     private final ScriptClassCompiler scriptClassCompiler;
@@ -40,6 +38,7 @@ public class DefaultScriptCompilerFactory implements ScriptCompilerFactory {
         private final ScriptSource source;
         private ClassLoader classloader;
         private Transformer transformer;
+        private Verifier verifier = new Verifier();
         private final Instantiator instantiator = new DirectInstantiator();
 
         public ScriptCompilerImpl(ScriptSource source) {
@@ -56,8 +55,13 @@ public class DefaultScriptCompilerFactory implements ScriptCompilerFactory {
             return this;
         }
 
+        public ScriptCompiler setVerifier(Verifier verifier) {
+            this.verifier = verifier;
+            return this;
+        }
+
         public <T extends Script> ScriptRunner<T> compile(Class<T> scriptType) {
-            Class<? extends T> scriptClass = scriptClassCompiler.compile(source, classloader, transformer, scriptType);
+            Class<? extends T> scriptClass = scriptClassCompiler.compile(source, classloader, transformer, scriptType, verifier);
             T script = instantiator.newInstance(scriptClass);
             script.setScriptSource(source);
             script.setContextClassloader(classloader);

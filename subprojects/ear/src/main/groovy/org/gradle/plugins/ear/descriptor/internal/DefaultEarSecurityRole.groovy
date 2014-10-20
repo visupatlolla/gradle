@@ -17,14 +17,14 @@ package org.gradle.plugins.ear.descriptor.internal
 
 import org.gradle.plugins.ear.descriptor.EarSecurityRole
 
-/**
- * @author David Gileadi
- */
+import javax.inject.Inject
+
 class DefaultEarSecurityRole implements EarSecurityRole {
 
     String description
     String roleName
 
+    @Inject
     public DefaultEarSecurityRole() {
     }
 

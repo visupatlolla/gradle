@@ -41,41 +41,32 @@ class BuildTypes {
         if (args.first() instanceof Map) {
             properties.putAll(args.remove(0))
         }
-        def tasks = []
-        def configure = {}
+        def tasks = args*.toString()
 
-        args.each {
-            if (it instanceof Closure) {
-                configure = it
-            } else {
-                tasks << it.toString()
-            }
-        }
-
-        register(name, tasks, properties, configure)
+        register(name, tasks, properties)
     }
 
-    private register(name, tasks, projectProperties, configure) {
+    private register(name, tasks, projectProperties) {
         project.task(name) {
             group = "Build Type"
             def abbreviation = name[0] + name[1..-1].replaceAll("[a-z]", "")
             def taskNames = project.gradle.startParameter.taskNames
 
             def usedName = taskNames.find { it in [name, abbreviation] }
-            if (usedName) {
+            def index = taskNames.indexOf(usedName)
+            if (usedName && !((taskNames[index - 1] == '--task') && (taskNames[index - 2] ==~ /h(e(lp?)?)?/))) {
                 activeNames << name
-                def index = taskNames.indexOf(usedName)
                 taskNames.remove((int)index)
                 tasks.reverse().each {
                     taskNames.add(index, it)
                 }
+                project.gradle.startParameter.taskNames = taskNames
                 projectProperties.each { k, v ->
                     if (!project.hasProperty(k)) {
                         project.ext."$k" = null
                     }
-                    project.properties."$k" = v
+                    project."$k" = v
                 }
-                project.configure(project.gradle.startParameter, configure)
             }
 
             doFirst {

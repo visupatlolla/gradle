@@ -17,6 +17,7 @@ package org.gradle.api.tasks;
 
 import groovy.lang.Closure;
 import org.gradle.api.*;
+import org.gradle.internal.HasInternalProtocol;
 
 import java.util.Map;
 
@@ -26,7 +27,8 @@ import java.util.Map;
  * <p>You can obtain a {@code TaskContainer} instance by calling {@link org.gradle.api.Project#getTasks()}, or using the
  * {@code tasks} property in your build script.</p>
  */
-public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectContainer<Task> {
+@HasInternalProtocol
+public interface TaskContainer extends TaskCollection<Task>, PolymorphicDomainObjectContainer<Task> {
     /**
      * <p>Locates a task by path. You can supply a task name, a relative path, or an absolute path. Relative paths are
      * interpreted relative to the project for this container. This method returns null if no task with the given path
@@ -62,7 +64,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * <tr><td><code>{@value org.gradle.api.Task#TASK_TYPE}</code></td><td>The class of the task to
      * create.</td><td>{@link org.gradle.api.DefaultTask}</td></tr>
      *
-     * <tr><td><code>{@value org.gradle.api.Task#TASK_ACTION}</code></td><td>The closure or {@link TaskAction} to
+     * <tr><td><code>{@value org.gradle.api.Task#TASK_ACTION}</code></td><td>The closure or {@link Action} to
      * execute when the task executes. See {@link Task#doFirst(Action)}.</td><td><code>null</code></td></tr>
      *
      * <tr><td><code>{@value org.gradle.api.Task#TASK_OVERWRITE}</code></td><td>Replace an existing
@@ -76,18 +78,18 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * <p>After the task is added, it is made available as a property of the project, so that you can reference the task
      * by name in your build file.  See <a href="../Project.html#properties">here</a> for more details.</p>
      *
-     * <p>If a task with the given name already exists in this container and the <code>overwrite</code> option is not set
-     * to true, an exception is thrown.</p>
+     * <p>If a task with the given name already exists in this container and the <code>{@value org.gradle.api.Task#TASK_OVERWRITE}</code>
+     * option is not set to true, an exception is thrown.</p>
      *
      * @param options The task creation options.
      * @return The newly created task object
      * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
-    Task add(Map<String, ?> options) throws InvalidUserDataException;
+    Task create(Map<String, ?> options) throws InvalidUserDataException;
 
     /**
      * <p>Creates a {@link Task} adds it to this container. A map of creation options can be passed to this method to
-     * control how the task is created. See {@link #add(java.util.Map)} for the list of options available. The given
+     * control how the task is created. See {@link #create(java.util.Map)} for the list of options available. The given
      * closure is used to configure the task before it is returned by this method.</p>
      *
      * <p>After the task is added, it is made available as a property of the project, so that you can reference the task
@@ -98,7 +100,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @return The newly created task object
      * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
-    Task add(Map<String, ?> options, Closure configureClosure) throws InvalidUserDataException;
+    Task create(Map<String, ?> options, Closure configureClosure) throws InvalidUserDataException;
 
     /**
      * <p>Creates a {@link Task} with the given name adds it to this container. The given closure is used to configure
@@ -112,7 +114,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @return The newly created task object
      * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
-    Task add(String name, Closure configureClosure) throws InvalidUserDataException;
+    Task create(String name, Closure configureClosure) throws InvalidUserDataException;
 
     /**
      * <p>Creates a {@link Task} with the given name and adds it to this container.</p>
@@ -124,7 +126,7 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @return The newly created task object
      * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
-    Task add(String name) throws InvalidUserDataException;
+    Task create(String name) throws InvalidUserDataException;
 
     /**
      * <p>Creates a {@link Task} with the given name and type, and adds it to this container.</p>
@@ -137,7 +139,21 @@ public interface TaskContainer extends TaskCollection<Task>, NamedDomainObjectCo
      * @return The newly created task object
      * @throws InvalidUserDataException If a task with the given name already exists in this project.
      */
-    <T extends Task> T add(String name, Class<T> type) throws InvalidUserDataException;
+    <T extends Task> T create(String name, Class<T> type) throws InvalidUserDataException;
+
+    /**
+     * <p>Creates a {@link Task} with the given name and type, configures it with the given action, and adds it to this container.</p>
+     *
+     * <p>After the task is added, it is made available as a property of the project, so that you can reference the task
+     * by name in your build file. See <a href="../Project.html#properties">here</a> for more details.</p>
+     *
+     * @param name The name of the task to be created.
+     * @param type The type of task to create.
+     * @param configuration The action to configure the task with.
+     * @return The newly created task object.
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
+     */
+    <T extends Task> T create(String name, Class<T> type, Action<? super T> configuration) throws InvalidUserDataException;
 
     /**
      * <p>Creates a {@link Task} with the given name and adds it to this container, replacing any existing task with the

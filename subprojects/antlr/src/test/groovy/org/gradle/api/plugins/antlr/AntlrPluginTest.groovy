@@ -18,10 +18,10 @@ package org.gradle.api.plugins.antlr
 
 import spock.lang.Specification
 import org.gradle.api.Project
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 
 class AntlrPluginTest extends Specification {
-    private final Project project = HelperUtil.createRootProject()
+    private final Project project = TestUtil.createRootProject()
 
     def addsAntlrPropertiesToEachSourceSet() {
         when:
@@ -35,7 +35,7 @@ class AntlrPluginTest extends Specification {
         test.antlr.srcDirs == [project.file('src/test/antlr')] as Set
 
         when:
-        project.sourceSets.add('custom')
+        project.sourceSets.create('custom')
 
         then:
         def custom = project.sourceSets.custom
@@ -56,7 +56,7 @@ class AntlrPluginTest extends Specification {
         project.tasks.compileTestJava.taskDependencies.getDependencies(null).contains(test)
 
         when:
-        project.sourceSets.add('custom')
+        project.sourceSets.create('custom')
 
         then:
         def custom = project.tasks.generateCustomGrammarSource

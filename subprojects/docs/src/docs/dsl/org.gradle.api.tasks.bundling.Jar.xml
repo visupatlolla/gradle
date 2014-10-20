@@ -8,18 +8,10 @@
                     <td>Default with <literal>java</literal> plugin</td>
                 </tr>
             </thead>
-            <tr>
-                <td>manifest</td>
-                <td/>
-            </tr>
-            <tr>
-                <td>destinationDir</td>
-                <td><literal>project.libsDir</literal></td>
-            </tr>
-            <tr>
-                <td>extension</td>
-                <td><literal>jar</literal></td>
-            </tr>
+                <tr>
+                    <td>manifest</td>
+                    <td/>
+                </tr>
         </table>
     </section>
     <section>

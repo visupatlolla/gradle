@@ -17,19 +17,61 @@
 package org.gradle.integtests.fixtures.executer
 
 import org.gradle.test.fixtures.file.TestDirectoryProvider
-import org.gradle.test.fixtures.file.TestDirectoryProviderFinder
 import org.gradle.test.fixtures.file.TestFile
-import org.gradle.util.RuleHelper
-import org.junit.rules.MethodRule
-import org.junit.runners.model.FrameworkMethod
-import org.junit.runners.model.Statement
 
-class ProgressLoggingFixture implements MethodRule {
+class ProgressLoggingFixture extends InitScriptExecuterFixture {
 
-    private TestFile loggingOutputFile = null
+    private TestFile fixtureData
+
+    ProgressLoggingFixture(GradleExecuter executer, TestDirectoryProvider testDir) {
+        super(executer, testDir)
+    }
+
+    List<String> progressContent
+
+    @Override
+    String initScriptContent() {
+        fixtureData = testDir.testDirectory.file("progress-fixture.log")
+        """import org.gradle.logging.internal.*
+           File outputFile = file("${fixtureData.toURI()}")
+           OutputEventListener outputEventListener = new OutputEventListener() {
+                void onOutput(OutputEvent event) {
+                    if (event instanceof ProgressStartEvent) {
+                        outputFile << "[START \$event.description]\\n"
+                    } else if (event instanceof ProgressEvent) {
+                        outputFile << "[\$event.status]\\n"
+                    } else if (event instanceof ProgressCompleteEvent) {
+                        outputFile << "[END \$event.description]\\n"
+                    }
+                }
+           }
+           def loggingOutputInternal = gradle.services.get(LoggingOutputInternal)
+           loggingOutputInternal.addOutputEventListener(outputEventListener)
+           buildFinished{
+                loggingOutputInternal.removeOutputEventListener(outputEventListener)
+           }"""
+    }
+
+    @Override
+    void afterBuild() {
+        if (fixtureData.exists()) {
+            progressContent = fixtureData.text.readLines()
+            assert fixtureData.delete()
+        } else {
+            progressContent = []
+        }
+    }
+
+    boolean downloadProgressLogged(URI url) {
+        downloadProgressLogged(url.toASCIIString())
+    }
 
     boolean downloadProgressLogged(String url) {
         return progressLogged("Download", url)
+    }
+
+    boolean uploadProgressLogged(URI url) {
+        uploadProgressLogged(url.toString())
     }
 
     boolean uploadProgressLogged(String url) {
@@ -37,7 +79,7 @@ class ProgressLoggingFixture implements MethodRule {
     }
 
     private boolean progressLogged(String operation, String url) {
-        def lines = loggingOutputFile.exists() ? loggingOutputFile.text.readLines() : []
+        def lines = progressContent
         def startIndex = lines.indexOf("[START " + operation + " " + url + "]")
         if (startIndex == -1) {
             return false
@@ -45,42 +87,5 @@ class ProgressLoggingFixture implements MethodRule {
         lines = lines[startIndex..<lines.size()]
         lines = lines[0..lines.indexOf("[END " + operation + " " + url + "]")]
         lines.size() >= 2
-    }
-
-    Statement apply(Statement base, FrameworkMethod method, Object target) {
-        TestFile initFile
-        GradleExecuter executer = RuleHelper.getField(target, GradleExecuter)
-        TestDirectoryProvider testDirectoryProvider = new TestDirectoryProviderFinder().findFor(target)
-        TestFile temporaryFolder = testDirectoryProvider.testDirectory
-        loggingOutputFile = temporaryFolder.file("loggingoutput.log")
-        initFile = temporaryFolder.file("progress-logging-init.gradle")
-        initFile.text = """import org.gradle.logging.internal.*
-                           File outputFile = file("${loggingOutputFile.toURI()}")
-                           OutputEventListener outputEventListener = new OutputEventListener() {
-                                void onOutput(OutputEvent event) {
-                                    if (event instanceof ProgressStartEvent) {
-                                        outputFile << "[START \$event.description]\\n"
-                                    } else if (event instanceof ProgressEvent) {
-                                        outputFile << "[\$event.status]\\n"
-                                    } else if (event instanceof ProgressCompleteEvent) {
-                                        outputFile << "[END \$event.description]\\n"
-                                    }
-                                }
-                           }
-                           def loggingOutputInternal = gradle.services.get(LoggingOutputInternal)
-                           loggingOutputInternal.addOutputEventListener(outputEventListener)
-                           buildFinished{
-                                loggingOutputInternal.removeOutputEventListener(outputEventListener)
-                           }"""
-        executer.beforeExecute {
-            usingInitScript(initFile)
-        }
-
-        return new Statement() {
-            @Override
-            public void evaluate() throws Throwable {
-                base.evaluate();
-            }
-        };
     }
 }

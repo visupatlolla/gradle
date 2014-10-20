@@ -16,12 +16,12 @@
 package org.gradle.integtests.fixtures
 
 import org.gradle.integtests.fixtures.executer.GradleDistribution
+import org.gradle.integtests.fixtures.executer.GradleExecuter
 import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistribution
 import org.gradle.test.fixtures.file.TestDirectoryProvider
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.test.fixtures.maven.MavenFileRepository
-import org.gradle.test.fixtures.maven.MavenRepository
 import org.junit.Rule
 import org.junit.runner.RunWith
 import spock.lang.Specification
@@ -32,6 +32,11 @@ abstract class CrossVersionIntegrationSpec extends Specification implements Test
     final GradleDistribution current = new UnderDevelopmentGradleDistribution()
     static GradleDistribution previous
     private MavenFileRepository mavenRepo
+    private TestFile gradleUserHomeDir
+
+    void requireOwnGradleUserHomeDir() {
+        gradleUserHomeDir = file("user-home-dir")
+    }
 
     GradleDistribution getPrevious() {
         return previous
@@ -53,17 +58,19 @@ abstract class CrossVersionIntegrationSpec extends Specification implements Test
         testDirectory.file(path);
     }
 
-    protected MavenRepository getMavenRepo() {
+    protected MavenFileRepository getMavenRepo() {
         if (mavenRepo == null) {
             mavenRepo = new MavenFileRepository(file("maven-repo"))
         }
         return mavenRepo
     }
 
-    def version(GradleDistribution dist) {
+    GradleExecuter version(GradleDistribution dist) {
         def executer = dist.executer(temporaryFolder)
+        if (gradleUserHomeDir) {
+            executer.withGradleUserHomeDir(gradleUserHomeDir)
+        }
         executer.withDeprecationChecksDisabled()
         executer.inDirectory(testDirectory)
-        return executer;
     }
 }

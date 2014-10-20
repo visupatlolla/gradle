@@ -15,22 +15,34 @@
  */
 package org.gradle.api.internal.file;
 
-import org.gradle.internal.nativeplatform.filesystem.FileSystems;
+import org.gradle.internal.nativeintegration.filesystem.FileSystem;
+import org.gradle.internal.nativeintegration.services.NativeServices;
 
 import java.io.File;
 
 public class TestFiles {
+    private static final FileSystem FILE_SYSTEM = NativeServices.getInstance().get(FileSystem.class);
+    private static final DefaultFileLookup FILE_LOOKUP = new DefaultFileLookup(FILE_SYSTEM);
+
+    public static FileLookup fileLookup() {
+        return FILE_LOOKUP;
+    }
+
+    public static FileSystem fileSystem() {
+        return FILE_SYSTEM;
+    }
+
     /**
      * Returns a resolver with no base directory.
      */
     public static FileResolver resolver() {
-        return new IdentityFileResolver();
+        return FILE_LOOKUP.getFileResolver();
     }
 
     /**
      * Returns a resolver with the given base directory.
      */
     public static FileResolver resolver(File baseDir) {
-        return new BaseDirFileResolver(FileSystems.getDefault(), baseDir);
+        return FILE_LOOKUP.getFileResolver(baseDir);
     }
 }

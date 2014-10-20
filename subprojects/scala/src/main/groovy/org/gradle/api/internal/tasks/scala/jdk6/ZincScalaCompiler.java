@@ -18,23 +18,18 @@ package org.gradle.api.internal.tasks.scala.jdk6;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.typesafe.zinc.Inputs;
-import com.typesafe.zinc.SbtJars;
-import com.typesafe.zinc.ScalaLocation;
-import com.typesafe.zinc.Setup;
-
-import org.gradle.api.GradleException;
-import org.gradle.api.JavaVersion;
+import com.typesafe.zinc.*;
+import org.gradle.api.internal.tasks.SimpleWorkResult;
 import org.gradle.api.internal.tasks.compile.CompilationFailedException;
-import org.gradle.api.internal.tasks.compile.Compiler;
+import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.api.internal.tasks.compile.JavaCompilerArgumentsBuilder;
-import org.gradle.api.internal.tasks.compile.SimpleWorkResult;
 import org.gradle.api.internal.tasks.scala.ScalaCompilerArgumentsGenerator;
 import org.gradle.api.internal.tasks.scala.ScalaJavaJointCompileSpec;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.internal.jvm.Jvm;
+import scala.Option;
 import xsbti.F0;
 
 import java.io.File;
@@ -45,9 +40,6 @@ public class ZincScalaCompiler implements Compiler<ScalaJavaJointCompileSpec>, S
     private static final Logger LOGGER = Logging.getLogger(ZincScalaCompiler.class);
 
     public WorkResult execute(ScalaJavaJointCompileSpec spec) {
-        if (!JavaVersion.current().isJava6Compatible()) {
-            throw new GradleException("To use the Zinc Scala compiler, Java 6 or higher is required.");
-        }
         return Compiler.execute(spec);
     }
 
@@ -63,7 +55,7 @@ public class ZincScalaCompiler implements Compiler<ScalaJavaJointCompileSpec>, S
             List<String> scalacOptions = new ScalaCompilerArgumentsGenerator().generate(spec);
             List<String> javacOptions = new JavaCompilerArgumentsBuilder(spec).includeClasspath(false).build();
             Inputs inputs = Inputs.create(ImmutableList.copyOf(spec.getClasspath()), ImmutableList.copyOf(spec.getSource()), spec.getDestinationDir(),
-                    scalacOptions, javacOptions, spec.getScalaCompileOptions().getIncrementalOptions().getAnalysisFile(), spec.getAnalysisMap(), "mixed");
+                    scalacOptions, javacOptions, spec.getScalaCompileOptions().getIncrementalOptions().getAnalysisFile(), spec.getAnalysisMap(), "mixed", getIncOptions(), true);
             if (LOGGER.isDebugEnabled()) {
                 Inputs.debug(inputs, logger);
             }
@@ -77,10 +69,25 @@ public class ZincScalaCompiler implements Compiler<ScalaJavaJointCompileSpec>, S
             return new SimpleWorkResult(true);
         }
 
+        private static IncOptions getIncOptions() {
+            //The values are based on what I have found in sbt-compiler-maven-plugin.googlecode.com and zinc documentation
+            //Hard to say what effect they have on the incremental build
+            int transitiveStep = 3;
+            double recompileAllFraction = 0.5d;
+            boolean relationsDebug = false;
+            boolean apiDebug = false;
+            int apiDiffContextSize = 5;
+            Option<File> apiDumpDirectory = Option.empty();
+            boolean transactional = false;
+            Option<File> backup = Option.empty();
+
+            return new IncOptions(transitiveStep, recompileAllFraction, relationsDebug, apiDebug, apiDiffContextSize, apiDumpDirectory, transactional, backup);
+        }
+
         static com.typesafe.zinc.Compiler createCompiler(Iterable<File> scalaClasspath, Iterable<File> zincClasspath, xsbti.Logger logger) {
             ScalaLocation scalaLocation = ScalaLocation.fromPath(Lists.newArrayList(scalaClasspath));
             SbtJars sbtJars = SbtJars.fromPath(Lists.newArrayList(zincClasspath));
-            Setup setup = Setup.create(scalaLocation, sbtJars, Jvm.current().getJavaHome());
+            Setup setup = Setup.create(scalaLocation, sbtJars, Jvm.current().getJavaHome(), true);
             if (LOGGER.isDebugEnabled()) {
                 Setup.debug(setup, logger);
             }

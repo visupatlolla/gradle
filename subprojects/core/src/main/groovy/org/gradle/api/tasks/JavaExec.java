@@ -19,12 +19,14 @@ package org.gradle.api.tasks;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.tasks.options.Option;
 import org.gradle.process.JavaExecSpec;
 import org.gradle.process.JavaForkOptions;
 import org.gradle.process.ProcessForkOptions;
 import org.gradle.process.internal.DefaultJavaExecAction;
 import org.gradle.process.internal.JavaExecAction;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -33,20 +35,28 @@ import java.util.Map;
 
 /**
  * Executes a Java application in a child process.
- *
- * @author Hans Dockter
+ * <p>
+ * The process can be started in debug mode (see {@link #getDebug()}) in an ad-hoc manner by supplying the `--debug-jvm` switch when invoking the build.
+ * <pre>
+ * gradle someJavaExecTask --debug-jvm
+ * </pre>
  */
 public class JavaExec extends ConventionTask implements JavaExecSpec {
     private JavaExecAction javaExecHandleBuilder;
 
     public JavaExec() {
-        FileResolver fileResolver = getServices().get(FileResolver.class);
-        javaExecHandleBuilder = new DefaultJavaExecAction(fileResolver);
+        javaExecHandleBuilder = new DefaultJavaExecAction(getFileResolver());
+    }
+
+    @Inject
+    protected FileResolver getFileResolver() {
+        throw new UnsupportedOperationException();
     }
 
     @TaskAction
     public void exec() {
-        setMain(getMain()); // make convention mapping work (at least for 'main')
+        setMain(getMain()); // make convention mapping work (at least for 'main'...
+        setJvmArgs(getJvmArgs()); // ...and for 'jvmArgs')
         javaExecHandleBuilder.execute();
     }
 
@@ -213,6 +223,7 @@ public class JavaExec extends ConventionTask implements JavaExecSpec {
     /**
      * {@inheritDoc}
      */
+    @Option(option = "debug-jvm", description = "Enable debugging for the process. The process is started suspended and listening on port 5005. [INCUBATING]")
     public void setDebug(boolean enabled) {
         javaExecHandleBuilder.setDebug(enabled);
     }

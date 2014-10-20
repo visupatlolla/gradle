@@ -16,16 +16,16 @@
 
 package org.gradle.api.publish.maven.tasks
 
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class PublishToMavenRepositoryTest extends Specification {
 
-    def project = HelperUtil.createRootProject()
+    def project = TestUtil.createRootProject()
 
     def "can instantiate"() {
         when:
-        project.tasks.add("task", PublishToMavenRepository)
+        project.tasks.create("task", PublishToMavenRepository)
 
         then:
         true

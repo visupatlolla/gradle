@@ -16,44 +16,44 @@
 
 package org.gradle.api.tasks;
 
+import com.google.common.collect.Lists;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.internal.AbstractTask;
-import org.gradle.api.internal.Actions;
 import org.gradle.api.internal.DependencyInjectingInstantiator;
 import org.gradle.api.internal.project.AbstractProject;
 import org.gradle.api.internal.project.DefaultProject;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
 import org.gradle.api.internal.tasks.TaskExecuter;
+import org.gradle.api.internal.tasks.TaskExecutionContext;
 import org.gradle.api.internal.tasks.TaskStateInternal;
 import org.gradle.api.specs.Spec;
+import org.gradle.internal.Actions;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.util.GUtil;
-import org.gradle.util.HelperUtil;
 import org.gradle.util.JUnit4GroovyMockery;
+import org.gradle.util.TestUtil;
 import org.jmock.Expectations;
 import org.jmock.lib.legacy.ClassImposteriser;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.sameInstance;
 import static org.junit.Assert.*;
 
-/**
- * @author Hans Dockter
- */
 public abstract class AbstractTaskTest {
-    public static final String TEST_TASK_NAME = "taskname";
+    public static final String TEST_TASK_NAME = "testTask";
     @Rule
     public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
 
@@ -65,7 +65,7 @@ public abstract class AbstractTaskTest {
 
     protected Instantiator instantiator = new DependencyInjectingInstantiator(serviceRegistry);
 
-    private AbstractProject project = HelperUtil.createRootProject();
+    private AbstractProject project = TestUtil.createRootProject();
 
     public abstract AbstractTask getTask();
 
@@ -103,10 +103,10 @@ public abstract class AbstractTaskTest {
 
     @Test
     public void testPath() {
-        DefaultProject rootProject = HelperUtil.createRootProject();
-        DefaultProject childProject = HelperUtil.createChildProject(rootProject, "child");
+        DefaultProject rootProject = TestUtil.createRootProject();
+        DefaultProject childProject = TestUtil.createChildProject(rootProject, "child");
         childProject.getProjectDir().mkdirs();
-        DefaultProject childchildProject = HelperUtil.createChildProject(childProject, "childchild");
+        DefaultProject childchildProject = TestUtil.createChildProject(childProject, "childchild");
         childchildProject.getProjectDir().mkdirs();
 
         Task task = createTask(rootProject, TEST_TASK_NAME);
@@ -132,6 +132,20 @@ public abstract class AbstractTaskTest {
         assertTrue(getTask().getActions().isEmpty());
     }
 
+    @Test
+    public void testSetActions() {
+        getTask().deleteAllActions();
+        getTask().getActions().add(Actions.doNothing());
+        getTask().getActions().add(Actions.doNothing());
+        assertEquals(2, getTask().getActions().size());
+
+        List<Action<? super Task>> actions = Lists.newArrayList();
+        actions.add(Actions.doNothing());
+
+        getTask().setActions(actions);
+        assertEquals(getTask().getActions().size(), 1);
+    }
+
     @Test(expected = InvalidUserDataException.class)
     public void testAddActionWithNull() {
         getTask().doLast((Closure) null);
@@ -145,7 +159,7 @@ public abstract class AbstractTaskTest {
         task.setExecuter(executer);
 
         context.checking(new Expectations() {{
-            one(executer).execute(with(sameInstance(task)), with(notNullValue(TaskStateInternal.class)));
+            one(executer).execute(with(sameInstance(task)), with(notNullValue(TaskStateInternal.class)), with(notNullValue(TaskExecutionContext.class)));
         }});
 
         task.execute();
@@ -171,7 +185,7 @@ public abstract class AbstractTaskTest {
         AbstractTask task = getTask();
         assertTrue(task.getOnlyIf().isSatisfiedBy(task));
 
-        task.onlyIf(HelperUtil.toClosure("{ task -> false }"));
+        task.onlyIf(TestUtil.toClosure("{ task -> false }"));
         assertFalse(task.getOnlyIf().isSatisfiedBy(task));
     }
 

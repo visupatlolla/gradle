@@ -32,3 +32,6 @@
 /performanceTest/lib
 .textmate
 /incoming-distributions
+.idea
+*.sublime-*
+.nb-gradle

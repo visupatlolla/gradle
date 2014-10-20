@@ -19,17 +19,15 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.internal.project.DefaultProject
+import org.gradle.api.plugins.scala.ScalaPlugin
 import org.gradle.api.tasks.Delete
 import org.gradle.plugins.ide.idea.model.IdeaLanguageLevel
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
-/**
- * @author Hans Dockter
- */
 class IdeaPluginTest extends Specification {
-    private final DefaultProject project = HelperUtil.createRootProject()
-    private final Project childProject = HelperUtil.createChildProject(project, "child", new File("."))
+    private final DefaultProject project = TestUtil.createRootProject()
+    private final Project childProject = TestUtil.createChildProject(project, "child", new File("."))
 
     def "adds 'ideaProject' task to root project"() {
         when:
@@ -87,12 +85,12 @@ class IdeaPluginTest extends Specification {
         then:
         project.idea.project.languageLevel.level == new IdeaLanguageLevel(project.sourceCompatibility).level
 
-        def configurations = project.configurations
+        // def configurations = project.configurations
         project.idea.module.scopes == [
-                COMPILE: [plus: [configurations.compile], minus: []],
-                RUNTIME: [plus: [configurations.runtime], minus: [configurations.compile]],
-                TEST: [plus: [configurations.testRuntime], minus: [configurations.runtime]],
-                PROVIDED: [plus: [], minus: []]
+                PROVIDED: [plus: [], minus: []],
+                COMPILE: [plus: [], minus: []],
+                RUNTIME: [plus: [], minus: []],
+                TEST: [plus: [], minus: []],
         ]
     }
 
@@ -135,6 +133,21 @@ class IdeaPluginTest extends Specification {
         test.any { it.name.contains('generated-test') }
         test.any { it.name.contains('test-resources') }
      }
+
+    def "makes scala modules depend on root's project"() {
+        applyPluginToProjects()
+
+        when:
+        childProject.plugins.apply(ScalaPlugin)
+
+        then:
+        def parentIdeaProject = project.tasks.ideaProject
+        def parentIdeaModule = project.tasks.ideaModule
+        def childIdeaModule = childProject.tasks.ideaModule
+
+        childIdeaModule.taskDependencies.getDependencies(childIdeaModule).contains(parentIdeaProject)
+        !parentIdeaModule.taskDependencies.getDependencies(parentIdeaModule).contains(parentIdeaProject)
+    }
 
     private void assertThatIdeaModuleIsProperlyConfigured(Project project) {
         GenerateIdeaModule ideaModuleTask = project.ideaModule

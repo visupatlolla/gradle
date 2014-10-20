@@ -16,14 +16,15 @@
 package org.gradle.api.plugins.quality
 
 import org.gradle.api.GradleException
+import org.gradle.api.Incubating
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.project.IsolatedAntBuilder
 import org.gradle.api.plugins.quality.internal.CheckstyleReportsImpl
 import org.gradle.api.reporting.Reporting
+import org.gradle.api.resources.TextResource
 import org.gradle.api.tasks.*
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.logging.ConsoleRenderer
-import org.gradle.util.DeprecationLogger
 
 import javax.inject.Inject
 
@@ -44,10 +45,27 @@ class Checkstyle extends SourceTask implements VerificationTask, Reporting<Check
     FileCollection classpath
 
     /**
+     * The Checkstyle configuration to use. Replaces the {@code configFile} property.
+     *
+     * @since 2.2
+     */
+    @Incubating
+    @Nested
+    TextResource config
+
+    /**
      * The Checkstyle configuration file to use.
      */
-    @InputFile
-    File configFile
+    File getConfigFile() {
+        getConfig()?.asFile()
+    }
+
+    /**
+     * The Checkstyle configuration file to use.
+     */
+    void setConfigFile(File configFile) {
+        setConfig(project.resources.text.fromFile(configFile))
+    }
 
     /**
      * The properties available for use in the configuration file. These are substituted into the configuration
@@ -57,39 +75,21 @@ class Checkstyle extends SourceTask implements VerificationTask, Reporting<Check
     @Optional
     Map<String, Object> configProperties = [:]
 
-    /**
-     * The properties available for use in the configuration file. These are substituted into the configuration
-     * file.
-     *
-     * @deprecated renamed to <tt>configProperties</tt>
-     */
-    @Deprecated
-    Map<String, Object> getProperties() {
-        DeprecationLogger.nagUserOfReplacedProperty("Checkstyle.properties", "configProperties")
-        getConfigProperties()
-    }
-
-    /**
-     * The properties available for use in the configuration file. These are substituted into the configuration
-     * file.
-     *
-     * @deprecated renamed to <tt>configProperties</tt>
-     */
-    @Deprecated
-    void setProperties(Map<String, Object> properties) {
-        DeprecationLogger.nagUserOfReplacedProperty("Checkstyle.properties", "configProperties")
-        setConfigProperties(properties)
-    }
-
     @Nested
     private final CheckstyleReportsImpl reports
 
-    private final IsolatedAntBuilder antBuilder
+    Checkstyle() {
+        reports = instantiator.newInstance(CheckstyleReportsImpl, this)
+    }
 
     @Inject
-    Checkstyle(Instantiator instantiator, IsolatedAntBuilder antBuilder) {
-        this.antBuilder = antBuilder
-        reports = instantiator.newInstance(CheckstyleReportsImpl, this)
+    Instantiator getInstantiator() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    IsolatedAntBuilder getAntBuilder() {
+        throw new UnsupportedOperationException();
     }
 
     /**
@@ -124,26 +124,6 @@ class Checkstyle extends SourceTask implements VerificationTask, Reporting<Check
     }
 
     /**
-     * Returns the destination file for the XML report.
-     *
-     * @deprecated Use {@code reports.xml.destination} instead.
-     */
-    @Deprecated
-    File getResultFile() {
-        DeprecationLogger.nagUserOfReplacedProperty("Checkstyle.resultFile", "reports.xml.destination")
-        return reports.xml.destination
-    }
-
-    /**
-     * @deprecated Use {@code reports.xml.destination} instead.
-     */
-    @Deprecated
-    void setResultFile(File file) {
-        DeprecationLogger.nagUserOfReplacedProperty("Checkstyle.resultFile", "reports.xml.destination")
-        reports.xml.destination = file
-    }
-
-    /**
      * Whether or not this task will ignore failures and continue running the build.
      */
     boolean ignoreFailures
@@ -159,7 +139,7 @@ class Checkstyle extends SourceTask implements VerificationTask, Reporting<Check
         antBuilder.withClasspath(getCheckstyleClasspath()).execute {
             ant.taskdef(name: 'checkstyle', classname: 'com.puppycrawl.tools.checkstyle.CheckStyleTask')
 
-            ant.checkstyle(config: getConfigFile(), failOnViolation: false, failureProperty: propertyName) {
+            ant.checkstyle(config: getConfig().asFile(), failOnViolation: false, failureProperty: propertyName) {
                 getSource().addToAntBuilder(ant, 'fileset', FileCollection.AntType.FileSet)
                 getClasspath().addToAntBuilder(ant, 'classpath')
                 if (showViolations) {

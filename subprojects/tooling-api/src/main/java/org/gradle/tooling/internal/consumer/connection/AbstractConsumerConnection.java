@@ -16,19 +16,22 @@
 
 package org.gradle.tooling.internal.consumer.connection;
 
-import org.gradle.tooling.internal.consumer.parameters.ConsumerConnectionParameters;
+import org.gradle.tooling.BuildAction;
+import org.gradle.tooling.internal.consumer.ConnectionParameters;
+import org.gradle.tooling.internal.consumer.parameters.ConsumerOperationParameters;
 import org.gradle.tooling.internal.consumer.versioning.VersionDetails;
 import org.gradle.tooling.internal.protocol.ConnectionVersion4;
 
 public abstract class AbstractConsumerConnection implements ConsumerConnection {
     private final ConnectionVersion4 delegate;
+    private final VersionDetails providerMetaData;
 
-    public AbstractConsumerConnection(ConnectionVersion4 delegate) {
+    public AbstractConsumerConnection(ConnectionVersion4 delegate, VersionDetails providerMetaData) {
         this.delegate = delegate;
+        this.providerMetaData = providerMetaData;
     }
 
     public void stop() {
-        delegate.stop();
     }
 
     public String getDisplayName() {
@@ -36,12 +39,24 @@ public abstract class AbstractConsumerConnection implements ConsumerConnection {
     }
 
     public VersionDetails getVersionDetails() {
-        return new VersionDetails(delegate.getMetaData().getVersion());
+        return providerMetaData;
     }
 
     public ConnectionVersion4 getDelegate() {
         return delegate;
     }
 
-    public abstract void configure(ConsumerConnectionParameters connectionParameters);
+    public abstract void configure(ConnectionParameters connectionParameters);
+
+    protected abstract ModelProducer getModelProducer();
+
+    protected abstract ActionRunner getActionRunner();
+
+    public <T> T run(Class<T> type, ConsumerOperationParameters operationParameters) {
+        return getModelProducer().produceModel(type, operationParameters);
+    }
+
+    public <T> T run(BuildAction<T> action, ConsumerOperationParameters operationParameters) {
+        return getActionRunner().run(action, operationParameters);
+    }
 }

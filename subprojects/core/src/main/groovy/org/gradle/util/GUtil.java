@@ -29,9 +29,6 @@ import java.util.regex.Pattern;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
 
-/**
- * @author Hans Dockter
- */
 public class GUtil {
     private static final Pattern WORD_SEPARATOR = Pattern.compile("\\W+");
     private static final Pattern UPPER_LOWER = Pattern.compile("(\\p{Upper}*)(\\p{Lower}*)");
@@ -133,13 +130,20 @@ public class GUtil {
         return isTrue(object) ? object : defaultValue;
     }
 
-    public static <V, T extends Collection<? super V>> T addToCollection(T dest, Iterable<? extends V>... srcs) {
+    public static <V, T extends Collection<? super V>> T addToCollection(T dest, boolean failOnNull, Iterable<? extends V>... srcs) {
         for (Iterable<? extends V> src : srcs) {
             for (V v : src) {
+                if (failOnNull && v == null) {
+                    throw new IllegalArgumentException("Illegal null value provided in this collection: " + src);
+                }
                 dest.add(v);
             }
         }
         return dest;
+    }
+
+    public static <V, T extends Collection<? super V>> T addToCollection(T dest, Iterable<? extends V>... srcs) {
+        return addToCollection(dest, false, srcs);
     }
 
     public static Comparator<String> caseInsensitive() {

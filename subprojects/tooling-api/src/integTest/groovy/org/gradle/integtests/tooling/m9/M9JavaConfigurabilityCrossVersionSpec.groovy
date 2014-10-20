@@ -17,26 +17,23 @@
 package org.gradle.integtests.tooling.m9
 
 import org.gradle.integtests.fixtures.AvailableJavaHomes
-import org.gradle.integtests.tooling.fixture.MinTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
+import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.TextUtil
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.tooling.GradleConnectionException
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.build.BuildEnvironment
-import org.gradle.util.GradleVersion
 import spock.lang.IgnoreIf
 import spock.lang.Issue
 import spock.lang.Timeout
 
-@MinToolingApiVersion('1.0-milestone-9')
-@MinTargetGradleVersion('1.0-milestone-8')
+@TargetGradleVersion('>=1.0-milestone-9')
 class M9JavaConfigurabilityCrossVersionSpec extends ToolingApiSpecification {
 
     def setup() {
         //this test does not make any sense in embedded mode
         //as we don't own the process
-        toolingApi.isEmbedded = false
+        toolingApi.requireDaemons()
     }
 
     def "uses sensible java defaults if nulls configured"() {
@@ -58,7 +55,7 @@ class M9JavaConfigurabilityCrossVersionSpec extends ToolingApiSpecification {
         def dummyJdk = file("wrong jdk location").createDir()
 
         when:
-        maybeFailWithConnection {
+        withConnection {
             it.newBuild().setJavaHome(dummyJdk).run()
         }
 
@@ -87,13 +84,13 @@ class M9JavaConfigurabilityCrossVersionSpec extends ToolingApiSpecification {
         env.java.jvmArguments == env3.java.jvmArguments
     }
 
-    @IgnoreIf({ AvailableJavaHomes.bestAlternative == null })
+    @IgnoreIf({ AvailableJavaHomes.differentJdk == null })
     def "customized java home is reflected in the java.home and the build model"() {
         given:
         file('build.gradle') << "project.description = new File(System.getProperty('java.home')).canonicalPath"
 
         when:
-        File javaHome = AvailableJavaHomes.bestAlternative
+        File javaHome = AvailableJavaHomes.differentJdk.javaHome
         BuildEnvironment env
         GradleProject project
         withConnection {
@@ -105,11 +102,11 @@ class M9JavaConfigurabilityCrossVersionSpec extends ToolingApiSpecification {
         project.description.startsWith(env.java.javaHome.canonicalPath)
     }
 
-    @IgnoreIf({ AvailableJavaHomes.bestAlternative == null })
+    @IgnoreIf({ AvailableJavaHomes.differentJdk == null })
     def "tooling api provided java home takes precedence over gradle.properties"() {
-        File javaHome = AvailableJavaHomes.bestAlternative
+        File javaHome = AvailableJavaHomes.differentJdk.javaHome
         String javaHomePath = TextUtil.escapeString(javaHome.canonicalPath)
-        File otherJava = getOtherJava()
+        File otherJava = new File(System.getProperty("java.home"))
         String otherJavaPath = TextUtil.escapeString(otherJava.canonicalPath)
         file('build.gradle') << "assert new File(System.getProperty('java.home')).canonicalPath.startsWith('$javaHomePath')"
         file('gradle.properties') << "org.gradle.java.home=$otherJavaPath"
@@ -126,16 +123,5 @@ class M9JavaConfigurabilityCrossVersionSpec extends ToolingApiSpecification {
         env != null
         env.java.javaHome == javaHome
         env.java.javaHome != otherJava
-    }
-
-    // We use different ways of resolving JVM depending on the Gradle version
-    // this is necessary as we moved the Jvm class and dont ship the org.gradle.util.Jvm class with the
-    // toolingApi jar
-    File getOtherJava() {
-        if (GradleVersion.current().compareTo(GradleVersion.version("1.0-milestone-9")) > 0) {
-            return org.gradle.internal.jvm.Jvm.current().getJavaHome()
-        } else {
-            return org.gradle.util.Jvm.current().getJavaHome();
-        }
     }
 }

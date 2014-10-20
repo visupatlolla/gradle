@@ -102,13 +102,13 @@ public class ProjectLoadingIntegrationTest extends AbstractIntegrationTest {
         testFile("build.gradle").write("// empty");
 
         ExecutionFailure result = inTestDirectory().withTasks("test").runWithFailure();
-        result.assertThatDescription(startsWith("Could not select the default project for this build. Multiple projects in this build have project directory"));
+        result.assertThatDescription(startsWith("Multiple projects in this build have project directory"));
 
         result = usingProjectDir(getTestDirectory()).withTasks("test").runWithFailure();
-        result.assertThatDescription(startsWith("Could not select the default project for this build. Multiple projects in this build have project directory"));
+        result.assertThatDescription(startsWith("Multiple projects in this build have project directory"));
 
         result = usingBuildFile(testFile("build.gradle")).withTasks("test").runWithFailure();
-        result.assertThatDescription(startsWith("Could not select the default project for this build. Multiple projects in this build have build file"));
+        result.assertThatDescription(startsWith("Multiple projects in this build have build file"));
     }
 
     @Test
@@ -137,18 +137,21 @@ public class ProjectLoadingIntegrationTest extends AbstractIntegrationTest {
         TestFile settingsFile = testFile("settings.gradle");
         settingsFile.write("// empty");
 
-        TestFile projectdir = testFile("project dir");
-        projectdir.mkdirs();
+        TestFile projectDir = testFile("project dir");
+        TestFile buildFile = projectDir.file("build.gradle").createFile();
 
-        ExecutionFailure result = usingProjectDir(projectdir).usingSettingsFile(settingsFile).runWithFailure();
-        result.assertThatDescription(startsWith("Could not select the default project for this build. No projects in this build have project directory"));
+        ExecutionFailure result = usingProjectDir(projectDir).usingSettingsFile(settingsFile).runWithFailure();
+        result.assertHasDescription(String.format("No projects in this build have project directory '%s'.", projectDir));
+
+        result = usingBuildFile(buildFile).usingSettingsFile(settingsFile).runWithFailure();
+        result.assertHasDescription(String.format("No projects in this build have build file '%s'.", buildFile));
     }
 
     @Test
     public void settingsFileTakesPrecedenceOverBuildFileInSameDirectory() {
         testFile("settings.gradle").write("rootProject.buildFileName = 'root.gradle'");
         testFile("root.gradle").write("task('do-stuff')");
-        
+
         TestFile buildFile = testFile("build.gradle");
         buildFile.write("throw new RuntimeException()");
 
@@ -243,5 +246,69 @@ public class ProjectLoadingIntegrationTest extends AbstractIntegrationTest {
         usingProjectDir(getTestDirectory()).usingSettingsFile(settingsFile).withTasks("do-stuff").run().assertTasksExecuted(":child:task", ":do-stuff", ":child:do-stuff");
         usingBuildFile(rootBuildFile).withTasks("do-stuff").run().assertTasksExecuted(":child:task", ":do-stuff", ":child:do-stuff");
         usingBuildFile(childBuildFile).usingSettingsFile(settingsFile).withTasks("do-stuff").run().assertTasksExecuted(":child:do-stuff");
+    }
+
+    @Test
+    public void multiProjectBuildCanHaveAllProjectsAsChildrenOfSettingsDir() {
+        TestFile settingsFile = testFile("settings.gradle");
+        settingsFile.writelns(
+            "rootProject.projectDir = new File(settingsDir, 'root')",
+            "include 'sub'",
+            "project(':sub').projectDir = new File(settingsDir, 'root/sub')"
+        );
+
+        getTestDirectory().createDir("root").file("build.gradle").writelns("allprojects { task thing }");
+
+        inTestDirectory().withTasks(":thing").run().assertTasksExecuted(":thing");
+        inTestDirectory().withTasks(":sub:thing").run().assertTasksExecuted(":sub:thing");
+    }
+
+    @Test
+    public void usesRootProjectAsDefaultProjectWhenInSettingsDir() {
+        TestFile settingsDir = testFile("gradle");
+        TestFile settingsFile = settingsDir.file("settings.gradle");
+        settingsFile.writelns(
+            "rootProject.projectDir = new File(settingsDir, '../root')",
+            "include 'sub'",
+            "project(':sub').projectDir = new File(settingsDir, '../root/sub')"
+        );
+        getTestDirectory().createDir("root").file("build.gradle").writelns("allprojects { task thing }");
+
+        inDirectory(settingsDir).withTasks("thing").run().assertTasksExecuted(":thing", ":sub:thing");
+    }
+
+    @Test
+    public void rootProjectDirectoryAndBuildFileDoNotHaveToExistWhenInSettingsDir() {
+        TestFile settingsDir = testFile("gradle");
+        TestFile settingsFile = settingsDir.file("settings.gradle");
+        settingsFile.writelns(
+                "rootProject.projectDir = new File(settingsDir, '../root')",
+                "include 'sub'",
+                "project(':sub').projectDir = new File(settingsDir, '../sub')"
+        );
+        getTestDirectory().createDir("sub").file("build.gradle").writelns("task thing");
+
+        inDirectory(settingsDir).withTasks("thing").run().assertTasksExecuted(":sub:thing");
+    }
+
+    @Test
+    public void settingsFileGetsIgnoredWhenUsingSettingsOnlyDirectoryAsProjectDirectory() {
+        TestFile settingsDir = testFile("gradle");
+        TestFile settingsFile = settingsDir.file("settings.gradle");
+        settingsFile.writelns(
+                "rootProject.projectDir = new File(settingsDir, '../root')"
+        );
+        getTestDirectory().createDir("root").file("build.gradle").writelns("task thing");
+
+        inTestDirectory().withArguments("-p", settingsDir.getAbsolutePath()).withTasks("thing").runWithFailure()
+                .assertHasDescription("Task 'thing' not found in root project 'gradle'.");
+    }
+
+    @Test
+    public void cannotUseDirectoryAsBuildFile() {
+        TestFile settingsDir = testFile("gradle").createDir();
+
+        inTestDirectory().withArguments("-b", settingsDir.getAbsolutePath()).withTasks("thing").runWithFailure()
+                .assertHasDescription(String.format("Build file '%s' is not a file.", settingsDir.getAbsolutePath()));
     }
 }

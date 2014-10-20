@@ -18,7 +18,9 @@ package org.gradle.integtests
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.executer.ExecutionFailure
 import org.gradle.test.fixtures.file.TestFile
+import org.hamcrest.Matchers
 import org.junit.Test
+import spock.lang.Issue
 
 class BuildAggregationIntegrationTest extends AbstractIntegrationTest {
 
@@ -77,7 +79,7 @@ class BuildAggregationIntegrationTest extends AbstractIntegrationTest {
         ExecutionFailure failure = executer.withTasks('build').runWithFailure()
         failure.assertHasFileName("Build file '${other}'")
         failure.assertHasLineNumber(2)
-        failure.assertHasDescription('A problem occurred evaluating root project')
+        failure.assertThatDescription(Matchers.startsWith('A problem occurred evaluating root project'))
         failure.assertHasCause('broken')
     }
 
@@ -85,6 +87,43 @@ class BuildAggregationIntegrationTest extends AbstractIntegrationTest {
     public void reportsBuildSrcFailure() {
         file('buildSrc/src/main/java/Broken.java') << 'broken!'
         ExecutionFailure failure = executer.runWithFailure()
-        failure.assertHasDescription('Execution failed for task \':compileJava\'')
+        failure.assertHasDescription('Execution failed for task \':compileJava\'.')
+    }
+
+    @Test
+    @Issue("https://issues.gradle.org//browse/GRADLE-3052")
+    void buildTaskCanHaveInputsAndOutputs() {
+        file("input") << "foo"
+        file("settings.gradle") << "rootProject.name = 'proj'"
+        file("build.gradle") << """
+            class UpperFile extends DefaultTask {
+                @InputFile
+                File input
+
+                @OutputFile
+                File output
+
+                @TaskAction
+                void upper() {
+                  output.text = input.text.toUpperCase()
+                }
+            }
+
+            task upper(type: UpperFile) {
+                input = file("input")
+                output = file("output")
+            }
+
+            task build(type: GradleBuild) {
+              dependsOn upper
+              tasks = ["upper"]
+              startParameter.searchUpwards = false
+              outputs.file "build.gradle" // having an output (or input) triggers the bug
+            }
+        """
+
+        def run = executer.withTasks("build").run()
+        assert run.executedTasks == [":upper", ":build", ":proj:upper"]
+        assert run.skippedTasks == [":proj:upper"].toSet()
     }
 }

@@ -17,15 +17,14 @@
 package org.gradle.integtests.fixtures.executer
 
 import static org.gradle.util.Matchers.*;
+import org.hamcrest.Matcher
 
-/**
- * by Szczepan Faber, created at: 12/12/12
- */
 public class DependencyResolutionFailure {
     private final ExecutionFailure failure
 
-    DependencyResolutionFailure(ExecutionFailure failure) {
+    DependencyResolutionFailure(ExecutionFailure failure, String configuration) {
         this.failure = failure
+        assertFailedConfiguration(configuration);
     }
 
     DependencyResolutionFailure assertFailedConfiguration(String configuration) {
@@ -40,6 +39,11 @@ public class DependencyResolutionFailure {
 
     DependencyResolutionFailure assertHasCause(String cause) {
         failure.assertHasCause(cause)
+        this
+    }
+
+    DependencyResolutionFailure assertThatCause(Matcher<String> matcher) {
+        failure.assertThatCause(matcher)
         this
     }
 }

@@ -19,87 +19,57 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.api.artifacts.dsl.RepositoryHandler
-import org.gradle.util.JUnit4GroovyMockery
-import org.gradle.util.WrapUtil
-import org.jmock.integration.junit4.JMock
-import org.junit.Test
-import org.junit.runner.RunWith
-
-import static org.hamcrest.Matchers.*
-import static org.junit.Assert.*
 import org.gradle.groovy.scripts.ScriptSource
-import org.gradle.util.MutableURLClassLoader
 import org.gradle.util.ConfigureUtil
+import spock.lang.Specification
 
-@RunWith(JMock)
-public class DefaultScriptHandlerTest {
-    private final JUnit4GroovyMockery context = new JUnit4GroovyMockery()
-    private final RepositoryHandler repositoryHandler = context.mock(RepositoryHandler.class)
-    private final DependencyHandler dependencyHandler = context.mock(DependencyHandler.class)
-    private final ConfigurationContainer configurationContainer = context.mock(ConfigurationContainer.class)
-    private final Configuration configuration = context.mock(Configuration.class)
-    private final ScriptSource scriptSource = context.mock(ScriptSource.class)
-    private final MutableURLClassLoader classLoader = context.mock(MutableURLClassLoader.class)
-
-    @Test void addsClasspathConfiguration() {
-        context.checking {
-            one(configurationContainer).add('classpath')
-        }
-
-        new DefaultScriptHandler(scriptSource, repositoryHandler, dependencyHandler, configurationContainer, classLoader)
+class DefaultScriptHandlerTest extends Specification {
+    def repositoryHandler = Mock(RepositoryHandler)
+    def dependencyHandler = Mock(DependencyHandler)
+    def configurationContainer = Mock(ConfigurationContainer)
+    def configuration = Stub(Configuration)
+    def scriptSource = Stub(ScriptSource)
+    def baseClassLoader = new ClassLoader() {}
+    def classLoaderScope = Stub(ClassLoaderScope) {
+        getLocalClassLoader() >> baseClassLoader
     }
 
-    @Test void createsAClassLoaderAndAddsContentsOfClassPathConfiguration() {
-        DefaultScriptHandler handler = handler()
+    def "adds classpath configuration"() {
+        when:
+        new DefaultScriptHandler(scriptSource, repositoryHandler, dependencyHandler, configurationContainer, new ScriptHandlerClassLoaderFactory(scriptSource, classLoaderScope))
 
-        ClassLoader classLoader = handler.classLoader
-        assertThat(classLoader, sameInstance(this.classLoader))
-
-        File file1 = new File('a')
-        File file2 = new File('b')
-        context.checking {
-            one(configuration).getFiles()
-            will(returnValue(WrapUtil.toSet(file1, file2)))
-            one(classLoader).addURL(file1.toURI().toURL())
-            one(classLoader).addURL(file2.toURI().toURL())
-        }
-
-        handler.updateClassPath()
+        then:
+        1 * configurationContainer.create('classpath')
     }
 
-    @Test void canConfigureRepositories() {
-        DefaultScriptHandler handler = handler()
-
+    def "can configure repositories"() {
+        def handler = handler()
         def configure = {
             mavenCentral()
         }
 
-        context.checking {
-            one(repositoryHandler).configure(configure)
-            will { ConfigureUtil.configure(configure, repositoryHandler, false) }
-            one(repositoryHandler).mavenCentral()
-        }
-
+        when:
         handler.repositories(configure)
+
+        then:
+        1 * repositoryHandler.configure(configure) >> { ConfigureUtil.configure(configure, repositoryHandler, false) }
+        1 * repositoryHandler.mavenCentral()
     }
 
-    @Test void canConfigureDependencies() {
-        DefaultScriptHandler handler = handler()
+    def "can configure dependencies"() {
+        def handler = handler()
 
-        context.checking {
-            one(dependencyHandler).add('config', 'dep')
-        }
-
+        when:
         handler.dependencies {
             add('config', 'dep')
         }
+
+        then:
+        1 * dependencyHandler.add('config', 'dep')
     }
 
     private DefaultScriptHandler handler() {
-        context.checking {
-            one(configurationContainer).add('classpath')
-            will(returnValue(configuration))
-        }
-        return new DefaultScriptHandler(scriptSource, repositoryHandler, dependencyHandler, configurationContainer, classLoader)
+        1 * configurationContainer.create('classpath') >> configuration
+        return new DefaultScriptHandler(scriptSource, repositoryHandler, dependencyHandler, configurationContainer, new ScriptHandlerClassLoaderFactory(scriptSource, classLoaderScope))
     }
 }

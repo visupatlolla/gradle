@@ -26,8 +26,8 @@ import org.junit.Test;
 import java.util.HashMap;
 import java.util.Map;
 
-import static java.util.Collections.EMPTY_LIST;
 import static org.gradle.api.file.FileVisitorUtil.*;
+import static org.gradle.api.internal.file.TestFiles.fileSystem;
 import static org.gradle.api.tasks.AntBuilderAwareUtil.assertSetContainsForAllTypes;
 import static org.gradle.util.WrapUtil.toList;
 import static org.hamcrest.Matchers.equalTo;
@@ -40,7 +40,7 @@ public class ZipFileTreeTest {
     private final TestFile zipFile = tmpDir.getTestDirectory().file("test.zip");
     private final TestFile rootDir = tmpDir.getTestDirectory().file("root");
     private final TestFile expandDir = tmpDir.getTestDirectory().file("tmp");
-    private final ZipFileTree tree = new ZipFileTree(zipFile, expandDir);
+    private final ZipFileTree tree = new ZipFileTree(zipFile, expandDir, fileSystem());
 
     @Test
     public void displayName() {
@@ -67,9 +67,13 @@ public class ZipFileTreeTest {
     }
 
     @Test
-    public void isEmptyWhenZipFileDoesNotExist() {
-        assertVisits(tree, EMPTY_LIST, EMPTY_LIST);
-        assertSetContainsForAllTypes(tree, EMPTY_LIST);
+    public void failsWhenZipFileDoesNotExist() {
+        try {
+            tree.visit(null);
+            fail();
+        } catch (InvalidUserDataException e) {
+            assertThat(e.getMessage(), equalTo("Cannot expand ZIP '" + zipFile + "' as it does not exist."));
+        }
     }
 
     @Test

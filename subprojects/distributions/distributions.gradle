@@ -30,19 +30,11 @@ tasks.withType(AbstractArchiveTask) {
 }
 
 dependencies {
-    groovy libraries.groovy
+    testCompile libraries.groovy
 }
 
 configurations {
     dists
-}
-
-integTestTasks.all {
-    if (project.hasProperty("noDistTests")) {
-        enabled = false
-    } else {
-        inputs.files buildDists
-    }
 }
 
 daemonIntegTest.enabled = false
@@ -68,15 +60,17 @@ ext {
         into('lib') {
             from rootProject.configurations.runtime
             into('plugins') {
-                from rootProject.configurations.plugins - rootProject.configurations.runtime
+                from rootProject.configurations.gradlePlugins - rootProject.configurations.runtime
             }
         }
     }
 
     allDistImage = copySpec {
         with binDistImage
-        into('src') {
-            from groovyProjects.collect {project -> project.sourceSets.main.allSource }
+        groovyProjects.each { project ->
+            into("src/$project.projectDir.name") {
+                from project.sourceSets.main.allSource
+            }
         }
         into('docs') {
             from project(':docs').outputs.docs
@@ -132,4 +126,8 @@ task outputsZip(type: Zip) {
 
 artifacts {
     dists allZip, binZip, srcZip
+}
+
+integTest {
+    inputs.files allZip, binZip, srcZip
 }

@@ -14,30 +14,64 @@
  * limitations under the License.
  */
 
-
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.integtests.fixtures.executer.ProjectLifecycleFixture
+import org.junit.Rule
+import spock.lang.IgnoreIf
 
-/**
- * by Szczepan Faber, created at: 11/21/12
- */
 class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
 
+    @Rule ProjectLifecycleFixture fixture = new ProjectLifecycleFixture(executer, temporaryFolder)
+
     def setup() {
-        file("gradle.properties") << "systemProp.org.gradle.configuration.ondemand=true"
-        alwaysUsing { it.withArgument('-i') }
+        file("gradle.properties") << "org.gradle.configureondemand=true"
     }
 
-    def "works with single-module project"() {
+    @IgnoreIf({ GradleContextualExecuter.isParallel() }) //parallel mode hides incubating message
+    def "presents incubating message"() {
+        file("gradle.properties") << "org.gradle.configureondemand=false"
         buildFile << "task foo"
+
         when:
-        run("foo")
+        run("foo", "--configure-on-demand")
+
         then:
-        result.assertProjectsEvaluated(":")
+        fixture.assertProjectsConfigured(":")
+        output.count("Configuration on demand is an incubating feature") == 1
+    }
+
+    @IgnoreIf({ GradleContextualExecuter.isParallel() }) //parallel mode hides incubating message
+    def "presents incubating message with parallel mode"() {
+        file("gradle.properties") << "org.gradle.configureondemand=false"
+        buildFile << "task foo"
+
+        when:
+        run("foo", "--configure-on-demand", "--parallel")
+
+        then:
+        fixture.assertProjectsConfigured(":")
+        output.count("Parallel execution with configuration on demand is an incubating feature") == 1
+    }
+
+    def "can be enabled from command line for a single module build"() {
+        file("gradle.properties") << "org.gradle.configureondemand=false"
+        buildFile << "task foo"
+
+        when:
+        run("foo", "--configure-on-demand")
+
+        then:
+        fixture.assertProjectsConfigured(":")
     }
 
     def "evaluates only project referenced in the task list"() {
+        // The util project's classloaders will be created eagerly because util:impl
+        // will be evaluated before it
+        executer.withEagerClassLoaderCreationCheckDisabled()
+
         settingsFile << "include 'api', 'impl', 'util', 'util:impl'"
         buildFile << "allprojects { task foo }"
 
@@ -45,7 +79,15 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run(":foo", ":util:impl:foo")
 
         then:
-        result.assertProjectsEvaluated(":", ":util:impl")
+        fixture.assertProjectsConfigured(":", ":util:impl")
+    }
+
+    def "does not show configuration on demand incubating message in a regular mode"() {
+        file("gradle.properties").text = "org.gradle.configureondemand=false"
+        when:
+        run()
+        then:
+        !output.contains("Configuration on demand is incubating")
     }
 
     def "follows java project dependencies"() {
@@ -72,22 +114,49 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run(":api:build")
 
         then:
-        result.assertProjectsEvaluated(":", ":api")
+        fixture.assertProjectsConfigured(":", ":api")
+
+        when:
+        inDirectory("impl")
+        run(":api:build")
+
+        then:
+        fixture.assertProjectsConfigured(":", ":api")
 
         when:
         run(":impl:build")
 
         then:
-        result.assertProjectsEvaluated(":", ":impl", ":api")
+        fixture.assertProjectsConfigured(":", ":impl", ":api")
 
         when:
         run(":util:build")
 
         then:
-        result.assertProjectsEvaluated(":", ":util", ":impl", ":api")
+        fixture.assertProjectsConfigured(":", ":util", ":impl", ":api")
     }
 
-    def "follows project dependencies when ran in subproject"() {
+    def "can have cycles in project dependencies"() {
+        settingsFile << "include 'api', 'impl', 'util'"
+        buildFile << """
+allprojects { apply plugin: 'java' }
+project(':impl') {
+    dependencies { compile project(path: ':api', configuration: 'archives') }
+}
+project(':api') {
+    dependencies { runtime project(':impl') }
+    task run(dependsOn: configurations.runtime)
+}
+"""
+
+        when:
+        run(":api:run")
+
+        then:
+        fixture.assertProjectsConfigured(":", ":api", ':impl')
+    }
+
+    def "follows project dependencies when run in subproject"() {
         settingsFile << "include 'api', 'impl', 'util'"
 
         file("api/build.gradle") << "configurations { api }"
@@ -102,7 +171,7 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run("build")
 
         then:
-        result.assertProjectsEvaluated(':', ':impl', ':api')
+        fixture.assertProjectsConfigured(':', ':impl', ':api')
     }
 
     def "name matching execution from root evaluates all projects"() {
@@ -113,13 +182,13 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run("foo")
 
         then:
-        result.assertProjectsEvaluated(":", ":api", ":impl")
+        fixture.assertProjectsConfigured(":", ":api", ":impl")
 
         when:
         run(":foo")
 
         then:
-        result.assertProjectsEvaluated(":")
+        fixture.assertProjectsConfigured(":")
     }
 
     def "name matching execution from subproject evaluates only the subproject recursively"() {
@@ -131,7 +200,7 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run("foo")
 
         then:
-        result.assertProjectsEvaluated(":", ":impl", ":impl:one", ":impl:two", ":impl:two:abc")
+        fixture.assertProjectsConfigured(":", ":impl", ":impl:one", ":impl:two", ":impl:two:abc")
     }
 
     def "may run implicit tasks from root"() {
@@ -141,7 +210,7 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run(":tasks")
 
         then:
-        result.assertProjectsEvaluated(":")
+        fixture.assertProjectsConfigured(":")
     }
 
     def "may run implicit tasks for subproject"() {
@@ -151,7 +220,7 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run(":api:tasks")
 
         then:
-        result.assertProjectsEvaluated(":", ":api")
+        fixture.assertProjectsConfigured(":", ":api")
     }
 
     def "respects default tasks"() {
@@ -166,7 +235,7 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run()
 
         then:
-        result.assertProjectsEvaluated(":", ":api")
+        fixture.assertProjectsConfigured(":", ":api")
         result.assertTasksExecuted(':api:foo')
     }
 
@@ -180,27 +249,30 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run("api:tasks")
 
         then:
-        result.assertProjectsEvaluated(":", ":api", ":impl")
+        fixture.assertProjectsConfigured(":", ":impl", ":api")
     }
 
     def "respects buildProjectDependencies setting"() {
         settingsFile << "include 'api', 'impl', 'other'"
-        file("build.gradle") << "allprojects { apply plugin: 'java' }"
         file("impl/build.gradle") << """
+            apply plugin: 'java'
             dependencies { compile project(":api") }
         """
+        file("api/build.gradle") << "apply plugin: 'java'"
 
         when:
         run("impl:build")
 
         then:
-        result.assertProjectsEvaluated(":", ":impl", ":api")
+        fixture.assertProjectsConfigured(":", ":impl", ":api")
 
         when:
-        run("impl:build", "--no-rebuild")
+        run("impl:build", "--no-rebuild") // impl -> api
 
         then:
-        result.assertProjectsEvaluated(":", ":impl")
+        //api tasks are not executed and api is not configured
+        !result.executedTasks.find { it.startsWith ":api" }
+        fixture.assertProjectsConfigured(":", ":impl")
     }
 
     def "respects external task dependencies"() {
@@ -214,7 +286,222 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         run("impl:bar")
 
         then:
-        result.assertProjectsEvaluated(":", ":impl", ":api")
+        fixture.assertProjectsConfigured(":", ":impl", ":api")
         result.assertTasksExecuted(":api:foo", ":impl:bar")
+    }
+
+    def "supports buildSrc"() {
+        file("buildSrc/src/main/java/FooTask.java") << """
+            import org.gradle.api.DefaultTask;
+            import org.gradle.api.tasks.TaskAction;
+
+            public class FooTask extends DefaultTask {
+                @TaskAction public void logStuff(){
+                    System.out.println(String.format("Horray!!! '%s' executed.", getName()));
+                }
+            }
+        """
+
+        buildFile << "task foo(type: FooTask)"
+
+        when:
+        run("foo", "-s")
+        then:
+        output.contains "Horray!!!"
+    }
+
+    def "may configure project at execution time"() {
+        settingsFile << "include 'a', 'b', 'c'"
+        file('a/build.gradle') << """
+            configurations { conf }
+            dependencies { conf project(path: ":b", configuration: "conf") }
+            task resolveConf << {
+              //resolves at execution time, forcing 'b' to get configured
+              configurations.conf.files
+            }
+        """
+
+        file('b/build.gradle') << """
+            configurations { conf }
+        """
+
+        when:
+        run(":a:resolveConf", "-i")
+
+        then:
+        fixture.assertProjectsConfigured(":", ":a", ":b")
+    }
+
+    def "handles buildNeeded"() {
+        settingsFile << "include 'a', 'b', 'c'"
+        file("a/build.gradle") << """ apply plugin: 'java' """
+        file("b/build.gradle") << """
+            apply plugin: 'java'
+            project(':b') {
+                dependencies { compile project(':a') }
+            }
+        """
+
+        when:
+        run(":b:buildNeeded")
+
+        then:
+        result.executedTasks.containsAll ':b:buildNeeded', ':a:buildNeeded'
+        fixture.assertProjectsConfigured(":", ":b", ":a")
+    }
+
+    def "handles buildDependents"() {
+        settingsFile << "include 'a', 'b', 'c'"
+        file("a/build.gradle") << """ apply plugin: 'java' """
+        file("b/build.gradle") << """
+            apply plugin: 'java'
+            project(':b') {
+                dependencies { compile project(':a') }
+            }
+        """
+
+        when:
+        run(":a:buildDependents")
+
+        then:
+        result.executedTasks.containsAll ':b:buildDependents', ':a:buildDependents'
+        //unfortunately buildDependents requires all projects to be configured
+        fixture.assertProjectsConfigured(":", ":a", ":b", ":c")
+    }
+
+    def "task command-line argument may look like a task path"() {
+        settingsFile << "include 'a', 'b', 'c'"
+        file("a/build.gradle") << """
+task one(type: SomeTask)
+task two(type: SomeTask)
+
+class SomeTask extends DefaultTask {
+    @org.gradle.api.internal.tasks.options.Option(description="some value")
+    String value
+}
+"""
+
+        when:
+        run(":a:one", "--value", ":b:thing", "a:two", "--value", "unknown:unknown")
+
+        then:
+        result.assertTasksExecuted(":a:one", ":a:two")
+        fixture.assertProjectsConfigured(":", ":a")
+    }
+
+    def "does not configure all projects when excluded task path is not qualified and is exact match for task in default project"() {
+        settingsFile << "include 'a', 'a:child', 'b', 'b:child', 'c'"
+        file('a').mkdirs()
+        file('b').mkdirs()
+        buildFile << """
+allprojects {
+    task one
+    task two
+    task three
+}
+"""
+
+        when:
+        run(":a:one", "-x", "two", "-x", "three")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":a")
+
+        when:
+        executer.usingProjectDirectory(file('a'))
+        run(":a:one", "-x", "two", "-x", "three")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":a")
+
+        when:
+        executer.usingProjectDirectory(file('b'))
+        run(":a:one", "-x", "two", "-x", "three")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":b", ":a")
+    }
+
+    def "does not configure all projects when excluded task path is not qualified and an exact match for task has already been seen in some sub-project of default project"() {
+        settingsFile << "include 'a', 'b', 'c', 'c:child'"
+        file('c').mkdirs()
+        buildFile << """
+allprojects {
+    task one
+}
+project(':b') {
+    task two
+}
+"""
+
+        when:
+        run(":a:one", "-x", "two")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":a")
+
+        when:
+        executer.usingProjectDirectory(file("c"))
+        runAndFail(":a:one", "-x", "two")
+
+        then:
+        failure.assertHasDescription("Task 'two' not found in project ':c'.")
+        fixture.assertProjectsConfigured(":", ":c", ':c:child')
+    }
+
+    def "configures all subprojects of default project when excluded task path is not qualified and an exact match not found in default project"() {
+        settingsFile << "include 'a', 'b', 'c', 'c:child'"
+        file('c').mkdirs()
+        buildFile << """
+allprojects {
+    task one
+}
+"""
+        file("b/build.gradle") << "task two"
+
+        when:
+        run(":a:one", "-x", "two")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":a", ":b", ":c", ":c:child")
+
+        when:
+        executer.usingProjectDirectory(file("c"))
+        runAndFail(":a:one", "-x", "two")
+
+        then:
+        failure.assertHasDescription("Task 'two' not found in project ':c'.")
+        fixture.assertProjectsConfigured(":", ":c", ':c:child')
+    }
+
+    def "configures all subprojects of default projects when excluded task path is not qualified and uses camel case matching"() {
+        settingsFile << "include 'a', 'b', 'b:child', 'c'"
+        file('b').mkdirs()
+        buildFile << """
+allprojects {
+    task one
+    task two
+}
+"""
+
+        when:
+        run(":a:one", "-x", "tw")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":a", ":b", ":c", ":b:child")
+
+        when:
+        executer.usingProjectDirectory(file('b'))
+        run(":a:one", "-x", "tw")
+
+        then:
+        result.assertTasksExecuted(":a:one")
+        fixture.assertProjectsConfigured(":", ":b", ":b:child", ":a")
     }
 }

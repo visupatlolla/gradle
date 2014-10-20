@@ -28,12 +28,9 @@ import java.util.jar.Manifest
 import static org.junit.Assert.assertEquals
 import static org.junit.Assert.assertTrue
 
-/**
- * @author Hans Dockter
- */
 class OsgiProjectSampleIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('osgi')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'osgi')
 
     @Test
     public void osgiProjectSamples() {
@@ -51,7 +48,7 @@ class OsgiProjectSampleIntegrationTest extends AbstractIntegrationTest {
     static void checkManifest(Manifest manifest, start) {
         assertEquals('Example Gradle Activator', manifest.mainAttributes.getValue('Bundle-Name'))
         assertEquals('2', manifest.mainAttributes.getValue('Bundle-ManifestVersion'))
-        assertEquals('Bnd-1.50.0', manifest.mainAttributes.getValue('Tool'))
+        assertEquals('Bnd-2.1.0.20130426-122213', manifest.mainAttributes.getValue('Tool'))
         assertTrue(start <= Long.parseLong(manifest.mainAttributes.getValue('Bnd-LastModified')))
         assertEquals('1.0.0', manifest.mainAttributes.getValue('Bundle-Version'))
         assertEquals('gradle_tooling.osgi', manifest.mainAttributes.getValue('Bundle-SymbolicName'))

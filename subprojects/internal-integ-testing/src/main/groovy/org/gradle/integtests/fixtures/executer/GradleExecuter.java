@@ -16,13 +16,15 @@
 package org.gradle.integtests.fixtures.executer;
 
 import groovy.lang.Closure;
+import groovy.lang.DelegatesTo;
 import org.gradle.api.Action;
-import org.gradle.launcher.daemon.registry.DaemonRegistry;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
+import org.gradle.test.fixtures.file.TestFile;
 
 import java.io.File;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public interface GradleExecuter {
@@ -137,13 +139,6 @@ public interface GradleExecuter {
     ExecutionFailure runWithFailure();
 
     /**
-     * Provides a daemon registry for any daemons started by this executer, which may be none.
-     *
-     * @return the daemon registry, never null.
-     */
-    DaemonRegistry getDaemonRegistry();
-
-    /**
      * Starts executing the build asynchronously.
      *
      * @return the handle, never null.
@@ -167,6 +162,15 @@ public interface GradleExecuter {
      * @return this executer
      */
     GradleExecuter withDefaultCharacterEncoding(String defaultCharacterEncoding);
+
+    /**
+     * Sets the default locale to use.
+     *
+     * Only makes sense for forking executers.
+     *
+     * @return this executer
+     */
+    GradleExecuter withDefaultLocale(Locale defaultLocale);
 
     /**
      * Set the number of seconds an idle daemon should live for.
@@ -201,26 +205,81 @@ public interface GradleExecuter {
     /**
      * Adds an action to be called immediately before execution, to allow extra configuration to be injected.
      */
-    void beforeExecute(Closure action);
+    void beforeExecute(@DelegatesTo(GradleExecuter.class) Closure action);
 
+    /**
+     * Adds an action to be called immediately after execution
+     */
+    void afterExecute(Action<? super GradleExecuter> action);
+
+    /**
+     * Adds an action to be called immediately after execution
+     */
+    void afterExecute(@DelegatesTo(GradleExecuter.class) Closure action);
+
+    /**
+     * The directory that the executer will use for any test specific storage.
+     *
+     * May or may not be the same directory as the build to be run.
+     */
     TestDirectoryProvider getTestDirectoryProvider();
 
+    /**
+     * Disables asserting that the execution did not trigger any deprecation warnings.
+     */
     GradleExecuter withDeprecationChecksDisabled();
 
+    /**
+     * Disables asserting that class loaders were not eagerly created, potentially leading to performance problems.
+     */
+    GradleExecuter withEagerClassLoaderCreationCheckDisabled();
+
+    /**
+     * Disables asserting that no unexpected stacktraces are present in the output.
+     */
     GradleExecuter withStackTraceChecksDisabled();
 
-    GradleExecuter setAllowExtraLogging(boolean allowExtraLogging);
+    /**
+     * An executer may decide to implicitly bump the logging level, unless this is called.
+     */
+    GradleExecuter noExtraLogging();
 
-    boolean isRequireGradleHome();
+    /**
+     * Requires that there is a gradle home for the execution, which in process execution does not.
+     */
+    GradleExecuter requireGradleHome();
 
-    GradleExecuter requireGradleHome(boolean requireGradleHome);
-
+    /**
+     * Configures that any daemons launched by or during the execution are unique to the test.
+     *
+     * This value is persistent across executions in the same test.
+     */
     GradleExecuter requireIsolatedDaemons();
 
+    /**
+     * Enables classloader caching.
+     *
+     * This value is persistent across executions in the same test.
+     */
+    GradleExecuter withClassLoaderCaching(boolean classLoaderCaching);
+
+    /**
+     * Configures a unique gradle user home dir for the test.
+     *
+     * The gradle user home dir used will be underneath the {@link #getTestDirectoryProvider()} directory.
+     *
+     * This value is persistent across executions in the same test.
+     */
     GradleExecuter requireOwnGradleUserHomeDir();
 
-    File getGradleUserHomeDir();
+    /**
+     * The Gradle user home dir that will be used for executions.
+     */
+    TestFile getGradleUserHomeDir();
 
+    /**
+     * The distribution used to execute.
+     */
     GradleDistribution getDistribution();
 
     /**

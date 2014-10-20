@@ -16,15 +16,9 @@
 
 package org.gradle.api.tasks;
 
-import org.gradle.api.file.DeleteAction;
 import org.gradle.api.internal.ConventionTask;
-import org.gradle.api.internal.file.DefaultFileOperations;
-import org.gradle.api.internal.file.FileOperations;
-import org.gradle.api.internal.project.DefaultProject;
-import org.gradle.util.JUnit4GroovyMockery;
+import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.util.WrapUtil;
-import org.jmock.Expectations;
-import org.jmock.Mockery;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -35,21 +29,13 @@ import java.io.IOException;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.*;
 
-/**
- * @author Hans Dockter
- */
 @RunWith(org.jmock.integration.junit4.JMock.class)
 public class DeleteTest extends AbstractConventionTaskTest {
-    private Mockery context = new JUnit4GroovyMockery();
-    private DeleteAction deleteAction = context.mock(DeleteAction.class);
     private Delete delete;
 
     @Before
     public void setUp() {
         delete = createTask(Delete.class);
-        DefaultFileOperations fileOperations = (DefaultFileOperations) ((DefaultProject)
-                delete.getProject()).getServices().get(FileOperations.class);
-        fileOperations.setDeleteAction(deleteAction);
     }
 
     public ConventionTask getTask() {
@@ -63,25 +49,18 @@ public class DeleteTest extends AbstractConventionTaskTest {
 
     @Test
     public void didWorkIsTrueWhenSomethingGetsDeleted() throws IOException {
-        context.checking(new Expectations() {{
-            one(deleteAction).delete(WrapUtil.toSet("someFile"));
-            returnValue(true);
-        }});
+        TestFile file = tmpDir.createFile("someFile");
 
-        delete.delete("someFile");
+        delete.delete(file);
         delete.execute();
 
-        assertFalse(delete.getDidWork());
+        assertTrue(delete.getDidWork());
+        assertFalse(file.exists());
     }
 
     @Test
     public void didWorkIsFalseWhenNothingDeleted() throws IOException {
-        context.checking(new Expectations() {{
-            one(deleteAction).delete(WrapUtil.toSet("someFile"));
-            returnValue(false);
-        }});
-
-        delete.delete("someFile");
+        delete.delete("does-not-exist");
         delete.execute();
 
         assertFalse(delete.getDidWork());

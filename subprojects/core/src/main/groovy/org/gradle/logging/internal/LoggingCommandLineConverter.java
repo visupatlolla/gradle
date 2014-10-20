@@ -25,9 +25,9 @@ import org.gradle.cli.ParsedCommandLine;
 import org.gradle.logging.LoggingConfiguration;
 import org.gradle.logging.ShowStacktrace;
 
-import java.util.Collection;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public class LoggingCommandLineConverter extends AbstractCommandLineConverter<LoggingConfiguration> {
@@ -49,56 +49,41 @@ public class LoggingCommandLineConverter extends AbstractCommandLineConverter<Lo
         logLevelMap.put(QUIET, LogLevel.QUIET);
         logLevelMap.put(INFO, LogLevel.INFO);
         logLevelMap.put(DEBUG, LogLevel.DEBUG);
-        logLevelMap.put("", LogLevel.LIFECYCLE);
         showStacktraceMap.put(FULL_STACKTRACE, ShowStacktrace.ALWAYS_FULL);
         showStacktraceMap.put(STACKTRACE, ShowStacktrace.ALWAYS);
     }
 
-    @Override
-    protected LoggingConfiguration newInstance() {
-        return new LoggingConfiguration();
-    }
-
     public LoggingConfiguration convert(ParsedCommandLine commandLine, LoggingConfiguration loggingConfiguration) throws CommandLineArgumentException {
-        loggingConfiguration.setLogLevel(getLogLevel(commandLine));
+        for (Map.Entry<String, LogLevel> entry : logLevelMap.entrySet()) {
+            if (commandLine.hasOption(entry.getKey())) {
+                loggingConfiguration.setLogLevel(entry.getValue());
+            }
+        }
+
+        for (Map.Entry<String, ShowStacktrace> entry : showStacktraceMap.entrySet()) {
+            if (commandLine.hasOption(entry.getKey())) {
+                loggingConfiguration.setShowStacktrace(entry.getValue());
+            }
+        }
+
         if (commandLine.hasOption(NO_COLOR)) {
             loggingConfiguration.setColorOutput(false);
         }
-        loggingConfiguration.setShowStacktrace(getShowStacktrace(commandLine));
+
         return loggingConfiguration;
-    }
-
-    private ShowStacktrace getShowStacktrace(ParsedCommandLine options) {
-        if (options.hasOption(FULL_STACKTRACE)) {
-            return ShowStacktrace.ALWAYS_FULL;
-        }
-        if (options.hasOption(STACKTRACE)) {
-            return ShowStacktrace.ALWAYS;
-        }
-        return ShowStacktrace.INTERNAL_EXCEPTIONS;
-    }
-
-    private LogLevel getLogLevel(ParsedCommandLine options) {
-        LogLevel logLevel = LogLevel.LIFECYCLE;
-        if (options.hasOption(QUIET)) {
-            logLevel = LogLevel.QUIET;
-        }
-        if (options.hasOption(INFO)) {
-            logLevel = LogLevel.INFO;
-        }
-        if (options.hasOption(DEBUG)) {
-            logLevel = LogLevel.DEBUG;
-        }
-        return logLevel;
     }
 
     public void configure(CommandLineParser parser) {
         parser.option(DEBUG, DEBUG_LONG).hasDescription("Log in debug mode (includes normal stacktrace).");
         parser.option(QUIET, QUIET_LONG).hasDescription("Log errors only.");
         parser.option(INFO, INFO_LONG).hasDescription("Set log level to info.");
+        parser.allowOneOf(DEBUG, QUIET, INFO);
+
         parser.option(NO_COLOR).hasDescription("Do not use color in the console output.");
+
         parser.option(STACKTRACE, STACKTRACE_LONG).hasDescription("Print out the stacktrace for all exceptions.");
         parser.option(FULL_STACKTRACE, FULL_STACKTRACE_LONG).hasDescription("Print out the full (very verbose) stacktrace for all exceptions.");
+        parser.allowOneOf(STACKTRACE, FULL_STACKTRACE_LONG);
     }
 
     /**
@@ -106,7 +91,6 @@ public class LoggingCommandLineConverter extends AbstractCommandLineConverter<Lo
      *
      * @param commandLineArgument a single command line argument (with no '-')
      * @return the corresponding log level or null if it doesn't match any.
-     * @author mhunsicker
      */
     public LogLevel getLogLevel(String commandLineArgument) {
         LogLevel logLevel = logLevelMap.get(commandLineArgument);
@@ -122,7 +106,6 @@ public class LoggingCommandLineConverter extends AbstractCommandLineConverter<Lo
      *
      * @param logLevel the log level.
      * @return the command line argument or null if this level cannot be represented on the command line.
-     * @author mhunsicker
      */
     public String getLogLevelCommandLine(LogLevel logLevel) {
         String commandLine = logLevelMap.inverse().get(logLevel);
@@ -137,19 +120,16 @@ public class LoggingCommandLineConverter extends AbstractCommandLineConverter<Lo
      * This returns the log levels that are supported on the command line.
      *
      * @return a collection of available log levels
-     * @author mhunsicker
      */
-    public Collection<LogLevel> getLogLevels() {
-        return Collections.unmodifiableCollection(logLevelMap.values());
+    public Set<LogLevel> getLogLevels() {
+        return new HashSet<LogLevel>(Arrays.asList(LogLevel.DEBUG, LogLevel.INFO, LogLevel.LIFECYCLE, LogLevel.QUIET));
     }
 
     /**
      * @return the set of short option strings that are used to configure log levels.
      */
     public Set<String> getLogLevelOptions() {
-        Set<String> options = new HashSet<String>(logLevelMap.keySet());
-        options.remove("");
-        return options;
+        return logLevelMap.keySet();
     }
 
     /**
@@ -157,7 +137,6 @@ public class LoggingCommandLineConverter extends AbstractCommandLineConverter<Lo
      *
      * @param commandLineArgument a single command line argument (with no '-')
      * @return the corresponding stack trace level or null if it doesn't match any.
-     * @author mhunsicker
      */
     public ShowStacktrace getShowStacktrace(String commandLineArgument) {
         ShowStacktrace showStacktrace = showStacktraceMap.get(commandLineArgument);
@@ -173,7 +152,6 @@ public class LoggingCommandLineConverter extends AbstractCommandLineConverter<Lo
      *
      * @param showStacktrace the stack trace level.
      * @return the command line argument or null if this level cannot be represented on the command line.
-     * @author mhunsicker
      */
     public String getShowStacktraceCommandLine(ShowStacktrace showStacktrace) {
         String commandLine = showStacktraceMap.inverse().get(showStacktrace);

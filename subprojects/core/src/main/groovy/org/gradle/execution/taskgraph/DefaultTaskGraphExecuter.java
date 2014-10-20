@@ -23,6 +23,7 @@ import org.gradle.api.execution.TaskExecutionListener;
 import org.gradle.api.specs.Spec;
 import org.gradle.execution.TaskFailureHandler;
 import org.gradle.execution.TaskGraphExecuter;
+import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.listener.ClosureBackedMethodInvocationDispatch;
 import org.gradle.listener.ListenerBroadcast;
 import org.gradle.listener.ListenerManager;
@@ -34,30 +35,33 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * @author Hans Dockter
- */
 public class DefaultTaskGraphExecuter implements TaskGraphExecuter {
     private static Logger logger = LoggerFactory.getLogger(DefaultTaskGraphExecuter.class);
+
+    private enum TaskGraphState {
+        EMPTY, DIRTY, POPULATED
+    }
 
     private final TaskPlanExecutor taskPlanExecutor;
     private final ListenerBroadcast<TaskExecutionGraphListener> graphListeners;
     private final ListenerBroadcast<TaskExecutionListener> taskListeners;
-    private final DefaultTaskExecutionPlan taskExecutionPlan = new DefaultTaskExecutionPlan();
-    private boolean populated;
+    private final DefaultTaskExecutionPlan taskExecutionPlan;
+    private TaskGraphState taskGraphState = TaskGraphState.EMPTY;
 
-    public DefaultTaskGraphExecuter(ListenerManager listenerManager, TaskPlanExecutor taskPlanExecutor) {
+    public DefaultTaskGraphExecuter(ListenerManager listenerManager, TaskPlanExecutor taskPlanExecutor, BuildCancellationToken cancellationToken) {
         this.taskPlanExecutor = taskPlanExecutor;
         graphListeners = listenerManager.createAnonymousBroadcaster(TaskExecutionGraphListener.class);
         taskListeners = listenerManager.createAnonymousBroadcaster(TaskExecutionListener.class);
-    }
-
-    public void useFilter(Spec<? super Task> filter) {
-        taskExecutionPlan.useFilter(filter);
+        taskExecutionPlan = new DefaultTaskExecutionPlan(cancellationToken);
     }
 
     public void useFailureHandler(TaskFailureHandler handler) {
         taskExecutionPlan.useFailureHandler(handler);
+    }
+
+    public void useFilter(Spec<? super Task> filter) {
+        taskExecutionPlan.useFilter(filter);
+        taskGraphState = TaskGraphState.DIRTY;
     }
 
     public void addTasks(Iterable<? extends Task> tasks) {
@@ -70,14 +74,14 @@ public class DefaultTaskGraphExecuter implements TaskGraphExecuter {
             taskSet.add(task);
         }
         taskExecutionPlan.addToTaskGraph(taskSet);
-        populated = true;
+        taskGraphState = TaskGraphState.DIRTY;
 
         logger.debug("Timing: Creating the DAG took " + clock.getTime());
     }
 
     public void execute() {
-        assertPopulated();
         Clock clock = new Clock();
+        ensurePopulated();
 
         graphListeners.getSource().graphPopulated(this);
         try {
@@ -117,12 +121,12 @@ public class DefaultTaskGraphExecuter implements TaskGraphExecuter {
     }
 
     public boolean hasTask(Task task) {
-        assertPopulated();
+        ensurePopulated();
         return taskExecutionPlan.getTasks().contains(task);
     }
 
     public boolean hasTask(String path) {
-        assertPopulated();
+        ensurePopulated();
         assert path != null && path.length() > 0;
         for (Task task : taskExecutionPlan.getTasks()) {
             if (task.getPath().equals(path)) {
@@ -133,14 +137,20 @@ public class DefaultTaskGraphExecuter implements TaskGraphExecuter {
     }
 
     public List<Task> getAllTasks() {
-        assertPopulated();
+        ensurePopulated();
         return taskExecutionPlan.getTasks();
     }
 
-    private void assertPopulated() {
-        if (!populated) {
-            throw new IllegalStateException(
-                    "Task information is not available, as this task execution graph has not been populated.");
+    private void ensurePopulated() {
+        switch (taskGraphState) {
+            case EMPTY:
+                throw new IllegalStateException(
+                        "Task information is not available, as this task execution graph has not been populated.");
+            case DIRTY:
+                taskExecutionPlan.determineExecutionPlan();
+                taskGraphState = TaskGraphState.POPULATED;
+                return;
+            case POPULATED:
         }
     }
 }

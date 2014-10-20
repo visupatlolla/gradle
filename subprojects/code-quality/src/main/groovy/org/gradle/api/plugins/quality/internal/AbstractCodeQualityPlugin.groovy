@@ -64,7 +64,7 @@ abstract class AbstractCodeQualityPlugin<T> implements Plugin<ProjectInternal> {
     }
 
     protected void createConfigurations() {
-        project.configurations.add(configurationName).with {
+        project.configurations.create(configurationName).with {
             visible = false
             transitive = true
             description = "The ${toolName} libraries to be used for this project."
@@ -72,8 +72,6 @@ abstract class AbstractCodeQualityPlugin<T> implements Plugin<ProjectInternal> {
             exclude group: 'ant', module: 'ant'
             exclude group: 'org.apache.ant', module: 'ant'
             exclude group: 'org.apache.ant', module: 'ant-launcher'
-            exclude group: 'org.codehaus.groovy', module: 'groovy'
-            exclude group: 'org.codehaus.groovy', module: 'groovy-all'
             exclude group: 'org.slf4j', module: 'slf4j-api'
             exclude group: 'org.slf4j', module: 'jcl-over-slf4j'
             exclude group: 'org.slf4j', module: 'log4j-over-slf4j'
@@ -109,7 +107,7 @@ abstract class AbstractCodeQualityPlugin<T> implements Plugin<ProjectInternal> {
     private void configureSourceSetRule() {
         project.plugins.withType(basePlugin) {
             project.sourceSets.all { SourceSet sourceSet ->
-                T task = project.tasks.add(sourceSet.getTaskName(taskBaseName, null), taskType)
+                T task = project.tasks.create(sourceSet.getTaskName(taskBaseName, null), taskType)
                 configureForSourceSet(sourceSet, task)
             }
         }

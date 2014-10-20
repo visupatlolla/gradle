@@ -16,15 +16,10 @@
 
 package org.gradle.api.tasks.diagnostics.internal.graph.nodes;
 
-import org.gradle.api.artifacts.ModuleVersionIdentifier;
-
 import java.util.Set;
 
-/**
-* by Szczepan Faber, created at: 7/27/12
-*/
 public interface RenderableDependency {
-    ModuleVersionIdentifier getId();
+    Object getId();
     String getName();
     String getDescription();
     boolean isResolvable();

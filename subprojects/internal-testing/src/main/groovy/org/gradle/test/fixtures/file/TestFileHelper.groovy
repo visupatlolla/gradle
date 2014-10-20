@@ -115,7 +115,7 @@ class TestFileHelper {
             throw new RuntimeException("Could not list permissions for '$file': $error")
         }
         def perms = result.split()[0]
-        assert perms.matches("[d\\-][rwx\\-]{9}[@\\+]?")
+        assert perms.matches("[d\\-][rwx\\-]{9}[@\\.\\+]?")
         return perms.substring(1, 10)
     }
 
@@ -173,14 +173,18 @@ class TestFileHelper {
         return process.inputStream.text.trim()
     }
 
-    Map<String, ?> exec(Object... args) {
-        def process = ([file.absolutePath] + (args as List)).execute()
-        def output = process.inputStream.text
-        def error = process.errorStream.text
+    ExecOutput exec(List args) {
+        return execute(args, null)
+    }
+
+    ExecOutput execute(List args, List env) {
+        def process = ([file.absolutePath] + args).execute(env, null)
+        String output = process.inputStream.text
+        String error = process.errorStream.text
         if (process.waitFor() != 0) {
             throw new RuntimeException("Could not execute $file. Error: $error, Output: $output")
         }
-        return [out: output, error: error]
+        return new ExecOutput(output, error)
     }
 
     public void zipTo(TestFile zipFile, boolean nativeTools) {

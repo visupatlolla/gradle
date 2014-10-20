@@ -24,6 +24,8 @@ import org.apache.tools.ant.taskdefs.Tar;
 import org.apache.tools.ant.taskdefs.Zip;
 import org.apache.tools.ant.types.EnumeratedAttribute;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
+import org.gradle.internal.nativeintegration.filesystem.FileSystem;
+import org.gradle.internal.nativeintegration.services.NativeServices;
 import org.hamcrest.Matcher;
 
 import java.io.*;
@@ -65,6 +67,16 @@ public class TestFile extends File {
         return new File(getAbsolutePath());
     }
 
+    @Override
+    public File getCanonicalFile() throws IOException {
+        return new File(getAbsolutePath()).getCanonicalFile();
+    }
+
+    @Override
+    public String getCanonicalPath() throws IOException {
+        return new File(getAbsolutePath()).getCanonicalPath();
+    }
+
     private static URI toUri(URL url) {
         try {
             return url.toURI();
@@ -99,6 +111,10 @@ public class TestFile extends File {
             files.add(file(path));
         }
         return files;
+    }
+
+    public TestFile withExtension(String extension) {
+        return getParentFile().file(getName().replaceAll("\\..*$", "." + extension));
     }
 
     public TestFile writelns(String... lines) {
@@ -326,6 +342,13 @@ public class TestFile extends File {
         return this;
     }
 
+    public TestFile assertIsDifferentFrom(TestFile other) {
+        assertIsFile();
+        other.assertIsFile();
+        assertHasChangedSince(other.snapshot());
+        return this;
+    }
+
     private byte[] getHash(String algorithm) {
         try {
             MessageDigest messageDigest = MessageDigest.getInstance(algorithm);
@@ -336,9 +359,12 @@ public class TestFile extends File {
         }
     }
 
-    public TestFile assertPermissions(Matcher<String> matcher) {
-        assertThat(String.format("mismatched permissions for '%s'", this), getPermissions(), matcher);
-        return this;
+    public void createLink(File target) {
+        createLink(target.getAbsolutePath());
+    }
+
+    public void createLink(String target) {
+        NativeServices.getInstance().get(FileSystem.class).createSymbolicLink(this, new File(target));
     }
 
     public String readLink() {
@@ -513,6 +539,11 @@ public class TestFile extends File {
         assertTrue(now.modTime != snapshot.modTime || !Arrays.equals(now.hash, snapshot.hash));
     }
 
+    public void assertContentsHaveChangedSince(Snapshot snapshot) {
+        Snapshot now = snapshot();
+        assertTrue(String.format("contents of %s have not changed", this), !Arrays.equals(now.hash, snapshot.hash));
+    }
+
     public void assertContentsHaveNotChangedSince(Snapshot snapshot) {
         Snapshot now = snapshot();
         assertArrayEquals(String.format("contents of %s has changed", this), snapshot.hash, now.hash);
@@ -539,8 +570,12 @@ public class TestFile extends File {
         }
     }
     
-    public Map<String, ?> exec(Object... args) {
-        return new TestFileHelper(this).exec(args);
+    public ExecOutput exec(Object... args) {
+        return new TestFileHelper(this).execute(Arrays.asList(args), null);
+    }
+
+    public ExecOutput execute(List args, List env) {
+        return new TestFileHelper(this).execute(args, env);
     }
 
     public class Snapshot {

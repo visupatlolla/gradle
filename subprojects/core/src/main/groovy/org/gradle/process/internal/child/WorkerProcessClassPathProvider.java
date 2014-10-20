@@ -35,17 +35,19 @@ import org.gradle.util.AntUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.util.*;
 
-public class WorkerProcessClassPathProvider implements ClassPathProvider {
+public class WorkerProcessClassPathProvider implements ClassPathProvider, Closeable {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkerProcessClassPathProvider.class);
     private final CacheRepository cacheRepository;
     private final ModuleRegistry moduleRegistry;
     private final Object lock = new Object();
     private ClassPath workerClassPath;
+    private PersistentCache workerClassPathCache;
 
     public WorkerProcessClassPathProvider(CacheRepository cacheRepository, ModuleRegistry moduleRegistry) {
         this.cacheRepository = cacheRepository;
@@ -65,13 +67,17 @@ public class WorkerProcessClassPathProvider implements ClassPathProvider {
             classpath = classpath.plus(moduleRegistry.getExternalModule("logback-classic").getClasspath());
             classpath = classpath.plus(moduleRegistry.getExternalModule("logback-core").getClasspath());
             classpath = classpath.plus(moduleRegistry.getExternalModule("jul-to-slf4j").getClasspath());
+            classpath = classpath.plus(moduleRegistry.getExternalModule("guava-jdk5").getClasspath());
             return classpath;
         }
         if (name.equals("WORKER_MAIN")) {
             synchronized (lock) {
                 if (workerClassPath == null) {
-                    PersistentCache cache = cacheRepository.cache("workerMain").withInitializer(new CacheInitializer()).open();
-                    workerClassPath = new DefaultClassPath(jarFile(cache));
+                    workerClassPathCache = cacheRepository
+                            .cache("workerMain")
+                            .withInitializer(new CacheInitializer())
+                            .open();
+                    workerClassPath = new DefaultClassPath(jarFile(workerClassPathCache));
                 }
                 LOGGER.debug("Using worker process classpath: {}", workerClassPath);
                 return workerClassPath;
@@ -79,6 +85,21 @@ public class WorkerProcessClassPathProvider implements ClassPathProvider {
         }
 
         return null;
+    }
+
+    public void close() {
+        // This isn't quite right. Should close the worker classpath cache once we're finished with the worker processes. This may be before the end of this build
+        // or they may be used across multiple builds
+        synchronized (lock) {
+            try {
+                if (workerClassPathCache != null) {
+                    workerClassPathCache.close();
+                }
+            } finally {
+                workerClassPathCache = null;
+                workerClassPath = null;
+            }
+        }
     }
 
     private static File jarFile(PersistentCache cache) {

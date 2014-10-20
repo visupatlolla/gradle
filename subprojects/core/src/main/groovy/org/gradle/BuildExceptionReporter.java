@@ -15,15 +15,12 @@
  */
 package org.gradle;
 
-import org.codehaus.groovy.runtime.StackTraceUtils;
 import org.gradle.api.Action;
-import org.gradle.api.GradleException;
-import org.gradle.api.internal.LocationAwareException;
 import org.gradle.api.logging.LogLevel;
-import org.gradle.configuration.ImplicitTasksConfigurer;
 import org.gradle.execution.MultipleBuildFailures;
-import org.gradle.execution.TaskSelectionException;
 import org.gradle.initialization.BuildClientMetaData;
+import org.gradle.internal.exceptions.FailureResolutionAware;
+import org.gradle.internal.exceptions.LocationAwareException;
 import org.gradle.logging.LoggingConfiguration;
 import org.gradle.logging.ShowStacktrace;
 import org.gradle.logging.StyledTextOutput;
@@ -43,7 +40,7 @@ import static org.gradle.logging.StyledTextOutput.Style.*;
  */
 public class BuildExceptionReporter extends BuildAdapter implements Action<Throwable> {
     private enum ExceptionStyle {
-        NONE, SANITIZED, FULL
+        NONE, FULL
     }
 
     private final StyledTextOutputFactory textOutputFactory;
@@ -112,39 +109,19 @@ public class BuildExceptionReporter extends BuildAdapter implements Action<Throw
 
     private FailureDetails constructFailureDetails(String granularity, Throwable failure) {
         FailureDetails details = new FailureDetails(failure);
-        if (failure instanceof GradleException) {
-            reportBuildFailure(granularity, (GradleException) failure, details);
-        } else {
-            reportInternalError(details);
-        }
+        reportBuildFailure(granularity, failure, details);
         return details;
     }
 
-    private void reportBuildFailure(String granularity, GradleException failure, FailureDetails details) {
-        if (loggingConfiguration.getShowStacktrace() == ShowStacktrace.ALWAYS || loggingConfiguration.getLogLevel() == LogLevel.DEBUG) {
-            details.exceptionStyle = ExceptionStyle.SANITIZED;
-        }
-        if (loggingConfiguration.getShowStacktrace() == ShowStacktrace.ALWAYS_FULL) {
+    private void reportBuildFailure(String granularity, Throwable failure, FailureDetails details) {
+        if (loggingConfiguration.getShowStacktrace() != ShowStacktrace.INTERNAL_EXCEPTIONS) {
             details.exceptionStyle = ExceptionStyle.FULL;
         }
 
-        if (failure instanceof TaskSelectionException) {
-            formatTaskSelectionFailure((TaskSelectionException) failure, details);
-        } else {
-            formatGenericFailure(granularity, failure, details);
-        }
+        formatGenericFailure(granularity, failure, details);
     }
 
-    private void formatTaskSelectionFailure(TaskSelectionException failure, FailureDetails details) {
-        assert failure.getCause() == null;
-        details.summary.text("Could not determine which tasks to execute.");
-        details.details.text(getMessage(failure));
-        details.resolution.text("Run ");
-        clientMetaData.describeCommand(details.resolution.withStyle(UserInput), ImplicitTasksConfigurer.TASKS_TASK);
-        details.resolution.text(" to get a list of available tasks.");
-    }
-
-    private void formatGenericFailure(String granularity, GradleException failure, final FailureDetails details) {
+    private void formatGenericFailure(String granularity, Throwable failure, final FailureDetails details) {
         details.summary.format("%s failed with an exception.", granularity);
 
         fillInFailureResolution(details);
@@ -161,7 +138,7 @@ public class BuildExceptionReporter extends BuildAdapter implements Action<Throw
                 @Override
                 public void node(final Throwable node) {
                     if (node == scriptException) {
-                        details.details.text(scriptException.getOriginalMessage());
+                        details.details.text(getMessage(scriptException.getCause()));
                     } else {
                         details.details.format("%n");
                         StringBuilder prefix = new StringBuilder();
@@ -193,12 +170,17 @@ public class BuildExceptionReporter extends BuildAdapter implements Action<Throw
     }
 
     private void fillInFailureResolution(FailureDetails details) {
+        if (details.failure instanceof FailureResolutionAware) {
+            ((FailureResolutionAware) details.failure).appendResolution(details.resolution, clientMetaData);
+            if (details.resolution.getHasContent()) {
+                details.resolution.append(' ');
+            }
+        }
         if (details.exceptionStyle == ExceptionStyle.NONE) {
             details.resolution.text("Run with ");
             details.resolution.withStyle(UserInput).format("--%s", LoggingCommandLineConverter.STACKTRACE_LONG);
             details.resolution.text(" option to get the stack trace. ");
         }
-
         if (loggingConfiguration.getLogLevel() != LogLevel.DEBUG) {
             details.resolution.text("Run with ");
             if (loggingConfiguration.getLogLevel() != LogLevel.INFO) {
@@ -216,18 +198,6 @@ public class BuildExceptionReporter extends BuildAdapter implements Action<Throw
             return message;
         }
         return String.format("%s (no error message)", throwable.getClass().getName());
-    }
-
-    public void reportInternalError(FailureDetails details) {
-        details.summary.text("Build aborted because of an internal error.");
-        details.details.text("Build aborted because of an unexpected internal error. Please file an issue at: http://forums.gradle.org.");
-
-        if (loggingConfiguration.getLogLevel() != LogLevel.DEBUG) {
-            details.resolution.text("Run with ");
-            details.resolution.withStyle(UserInput).format("--%s", LoggingCommandLineConverter.DEBUG_LONG);
-            details.resolution.text(" option to get additional debug info.");
-            details.exceptionStyle = ExceptionStyle.FULL;
-        }
     }
 
     private void writeFailureDetails(StyledTextOutput output, FailureDetails details) {
@@ -255,9 +225,6 @@ public class BuildExceptionReporter extends BuildAdapter implements Action<Throw
         Throwable exception = null;
         switch (details.exceptionStyle) {
             case NONE:
-                break;
-            case SANITIZED:
-                exception = StackTraceUtils.deepSanitize(details.failure);
                 break;
             case FULL:
                 exception = details.failure;

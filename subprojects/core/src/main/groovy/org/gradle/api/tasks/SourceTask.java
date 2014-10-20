@@ -23,8 +23,6 @@ import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.util.PatternFilterable;
 import org.gradle.api.tasks.util.PatternSet;
-import org.gradle.internal.Factory;
-import org.gradle.util.DeprecationLogger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +32,7 @@ import java.util.Set;
  * A {@code SourceTask} performs some operation on source files.
  */
 public class SourceTask extends ConventionTask implements PatternFilterable {
-    private final List<Object> source = new ArrayList<Object>();
+    protected final List<Object> source = new ArrayList<Object>();
     private final PatternFilterable patternSet = new PatternSet();
 
     /**
@@ -45,33 +43,12 @@ public class SourceTask extends ConventionTask implements PatternFilterable {
     @InputFiles
     @SkipWhenEmpty
     public FileTree getSource() {
-        FileTree src;
-        if (this.source.isEmpty()) {
-            src = DeprecationLogger.whileDisabled(new Factory<FileTree>() {
-                public FileTree create() {
-                    return getDefaultSource();
-                }
-            });
-        } else {
-            src = getProject().files(new ArrayList<Object>(this.source)).getAsFileTree();
-        }
+        FileTree src = getProject().files(new ArrayList<Object>(this.source)).getAsFileTree();
         return src == null ? getProject().files().getAsFileTree() : src.matching(patternSet);
     }
 
     /**
-     * Returns the default source for this task, if any.
-     *
-     * @return The source. May return null.
-     * @deprecated Use getSource() instead.
-     */
-    @Deprecated
-    protected FileTree getDefaultSource() {
-        DeprecationLogger.nagUserOfReplacedMethod("SourceTask.getDefaultSource()", "getSource()");
-        return null;
-    }
-
-    /**
-     * Sets the source for this task. The given source object is evaluated as for {@link org.gradle.api.Project#files(Object...)}.
+     * Sets the source for this task. The given source object is evaluated as per {@link org.gradle.api.Project#files(Object...)}.
      *
      * @param source The source.
      */
@@ -81,7 +58,7 @@ public class SourceTask extends ConventionTask implements PatternFilterable {
     }
 
     /**
-     * Adds some source to this task. The given source objects will be evaluated as for {@link org.gradle.api.Project#files(Object...)}.
+     * Adds some source to this task. The given source objects will be evaluated as per {@link org.gradle.api.Project#files(Object...)}.
      *
      * @param sources The source to add
      * @return this

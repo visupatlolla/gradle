@@ -23,7 +23,7 @@ import org.gradle.api.artifacts.maven.MavenResolver;
 import org.gradle.api.internal.plugins.DslObject;
 import org.gradle.api.internal.project.DefaultProject;
 import org.gradle.api.tasks.Upload;
-import org.gradle.util.HelperUtil;
+import org.gradle.util.TestUtil;
 
 import java.io.File;
 import java.util.Set;
@@ -33,11 +33,8 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 
-/**
- * @author Hans Dockter
- */
 public class MavenPluginTest {
-    private final DefaultProject project = HelperUtil.createRootProject();
+    private final DefaultProject project = TestUtil.createRootProject();
 
     @org.junit.Test
     public void addsConventionToProject() {
@@ -115,7 +112,7 @@ public class MavenPluginTest {
         MavenRepositoryHandlerConvention convention = new DslObject(task.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
         assertThat(convention, notNullValue());
 
-        task = project.getTasks().add("customUpload", Upload.class);
+        task = project.getTasks().create("customUpload", Upload.class);
         convention = new DslObject(task.getRepositories()).getConvention().getPlugin(MavenRepositoryHandlerConvention.class);
         assertThat(convention, notNullValue());
     }

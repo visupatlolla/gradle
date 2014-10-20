@@ -15,9 +15,9 @@
  */
 package org.gradle.launcher.daemon.client;
 
-import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.concurrent.CompositeStoppable;
 import org.gradle.internal.Factory;
-import org.gradle.internal.Stoppable;
+import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.launcher.daemon.diagnostics.DaemonStartupInfo;
 import org.gradle.launcher.daemon.server.Daemon;
 
@@ -38,7 +38,7 @@ class EmbeddedDaemonStarter implements DaemonStarter, Stoppable {
     public DaemonStartupInfo startDaemon() {
         Daemon daemon = daemonFactory.create();
         startDaemon(daemon);
-        return new DaemonStartupInfo(daemon.getUid(), null);
+        return new DaemonStartupInfo(daemon.getUid(), daemon.getAddress(), null);
     }
 
     public void startDaemon(Daemon daemon) {

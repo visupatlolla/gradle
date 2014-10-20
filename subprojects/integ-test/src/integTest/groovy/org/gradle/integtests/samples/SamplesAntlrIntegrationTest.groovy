@@ -24,17 +24,17 @@ import org.junit.Test
 
 class SamplesAntlrIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('antlr')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'antlr')
 
     @Test
     public void canBuild() {
         TestFile projectDir = sample.dir
 
         // Build and test projects
-        executer.inDirectory(projectDir).withTasks('clean', 'build').withArguments("--no-opt").run()
+        executer.inDirectory(projectDir).withTasks('clean', 'build').run()
 
         // Check tests have run
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(projectDir)
+        def result = new DefaultTestExecutionResult(projectDir)
         result.assertTestClassesExecuted('org.gradle.GrammarTest')
     }
 }

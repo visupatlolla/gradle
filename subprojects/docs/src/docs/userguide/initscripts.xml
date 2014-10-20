@@ -18,6 +18,9 @@
     <para>Gradle provides a powerful mechanism to allow customizing the build based on the current environment.  This
         mechanism also supports tools that wish to integrate with Gradle.
     </para>
+    <para>Note that this is completely different from the “<literal>init</literal>” task
+    provided by the “<literal>build-init</literal>” incubating plugin (see <xref linkend='build_init_plugin'/>).
+    </para>
     <section id='sec:basic_usage'>
         <title>Basic usage</title>
         <para>Initialization scripts (a.k.a. <firstterm>init scripts</firstterm>) are similar to other scripts in Gradle.
@@ -46,11 +49,11 @@
                     </para>
                 </listitem>
                 <listitem>
-                    <para>Register build loggers.  You might wish to customise how Gradle logs the events that it generates.
+                    <para>Register build loggers.  You might wish to customize how Gradle logs the events that it generates.
                     </para>
                 </listitem>
             </itemizedlist>
-            One main limitation of init scripts is that they cannot access classes in the buildSrc project (see
+            One main limitation of init scripts is that they cannot access classes in the <literal>buildSrc</literal> project (see
             <xref linkend='sec:build_sources'/> for details of this feature).
         </para>
     </section>
@@ -86,7 +89,7 @@
     </section>
     <section>
         <title>Writing an init script</title>
-        <para>Similar to a Gradle build script, an init script is a groovy script. Each init script has a
+        <para>Similar to a Gradle build script, an init script is a Groovy script. Each init script has a
             <apilink class="org.gradle.api.invocation.Gradle"/> instance associated with it. Any property reference
             and method call in the init script will delegate to this <classname>Gradle</classname> instance.
         </para>
@@ -107,8 +110,8 @@
     </section>
     <section id='sec:custom_classpath'>
         <title>External dependencies for the init script</title>
-        <para>In <xref linkend='sec:external_dependencies'/> is was explained how to add external dependencies to a
-            build script. Init scripts can similarly have external dependencies defined.  You do this using the
+        <para>In <xref linkend='sec:external_dependencies'/> it was explained how to add external dependencies to a
+            build script. Init scripts can also declare dependencies.  You do this with the
             <literal>initscript()</literal> method, passing in a closure which declares the init script classpath.
         </para>
         <sample id="declareExternalInitDependency" dir="userguide/initScripts/externalDependency" title="Declaring external dependencies for an init script">
@@ -127,4 +130,21 @@
             <output args="--init-script init.gradle -q doNothing"/>
         </sample>
     </section>
+    <section>
+            <title>Init script plugins</title>
+            <para>Similar to a Gradle build script or a Gradle settings file, plugins can be applied on init scripts.
+            </para>
+            <sample id="usePluginsInInitScripts" dir="userguide/initScripts/plugins" title="Using plugins in init scripts">
+                    <sourcefile file="init.gradle" snippet="init-script-plugin"/>
+                    <sourcefile file="build.gradle" snippet="show-repos-task"/>
+                    <output args="-q -I init.gradle showRepositories"/>
+            </sample>
+            <para>The plugin in the init script ensures that only a specified repository is used when running the build.
+            </para>
+            <para>When applying plugins within the init script, Gradle instantiates the plugin and calls the plugin
+                instance's <apilink class="org.gradle.api.Plugin" method="apply"/> method. The <literal>gradle</literal> object is passed as a parameter,
+                which can be used to configure all aspects of a build.
+                Of course, the applied plugin can be resolved as an external dependency as described in <xref linkend='sec:custom_classpath'/>
+            </para>
+        </section>
 </chapter>

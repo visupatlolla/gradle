@@ -24,7 +24,6 @@ import org.gradle.integtests.tooling.fixture.TextUtil
 import org.gradle.integtests.tooling.fixture.ToolingApi
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.tooling.GradleConnector
-import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.model.GradleProject
 import org.gradle.util.GradleVersion
 import spock.lang.Issue
@@ -33,7 +32,6 @@ class ToolingApiIntegrationTest extends AbstractIntegrationSpec {
 
     final ToolingApi toolingApi = new ToolingApi(distribution, temporaryFolder)
     final GradleDistribution otherVersion = new ReleasedVersionDistributions().mostRecentFinalRelease
-    final IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext()
 
     TestFile projectDir
 
@@ -57,8 +55,6 @@ class ToolingApiIntegrationTest extends AbstractIntegrationSpec {
     }
 
     def "tooling api uses the wrapper properties to determine which version to use"() {
-        toolingApi.isEmbedded = false
-
         projectDir.file('build.gradle').text = """
 task wrapper(type: Wrapper) { distributionUrl = '${otherVersion.binDistribution.toURI()}' }
 task check << { assert gradle.gradleVersion == '${otherVersion.version.version}' }
@@ -76,8 +72,6 @@ task check << { assert gradle.gradleVersion == '${otherVersion.version.version}'
     }
 
     def "tooling api searches up from the project directory to find the wrapper properties"() {
-        toolingApi.isEmbedded = false
-
         projectDir.file('settings.gradle') << "include 'child'"
         projectDir.file('build.gradle') << """
 task wrapper(type: Wrapper) { distributionUrl = '${otherVersion.binDistribution.toURI()}' }
@@ -101,7 +95,6 @@ allprojects {
     }
 
     def "can specify a gradle installation to use"() {
-        toolingApi.isEmbedded = false
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${otherVersion.version.version}'"
 
         when:
@@ -115,7 +108,6 @@ allprojects {
     }
 
     def "can specify a gradle distribution to use"() {
-        toolingApi.isEmbedded = false
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${otherVersion.version.version}'"
 
         when:
@@ -129,7 +121,6 @@ allprojects {
     }
 
     def "can specify a gradle version to use"() {
-        toolingApi.isEmbedded = false
         projectDir.file('build.gradle').text = "assert gradle.gradleVersion == '${otherVersion.version.version}'"
 
         when:
@@ -142,36 +133,25 @@ allprojects {
         model != null
     }
 
-    def "tooling api reports an error when the specified gradle version does not support the tooling api"() {
-        def distroZip = buildContext.distribution('0.9.2').binDistribution
-
-        when:
-        toolingApi.withConnector { connector -> connector.useDistribution(distroZip.toURI()) }
-        toolingApi.maybeFailWithConnection { connection -> connection.getModel(GradleProject.class) }
-
-        then:
-        UnsupportedVersionException e = thrown()
-        e.message == "The specified Gradle distribution '${distroZip.toURI()}' is not supported by this tooling API version (${GradleVersion.current().version}, protocol version 4)"
-    }
-
     @Issue("GRADLE-2419")
     def "tooling API does not hold JVM open"() {
         given:
         def buildFile = projectDir.file("build.gradle")
-        def startTimeoutMs = 60000
+        def startTimeoutMs = 90000
         def stateChangeTimeoutMs = 15000
         def stopTimeoutMs = 10000
         def retryIntervalMs = 500
 
-        def path = executer.gradleUserHomeDir.absolutePath
-        def path1 = distribution.gradleHomeDir.absolutePath
+        def gradleUserHomeDirPath = executer.gradleUserHomeDir.absolutePath
+        def gradleHomeDirPath = distribution.gradleHomeDir.absolutePath
+
         buildFile << """
             apply plugin: 'java'
             apply plugin: 'application'
 
             repositories {
                 maven { url "${new IntegrationTestBuildContext().libsRepo.toURI()}" }
-                maven { url "http://repo.gradle.org/gradle/repo" }
+                maven { url "https://repo.gradle.org/gradle/repo" }
             }
 
             dependencies {
@@ -182,7 +162,7 @@ allprojects {
             mainClassName = 'Main'
 
             run {
-                args = ["${TextUtil.escapeString(path1)}", "${TextUtil.escapeString(path)}"]
+                args = ["${TextUtil.escapeString(gradleHomeDirPath)}", "${TextUtil.escapeString(gradleUserHomeDirPath)}"]
                 systemProperty 'org.gradle.daemon.idletimeout', 10000
                 systemProperty 'org.gradle.daemon.registry.base', "${TextUtil.escapeString(projectDir.file("daemon").absolutePath)}"
             }
@@ -252,7 +232,6 @@ allprojects {
         when:
         GradleHandle handle = executer.inDirectory(projectDir)
                 .withTasks('run')
-                .withDaemonIdleTimeoutSecs(60)
                 .start()
 
         then:
@@ -283,6 +262,7 @@ allprojects {
             if (System.currentTimeMillis() - stopMarkerAt > stopTimeoutMs) {
                 throw new Exception("timeout after placing stop marker (JVM might have been held open")
             }
+            sleep retryIntervalMs
         }
 
         handle.waitForFinish()

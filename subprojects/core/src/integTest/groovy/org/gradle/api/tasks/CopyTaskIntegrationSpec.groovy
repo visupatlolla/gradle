@@ -16,12 +16,13 @@
 
 package org.gradle.api.tasks
 
+import org.gradle.api.plugins.ExtensionAware
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import spock.lang.Issue
 
 class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
 
-    @Issue("http://issues.gradle.org/browse/GRADLE-2181")
+    @Issue("https://issues.gradle.org/browse/GRADLE-2181")
     def "can copy files with unicode characters in name with non-unicode platform encoding"() {
         given:
         def weirdFileName = "القيادة والسيطرة - الإدارة.lnk"
@@ -45,7 +46,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         file("build/resources", weirdFileName).exists()
     }
 
-    @Issue("http://issues.gradle.org/browse/GRADLE-2181")
+    @Issue("https://issues.gradle.org/browse/GRADLE-2181")
     def "can copy files with unicode characters in name with default platform encoding"() {
         given:
         def weirdFileName = "القيادة والسيطرة - الإدارة.lnk"
@@ -66,5 +67,149 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
 
         then:
         file("build/resources", weirdFileName).exists()
+    }
+
+    def "nested specs and details arent extensible objects"() {
+        given:
+        file("a/a.txt").touch()
+
+        buildScript """
+            task copy(type: Copy) {
+                assert delegate instanceof ${ExtensionAware.name}
+                into "out"
+                from "a", {
+                    assert !(delegate instanceof ${ExtensionAware.name})
+                    eachFile {
+                        it.name = "rename"
+                        assert !(delegate instanceof ${ExtensionAware.name})
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds "copy"
+
+        then:
+        file("out/rename").exists()
+    }
+
+    @Issue("https://issues.gradle.org/browse/GRADLE-2838")
+    def "include empty dirs works when nested"() {
+        given:
+        file("a/a.txt") << "foo"
+        file("a/dirA").createDir()
+        file("b/b.txt") << "foo"
+        file("b/dirB").createDir()
+
+        buildScript """
+            task copyTask(type: Copy) {
+                into "out"
+                from "b", {
+                    includeEmptyDirs = false
+                }
+                from "a"
+                from "c", {}
+            }
+        """
+
+        when:
+        succeeds "copyTask"
+
+        then:
+        ":copyTask" in nonSkippedTasks
+        def destinationDir = file("out")
+        destinationDir.assertHasDescendants("a.txt", "b.txt")
+        destinationDir.listFiles().findAll { it.directory }*.name.toSet() == ["dirA"].toSet()
+    }
+
+    def "include empty dirs is overridden by subsequent"() {
+        given:
+        file("a/a.txt") << "foo"
+        file("a/dirA").createDir()
+        file("b/b.txt") << "foo"
+        file("b/dirB").createDir()
+
+
+        buildScript """
+            task copyTask(type: Copy) {
+                into "out"
+                from "b", {
+                    includeEmptyDirs = false
+                }
+                from "a"
+                from "c", {}
+                from "b", {
+                    includeEmptyDirs = true
+                }
+            }
+        """
+
+        when:
+        succeeds "copyTask"
+
+        then:
+        ":copyTask" in nonSkippedTasks
+
+        def destinationDir = file("out")
+        destinationDir.assertHasDescendants("a.txt", "b.txt")
+        destinationDir.listFiles().findAll { it.directory }*.name.toSet() == ["dirA", "dirB"].toSet()
+    }
+
+    @Issue("https://issues.gradle.org/browse/GRADLE-2902")
+    def "internal copy spec methods are not visible to users"() {
+        when:
+        file("res/foo.txt") << "bar"
+
+        buildScript """
+            task copyAction {
+                ext.source = 'res'
+                doLast {
+                    copy {
+                        from source
+                        into 'action'
+                    }
+                }
+            }
+            task copyTask(type: Copy) {
+                ext.children = 'res'
+                into "task"
+                into "dir", {
+                    from children
+                }
+            }
+        """
+
+        then:
+        succeeds "copyAction", "copyTask"
+
+        and:
+        file("action/foo.txt").exists()
+        file("task/dir/foo.txt").exists()
+    }
+
+    @Issue("https://issues.gradle.org/browse/GRADLE-3022")
+    def "filesMatching must match against sourcePath"() {
+        given:
+        file("a/b.txt") << "\$foo"
+
+        when:
+        buildScript """
+           task c(type: Copy) {
+               from("a") {
+                   filesMatching("b.txt") {
+                       expand foo: "bar"
+                   }
+                   into "nested"
+               }
+               into "out"
+           }
+        """
+
+        then:
+        succeeds "c"
+
+        and:
+        file("out/nested/b.txt").text == "bar"
     }
 }

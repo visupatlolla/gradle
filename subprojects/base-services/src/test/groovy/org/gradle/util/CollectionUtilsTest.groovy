@@ -40,6 +40,18 @@ class CollectionUtilsTest extends Specification {
         filter(4, 5, 6) == [4]
     }
 
+    def "array filtering"() {
+        given:
+        def spec = Specs.convertClosureToSpec { it < 5 }
+        def filter = { Integer[] nums -> filter(nums, spec) }
+
+        expect:
+        filter(1, 2, 3) == [1, 2, 3]
+        filter(7, 8, 9) == []
+        filter() == []
+        filter(4, 5, 6) == [4]
+    }
+
     def "list collecting"() {
         def transformer = new Transformer() {
             def transform(i) { i * 2 }
@@ -92,6 +104,11 @@ class CollectionUtilsTest extends Specification {
     def "collect array"() {
         expect:
         collect([1, 2, 3] as Object[], transformer { it * 2 }) == [2, 4, 6]
+    }
+
+    def "collect iterable"() {
+        expect:
+        collect([1, 2, 3] as Iterable, transformer { it * 2 }) == [2, 4, 6]
     }
 
     def "list stringize"() {
@@ -163,33 +180,43 @@ class CollectionUtilsTest extends Specification {
         every([], spec { false })
     }
 
+    def "intersection"() {
+        expect:
+        intersection([collA, collB]) == collC
+        where:
+        collA           | collB           | collC
+        []              | ["a", "b", "c"] | []
+        ['a', 'b', 'c'] | ["a", "b", "c"] | ['a', 'b', 'c']
+        ['a', 'b', 'c'] | ["b", "c"]      | ['b', 'c']
+    }
+
     def "flattenToList"() {
         given:
         def integers = [1, 2, 3]
 
         expect:
-        flattenToList([1, 2, 3] as Set) == [1, 2, 3]
-        flattenToList("asdfa") == ["asdfa"]
-        flattenToList(null) == [null]
-        flattenToList([null, [null, null]]) == [null, null, null]
-        flattenToList(integers) == integers
-        flattenToList([1, 2, 3] as Set) == [1, 2, 3]
-        flattenToList([] as Set) == []
+        flattenCollections([1, 2, 3] as Set) == [1, 2, 3]
+        flattenCollections("asdfa") == ["asdfa"]
+        flattenCollections(null) == [null]
+        flattenCollections([null, [null, null]]) == [null, null, null]
+        flattenCollections(integers) == integers
+        flattenCollections([1, 2, 3] as Set) == [1, 2, 3]
+        flattenCollections([] as Set) == []
 
         when:
-        flattenToList(Map, "foo")
+        flattenCollections(Map, "foo")
 
         then:
         thrown(ClassCastException)
 
         when:
-        flattenToList(Map, [[a: 1], "foo"])
+        flattenCollections(Map, [[a: 1], "foo"])
 
         then:
         thrown(ClassCastException)
 
         and:
-        flattenToList(Number, 1, [2, 3]) == [1, 2, 3]
+        flattenCollections(Number, 1, [2, 3]) == [1, 2, 3]
     }
 
     def "joining"() {
@@ -222,10 +249,16 @@ class CollectionUtilsTest extends Specification {
         null      | null as Object[]   | "separator"
     }
 
-    def "addAll"() {
+    def "addAll from iterable"() {
         expect:
         addAll([], [1, 2, 3] as Iterable) == [1, 2, 3]
         addAll([] as Set, [1, 2, 3, 1] as Iterable) == [1, 2, 3] as Set
+    }
+
+    def "addAll from array"() {
+        expect:
+        addAll([], 1, 2, 3) == [1, 2, 3]
+        addAll([] as Set, 1, 2, 3, 1) == [1, 2, 3] as Set
     }
 
     def "injection"() {
@@ -267,6 +300,59 @@ class CollectionUtilsTest extends Specification {
         toSet(set).is(set)
         toSet([]).empty
     }
+
+    def "to list"() {
+        expect:
+        toList([1, 2, 3] as Set) == [1, 2, 3]
+        toList([]).empty
+        toList(([1, 2, 3] as Vector).elements()) == [1, 2, 3]
+    }
+
+    def "sorting with comparator"() {
+        given:
+        def naturalComparator = { a, b -> a <=> b } as Comparator
+
+        expect:
+        def l = [1, 2, 3]
+        !sort(l, naturalComparator).is(l)
+
+        and:
+        sort([2, 1, 3], naturalComparator) == [1, 2, 3]
+        sort([2, 1, 3] as Set, naturalComparator) == [1, 2, 3]
+        sort([], naturalComparator) == []
+        sort([] as Set, naturalComparator) == []
+    }
+
+    def "sorting"() {
+        expect:
+        def l = [1, 2, 3]
+        !sort(l).is(l)
+
+        and:
+        sort([2, 1, 3]) == [1, 2, 3]
+        sort([2, 1, 3] as Set) == [1, 2, 3]
+        sort([]) == []
+        sort([] as Set) == []
+    }
+
+    def "grouping"() {
+        expect:
+        groupBy([1, 2, 3], transformer { "a" }).asMap() == ["a": [1, 2, 3]]
+        groupBy(["a", "b", "c"], transformer { it.toUpperCase() }).asMap() == ["A": ["a"], "B": ["b"], "C": ["c"]]
+        groupBy([], transformer { throw new AssertionError("shouldn't be called") }).isEmpty()
+    }
+
+    def unpack() {
+        expect:
+        unpack([{ 1 } as org.gradle.internal.Factory, { 2 } as org.gradle.internal.Factory, { 3 } as org.gradle.internal.Factory]).toList() == [1, 2, 3]
+        unpack([]).toList().isEmpty()
+    }
+
+    def nonEmptyOrNull() {
+        expect:
+        nonEmptyOrNull([1, 2, 3]) == [1, 2, 3]
+        nonEmptyOrNull([]) == null
+        }
 
     Spec<?> spec(Closure c) {
         Specs.convertClosureToSpec(c)

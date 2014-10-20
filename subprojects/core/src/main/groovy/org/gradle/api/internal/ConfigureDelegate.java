@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-
 package org.gradle.api.internal;
 
-import groovy.lang.Closure;
 import groovy.lang.GroovyObjectSupport;
-import org.gradle.api.Action;
+import groovy.lang.MissingMethodException;
+import groovy.lang.MissingPropertyException;
 
 public class ConfigureDelegate extends GroovyObjectSupport {
-    private final DynamicObject owner;
-    private final DynamicObject delegate;
-    private final Action<? super String> onMissing;
-    private final ThreadLocal<Boolean> configuring = new ThreadLocal<Boolean>() {
+    private static final Object[] EMPTY_PARAMS = new Object[0];
+
+    protected final DynamicObject _owner;
+    protected final DynamicObject _delegate;
+    private final ThreadLocal<Boolean> _configuring = new ThreadLocal<Boolean>() {
         @Override
         protected Boolean initialValue() {
             return false;
@@ -33,59 +33,94 @@ public class ConfigureDelegate extends GroovyObjectSupport {
     };
 
     public ConfigureDelegate(Object owner, Object delegate) {
-        this(owner, delegate, Actions.doNothing());
+        _owner = DynamicObjectUtil.asDynamicObject(owner);
+        _delegate = DynamicObjectUtil.asDynamicObject(delegate);
     }
 
-    public ConfigureDelegate(Object owner, Object delegate, Action<? super String> onMissing) {
-        this.owner = DynamicObjectUtil.asDynamicObject(owner);
-        this.delegate = DynamicObjectUtil.asDynamicObject(delegate);
-        this.onMissing = onMissing;
+    @Override
+    public String toString() {
+        return _delegate.toString();
     }
 
-    @SuppressWarnings("EmptyCatchBlock")
+    protected boolean _isConfigureMethod(String name, Object[] params) {
+        return false;
+    }
+
+    protected Object _configure(String name, Object[] params) {
+        // do nothing
+        return null;
+    }
+
     public Object invokeMethod(String name, Object paramsObj) {
         Object[] params = (Object[])paramsObj;
 
-        boolean isTopLevelCall = !configuring.get();
-        configuring.set(true);
+        boolean isAlreadyConfiguring = _configuring.get();
+        _configuring.set(true);
         try {
-            if (delegate.hasMethod(name, params)) {
-                return delegate.invokeMethod(name, params);
+            MissingMethodException failure;
+            try {
+                return _delegate.invokeMethod(name, params);
+            } catch (groovy.lang.MissingMethodException e) {
+                // TODO - should check the type as well, and below too, however we have no idea what the final type is going to be.
+                // Rework the DynamicObject contract to allow us to know if the method was found or not
+                if (!name.equals(e.getMethod())) {
+                    throw e;
+                }
+                failure = e;
+            }
+
+            if (!isAlreadyConfiguring && _isConfigureMethod(name, params)) {
+                return _configure(name, params);
             }
 
             // try the owner
             try {
-                return owner.invokeMethod(name, params);
+                return _owner.invokeMethod(name, params);
             } catch (groovy.lang.MissingMethodException e) {
+                if (!name.equals(e.getMethod())) {
+                    throw e;
+                }
                 // ignore
             }
 
-            boolean isConfigureMethod = (params.length == 1) && (params[0] instanceof Closure);
-            if (isTopLevelCall && isConfigureMethod) {
-                onMissing.execute(name);
-            }
+            throw failure;
 
-            return delegate.invokeMethod(name, params);
         } finally {
-            configuring.set(!isTopLevelCall);
+            _configuring.set(isAlreadyConfiguring);
         }
     }
 
-    @SuppressWarnings("EmptyCatchBlock")
     public Object get(String name) {
-        if (delegate.hasProperty(name)) {
-            return delegate.getProperty(name);
-        }
-
-        // try the owner
+        boolean isAlreadyConfiguring = _configuring.get();
+        _configuring.set(true);
         try {
-            return owner.getProperty(name);
-        } catch (groovy.lang.MissingPropertyException e) {
-            // Ignore
-        }
+            MissingPropertyException failure;
+            try {
+                return _delegate.getProperty(name);
+            } catch (MissingPropertyException e) {
+                if (!name.equals(e.getProperty())) {
+                    throw e;
+                }
+                failure = e;
+            }
 
-        // try the delegate again
-        onMissing.execute(name);
-        return delegate.getProperty(name);
+            // try the owner
+            try {
+                return _owner.getProperty(name);
+            } catch (MissingPropertyException e) {
+                if (!name.equals(e.getProperty())) {
+                    throw e;
+                }
+                // Ignore
+            }
+
+            if (isAlreadyConfiguring) {
+                throw failure;
+            }
+
+            return _configure(name, EMPTY_PARAMS);
+        } finally {
+            _configuring.set(isAlreadyConfiguring);
+        }
     }
 }

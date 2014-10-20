@@ -15,35 +15,23 @@
  */
 package org.gradle.api.internal.artifacts;
 
-import org.apache.ivy.plugins.resolver.DependencyResolver;
-import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
 import org.gradle.api.artifacts.repositories.IvyArtifactRepository;
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
-import org.gradle.api.internal.artifacts.repositories.FixedResolverArtifactRepository;
 
 /**
- * Factory for {@link ArtifactRepository} implementations.
- *
- * Differs from {@link org.gradle.api.internal.artifacts.dsl.RepositoryFactory} in that this is internal and does not provide
- * API for configuring the repositories at creation time. {@link org.gradle.api.internal.artifacts.dsl.RepositoryFactory} is the DSL
- * layer on top of this internal factory.
+ * Factory for {@link org.gradle.api.artifacts.repositories.ArtifactRepository} implementations.
  */
 public interface BaseRepositoryFactory {
-
-    ArtifactRepository createRepository(Object userDescription);
-
     FlatDirectoryArtifactRepository createFlatDirRepository();
 
     MavenArtifactRepository createMavenLocalRepository();
+
+    MavenArtifactRepository createJCenterRepository();
 
     MavenArtifactRepository createMavenCentralRepository();
 
     IvyArtifactRepository createIvyRepository();
 
     MavenArtifactRepository createMavenRepository();
-
-    DependencyResolver toResolver(ArtifactRepository repository);
-
-    FixedResolverArtifactRepository createResolverBackedRepository(DependencyResolver resolver);
 }

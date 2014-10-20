@@ -23,7 +23,7 @@ public interface ExecutionResult {
 
     String getError();
 
-    ExecutionResult assertOutputEquals(String expectedOutput, boolean ignoreExtraLines);
+    ExecutionResult assertOutputEquals(String expectedOutput, boolean ignoreExtraLines, boolean ignoreLineOrder);
 
     /**
      * Returns the tasks have been executed in order (includes tasks that were skipped). Note: ignores buildSrc tasks.
@@ -34,11 +34,6 @@ public interface ExecutionResult {
      * Asserts that exactly the given set of tasks have been executed in the given order. Note: ignores buildSrc tasks.
      */
     ExecutionResult assertTasksExecuted(String... taskPaths);
-
-    /**
-     * Asserts that exactly the given set of projects have been evaluated in the given order.
-     */
-    ExecutionResult assertProjectsEvaluated(String... projectPaths);
 
     /**
      * Returns the tasks that were skipped, in an undefined order. Note: ignores buildSrc tasks.

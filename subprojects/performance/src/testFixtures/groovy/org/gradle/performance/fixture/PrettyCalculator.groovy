@@ -16,23 +16,16 @@
 
 package org.gradle.performance.fixture
 
+import org.gradle.performance.measure.Amount
+import org.gradle.performance.measure.DataAmount
+import org.gradle.performance.measure.Duration
+
 import java.math.RoundingMode
 
-/**
- * by Szczepan Faber, created at: 10/30/12
- */
 class PrettyCalculator {
-
-    static String prettyBytes(Amount<DataAmount> bytes) {
-        return bytes.format()
-    }
 
     static String toBytes(Amount<DataAmount> bytes) {
         return bytes.toUnits(DataAmount.BYTES).value.setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toString() + " B"
-    }
-
-    static String prettyTime(Amount<Duration> duration) {
-        return duration.format()
     }
 
     static String toMillis(Amount<Duration> duration) {

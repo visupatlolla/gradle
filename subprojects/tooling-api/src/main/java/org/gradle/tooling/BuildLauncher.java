@@ -15,7 +15,8 @@
  */
 package org.gradle.tooling;
 
-import org.gradle.tooling.exceptions.UnsupportedBuildArgumentException;
+import org.gradle.api.Incubating;
+import org.gradle.tooling.model.Launchable;
 import org.gradle.tooling.model.Task;
 
 import java.io.File;
@@ -104,8 +105,28 @@ public interface BuildLauncher extends LongRunningOperation {
     BuildLauncher forTasks(Iterable<? extends Task> tasks);
 
     /**
+     * Sets the launchables to execute. If no entries are specified, the project's default tasks are executed.
+     *
+     * @param launchables The launchables for this build.
+     * @return this
+     * @since 1.12
+     */
+    @Incubating
+    BuildLauncher forLaunchables(Launchable... launchables);
+
+    /**
+     * Sets the launchables to execute. If no entries are specified, the project's default tasks are executed.
+     *
+     * @param launchables The launchables for this build.
+     * @return this
+     * @since 1.12
+     */
+    @Incubating
+    BuildLauncher forLaunchables(Iterable<? extends Launchable> launchables);
+
+    /**
      * {@inheritDoc}
-     * @since 1.0-rc-1
+     * @since 1.0
      */
     BuildLauncher withArguments(String ... arguments);
 
@@ -148,22 +169,25 @@ public interface BuildLauncher extends LongRunningOperation {
     /**
      * Executes the build, blocking until it is complete.
      *
-     * @throws UnsupportedVersionException When the target Gradle version does not support the features required for this build.
+     * @throws UnsupportedVersionException When the target Gradle version does not support build execution.
      * @throws org.gradle.tooling.exceptions.UnsupportedOperationConfigurationException
-     *          when you have configured the long running operation with a settings
-     *          like: {@link #setStandardInput(java.io.InputStream)}, {@link #setJavaHome(java.io.File)},
-     *          {@link #setJvmArguments(String...)} but those settings are not supported on the target Gradle.
+     *          When the target Gradle version does not support some requested configuration option such as
+     *          {@link #setStandardInput(java.io.InputStream)}, {@link #setJavaHome(java.io.File)},
+     *          {@link #setJvmArguments(String...)}.
+     * @throws org.gradle.tooling.exceptions.UnsupportedBuildArgumentException When there is a problem with build arguments provided by {@link #withArguments(String...)}.
      * @throws BuildException On some failure executing the Gradle build.
+     * @throws BuildCancelledException When the operation was cancelled before it completed successfully.
      * @throws GradleConnectionException On some other failure using the connection.
-     * @throws UnsupportedBuildArgumentException When there is a problem with build arguments provided by {@link #withArguments(String...)}
      * @throws IllegalStateException When the connection has been closed or is closing.
      * @since 1.0-milestone-3
      */
-    void run() throws GradleConnectionException, UnsupportedBuildArgumentException, IllegalStateException,
-            BuildException, UnsupportedVersionException;
+    void run() throws GradleConnectionException, IllegalStateException;
 
     /**
      * Launches the build. This method returns immediately, and the result is later passed to the given handler.
+     *
+     * <p>If the operation fails, the handler's {@link ResultHandler#onFailure(GradleConnectionException)}
+     * method is called with the appropriate exception. See {@link #run()} for a description of the various exceptions that the operation may fail with.
      *
      * @param handler The handler to supply the result to.
      * @throws IllegalStateException When the connection has been closed or is closing.

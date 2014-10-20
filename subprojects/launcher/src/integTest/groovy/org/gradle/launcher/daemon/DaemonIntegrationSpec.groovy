@@ -16,16 +16,12 @@
 
 package org.gradle.launcher.daemon
 
-import ch.qos.logback.classic.Level
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.executer.DaemonGradleExecuter
-import org.slf4j.LoggerFactory
+import org.gradle.launcher.daemon.testing.DaemonLogsAnalyzer
+import org.gradle.launcher.daemon.testing.DaemonsFixture
 
-/**
- * by Szczepan Faber, created at: 2/1/12
- */
-class DaemonIntegrationSpec extends AbstractIntegrationSpec {
-
+abstract class DaemonIntegrationSpec extends AbstractIntegrationSpec {
     String output
 
     @Override
@@ -36,7 +32,13 @@ class DaemonIntegrationSpec extends AbstractIntegrationSpec {
     def setup() {
         executer = new DaemonGradleExecuter(distribution, temporaryFolder)
         executer.requireIsolatedDaemons()
-        LoggerFactory.getLogger("org.gradle.cache.internal.DefaultFileLockManager").level = Level.INFO
+    }
+
+    @Override
+    protected void cleanupWhileTestFilesExist() {
+        // Need to kill daemons before test files are cleaned up, as the log files and registry are used to locate the daemons and these live under
+        // the test file directory.
+        daemons.killAll()
     }
 
     void stopDaemonsNow() {
@@ -50,7 +52,7 @@ class DaemonIntegrationSpec extends AbstractIntegrationSpec {
         output = result.output
     }
 
-    def cleanup() {
-        stopDaemonsNow()
+    DaemonsFixture getDaemons() {
+        new DaemonLogsAnalyzer(executer.daemonBaseDir)
     }
 }

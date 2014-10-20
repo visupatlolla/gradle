@@ -18,20 +18,28 @@
 
 package org.gradle.tooling.internal.provider
 
+import org.gradle.TaskExecutionRequest
+import org.gradle.initialization.BuildAction
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.tooling.internal.protocol.InternalLaunchable
+import org.gradle.tooling.internal.provider.connection.ProviderOperationParameters
 import org.junit.Rule
 import spock.lang.Specification
 
-/**
- * by Szczepan Faber, created at: 3/6/12
- */
+import static org.gradle.util.Matchers.isSerializable
+import static org.hamcrest.MatcherAssert.assertThat
+
 class ConfiguringBuildActionTest extends Specification {
     @Rule TestNameTestDirectoryProvider temp
+    def action = Stub(BuildAction)
+    def params = Stub(ProviderOperationParameters)
 
     def "allows configuring the start parameter with build arguments"() {
+        params.getArguments(_) >> ['-PextraProperty=foo', '-m']
+
         when:
-        def action = new ConfiguringBuildAction(arguments: ['-PextraProperty=foo', '-m'])
-        def start = action.configureStartParameter()
+        def action = new ConfiguringBuildAction(params, action, [:])
+        def start = action.startParameter
 
         then:
         start.projectProperties['extraProperty'] == 'foo'
@@ -41,10 +49,12 @@ class ConfiguringBuildActionTest extends Specification {
     def "can overwrite project dir via build arguments"() {
         given:
         def projectDir = temp.createDir('projectDir')
+        params.getProjectDir() >> projectDir
+        params.getArguments(_) >> ['-p', 'otherDir']
 
         when:
-        def action = new ConfiguringBuildAction(projectDirectory: projectDir, arguments: ['-p', 'otherDir'])
-        def start = action.configureStartParameter()
+        def action = new ConfiguringBuildAction(params, action, [:])
+        def start = action.startParameter
 
         then:
         start.projectDir == new File(projectDir, "otherDir")
@@ -54,22 +64,74 @@ class ConfiguringBuildActionTest extends Specification {
         given:
         def dotGradle = temp.createDir('.gradle')
         def projectDir = temp.createDir('projectDir')
+        params.getGradleUserHomeDir() >> dotGradle
+        params.getProjectDir() >> projectDir
+        params.getArguments(_) >> ['-g', 'otherDir']
 
         when:
-        def action = new ConfiguringBuildAction(gradleUserHomeDir: dotGradle, projectDirectory: projectDir, 
-                arguments: ['-g', 'otherDir'])
-        def start = action.configureStartParameter()
+        def action = new ConfiguringBuildAction(params, action, [:])
+        def start = action.startParameter
 
         then:
         start.gradleUserHomeDir == new File(projectDir, "otherDir")
     }
 
     def "can overwrite searchUpwards via build arguments"() {
+        given:
+        params.getArguments(_) >> ['-u']
+
         when:
-        def action = new ConfiguringBuildAction(arguments: ['-u'])
-        def start = action.configureStartParameter()
+        def action = new ConfiguringBuildAction(params, action, [:])
+        def start = action.startParameter
 
         then:
-        !start.isSearchUpwards()
+        !start.searchUpwards
+    }
+
+    def "searchUpwards configured directly on the action wins over the command line setting"() {
+        given:
+        params.getArguments(_) >> ['-u']
+        params.isSearchUpwards() >> true
+
+        when:
+        def action = new ConfiguringBuildAction(params, action, [:])
+        def start = action.startParameter
+
+        then:
+        start.searchUpwards
+    }
+
+    def "the start parameter is configured from properties"() {
+        when:
+        def action = new ConfiguringBuildAction(params, action, ['org.gradle.configureondemand': true])
+        def start = action.startParameter
+
+        then:
+        start.configureOnDemand
+    }
+
+    def "is serializable"() {
+        expect:
+        assertThat(new ConfiguringBuildAction({} as ProviderOperationParameters, null, [foo: 'bar']), isSerializable())
+    }
+
+    abstract class LaunchableExecutionRequest implements InternalLaunchable, TaskExecutionRequest {}
+
+    def "accepts launchables from consumer"() {
+        given:
+        def selector = Mock(LaunchableExecutionRequest)
+        _ * selector.args >> ['myTask']
+        _ * selector.projectPath >> ':child'
+
+        params.getLaunchables(_) >> [selector]
+
+        when:
+        def action = new ConfiguringBuildAction(params, action, [:])
+        def start = action.startParameter
+
+        then:
+        start.taskRequests.size() == 1
+        start.taskRequests[0].projectPath == ':child'
+        start.taskRequests[0].args == ['myTask']
     }
 }

@@ -16,9 +16,6 @@
 
 package org.gradle.performance.fixture
 
-/**
- * by Szczepan Faber, created at: 2/10/12
- */
 class TestProjectLocator {
 
     File findProjectDir(String name) {
@@ -27,7 +24,7 @@ class TestProjectLocator {
         def dirs = locations.collect { new File(it).absoluteFile }
         for (File dir: dirs) {
             if (dir.isDirectory()) {
-                return dir
+                return dir.canonicalFile
             }
         }
         def message = "Looks like the test project '$name' was not generated.\nI've tried to find it at:\n"

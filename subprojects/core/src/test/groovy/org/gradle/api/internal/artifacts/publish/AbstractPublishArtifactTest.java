@@ -15,20 +15,16 @@
  */
 package org.gradle.api.internal.artifacts.publish;
 
-import org.apache.ivy.core.module.id.ModuleId;
-import org.apache.ivy.core.module.id.ModuleRevisionId;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.util.JUnit4GroovyMockery;
 import org.jmock.integration.junit4.JUnit4Mockery;
 import org.jmock.lib.legacy.ClassImposteriser;
-import static org.junit.Assert.assertEquals;
 
 import java.io.File;
 import java.util.Date;
 
-/**
- * @author Hans Dockter
- */
+import static org.junit.Assert.assertEquals;
+
 public abstract class AbstractPublishArtifactTest {
     private static final File TEST_FILE = new File("artifactFile");
     private static final String TEST_NAME = "myfile-1";
@@ -36,7 +32,6 @@ public abstract class AbstractPublishArtifactTest {
     private static final String TEST_TYPE = "type";
     private static final String TEST_CLASSIFIER = "classifier";
     private static final Date TEST_DATE = new Date();
-    private static final ModuleRevisionId TEST_MODULE_REVISION_ID = new ModuleRevisionId(new ModuleId("group", "name"), "version");
 
     protected File getTestFile() {
         return TEST_FILE;
@@ -58,10 +53,6 @@ public abstract class AbstractPublishArtifactTest {
         return TEST_CLASSIFIER;
     }
 
-    protected ModuleRevisionId getTestModuleRevisionId() {
-        return TEST_MODULE_REVISION_ID;
-    }
-
     protected Date getDate() {
         return TEST_DATE;
     }
@@ -69,8 +60,6 @@ public abstract class AbstractPublishArtifactTest {
     protected JUnit4Mockery context = new JUnit4GroovyMockery() {{
         setImposteriser(ClassImposteriser.INSTANCE);
     }};
-
-    abstract PublishArtifact createPublishArtifact(String classifier);
 
     protected void assertCommonPropertiesAreSet(PublishArtifact artifact, boolean shouldHaveClassifier) {
         assertEquals(getTestName(), artifact.getName());

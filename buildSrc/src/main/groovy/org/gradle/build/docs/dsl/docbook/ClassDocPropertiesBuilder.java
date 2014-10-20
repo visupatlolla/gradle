@@ -23,12 +23,15 @@ import org.gradle.build.docs.dsl.source.model.PropertyMetaData;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.Text;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
 
 import java.util.*;
 
 public class ClassDocPropertiesBuilder extends ModelBuilderSupport {
     private final JavadocConverter javadocConverter;
     private final GenerationListener listener;
+    private static final Logger LOG = Logging.getLogger(ClassDocPropertiesBuilder.class);
 
     public ClassDocPropertiesBuilder(JavadocConverter javadocConverter, GenerationListener listener) {
         this.javadocConverter = javadocConverter;
@@ -65,12 +68,12 @@ public class ClassDocPropertiesBuilder extends ModelBuilderSupport {
             valueTitles.add(element);
         }
 
-        ClassDoc superClass = classDoc.getSuperClass();
-
         //adding the properties from the super class onto the inheriting class
         Map<String, PropertyDoc> props = new TreeMap<String, PropertyDoc>();
-        if (superClass != null) {
-            for (PropertyDoc propertyDoc : superClass.getClassProperties()) {
+        List<ClassDoc> superTypes = classDoc.getSuperTypes();
+        for (ClassDoc superType : superTypes) {
+            LOG.info("Getting properties for {}", superType.getName());
+            for (PropertyDoc propertyDoc : superType.getClassProperties()) {
                 Map<String, ExtraAttributeDoc> additionalValues = new LinkedHashMap<String, ExtraAttributeDoc>();
                 for (ExtraAttributeDoc attributeDoc : propertyDoc.getAdditionalValues()) {
                     String key = attributeDoc.getKey();
@@ -99,7 +102,7 @@ public class ClassDocPropertiesBuilder extends ModelBuilderSupport {
 
             Map<String, ExtraAttributeDoc> additionalValues = new LinkedHashMap<String, ExtraAttributeDoc>();
 
-            if (superClass != null) {
+            if (!superTypes.isEmpty()) {
                 PropertyDoc overriddenProp = props.get(propName);
                 if (overriddenProp != null) {
                     for (ExtraAttributeDoc attributeDoc : overriddenProp.getAdditionalValues()) {

@@ -23,14 +23,6 @@ import java.io.File;
  * Executes a closure against an isolated {@link org.gradle.api.AntBuilder} instance.
  */
 public interface IsolatedAntBuilder {
-    /**
-     * Creates a copy of this builder which uses the given version of Groovy. The default is to use the version of
-     * Groovy which Gradle is using.
-     *
-     * @param classpath The Groovy classpath.
-     * @return a copy of this builder
-     */
-    IsolatedAntBuilder withGroovy(Iterable<File> classpath);
 
     /**
      * Creates a copy of this builder which uses the given libraries. These classes are visible for use in
@@ -45,8 +37,6 @@ public interface IsolatedAntBuilder {
      * Executes the given closure against an isolated {@link org.gradle.api.AntBuilder} instance. The builder will
      * have visible to it an isolated version of Ant, Groovy and the specified libraries (if any). Each call to this
      * method is given a separate Ant project.
-     *
-     * @param antClosure The closure to execute
      */
     void execute(Closure antClosure);
 }

@@ -18,7 +18,6 @@ package org.gradle.integtests.fixtures;
 
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
-import org.gradle.test.fixtures.file.TestDirectoryProviderFinder;
 import org.gradle.test.fixtures.file.TestFile;
 import org.junit.rules.MethodRule;
 import org.junit.runners.model.FrameworkMethod;
@@ -34,22 +33,32 @@ import org.slf4j.LoggerFactory;
 public class Sample implements MethodRule {
     private final Logger logger = LoggerFactory.getLogger(Sample.class);
     private final String defaultSampleName;
+    private final String testSampleDirName;
 
     private TestFile sampleDir;
+    private TestDirectoryProvider testDirectoryProvider;
 
-    public Sample(String defaultSampleName) {
-        this.defaultSampleName = defaultSampleName;
+    public Sample(TestDirectoryProvider testDirectoryProvider) {
+        this(testDirectoryProvider, null);
     }
 
-    public Sample() {
-        this.defaultSampleName = null;
+    public Sample(TestDirectoryProvider testDirectoryProvider, String defaultSampleName) {
+        this(testDirectoryProvider, defaultSampleName, null);
+    }
+
+    public Sample(TestDirectoryProvider testDirectoryProvider, String defaultSampleName, String testSampleDirName) {
+        this.testDirectoryProvider = testDirectoryProvider;
+        this.defaultSampleName = defaultSampleName;
+        this.testSampleDirName = testSampleDirName;
     }
 
     public Statement apply(final Statement base, FrameworkMethod method, Object target) {
-        final TestDirectoryProvider testDirectoryProvider = new TestDirectoryProviderFinder().findFor(target);
-
         final String sampleName = getSampleName(method);
-        sampleDir = sampleName == null ? null : testDirectoryProvider.getTestDirectory().file(sampleName);
+        if (testSampleDirName != null) {
+            sampleDir = testDirectoryProvider.getTestDirectory().file(testSampleDirName);
+        } else {
+            sampleDir = sampleName == null ? null : testDirectoryProvider.getTestDirectory().file(sampleName);
+        }
 
         return new Statement() {
             @Override

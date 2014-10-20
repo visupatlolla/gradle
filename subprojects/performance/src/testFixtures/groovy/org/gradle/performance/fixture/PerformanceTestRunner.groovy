@@ -16,96 +16,122 @@
 
 package org.gradle.performance.fixture
 
-import org.gradle.api.logging.Logging
 import org.gradle.integtests.fixtures.executer.GradleDistribution
-import org.gradle.integtests.fixtures.executer.GradleExecuter
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
-import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistribution
 import org.gradle.integtests.fixtures.versions.ReleasedVersionDistributions
-import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.internal.jvm.Jvm
+import org.gradle.internal.os.OperatingSystem
+import org.gradle.performance.measure.Amount
+import org.gradle.performance.measure.DataAmount
+import org.gradle.performance.measure.Duration
+import org.gradle.performance.measure.MeasuredOperation
+import org.gradle.test.fixtures.file.TestDirectoryProvider
+import org.gradle.util.GradleVersion
 
 public class PerformanceTestRunner {
+    TestDirectoryProvider testDirectoryProvider
+    GradleDistribution current
+    IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext()
+    DataReporter reporter
+    OperationTimer timer = new OperationTimer()
+    TestProjectLocator testProjectLocator = new TestProjectLocator()
 
-    private final static LOGGER = Logging.getLogger(PerformanceTestRunner.class)
-
-    def testDirectoryProvider = new TestNameTestDirectoryProvider()
-    def current = new UnderDevelopmentGradleDistribution()
-    def buildContext = new IntegrationTestBuildContext()
-
+    String testId
     String testProject
     int runs
     int warmUpRuns
 
-    List<String> tasksToRun = []
-    DataCollector dataCollector = new MemoryInfoCollector(outputFileName: "build/totalMemoryUsed.txt")
-    List<String> args = []
+    //sub runs 'inside' a run. Useful for tests with the daemon
+    int subRuns
 
-    List<String> targetVersions = ['last']
-    List<Amount<Duration>> maxExecutionTimeRegression = [Duration.millis(0)]
-    List<Amount<DataAmount>> maxMemoryRegression = [DataAmount.bytes(0)]
+    List<String> tasksToRun = []
+    DataCollector dataCollector = new CompositeDataCollector(
+            new MemoryInfoCollector(outputFileName: "build/totalMemoryUsed.txt"),
+            new GCLoggingCollector())
+    List<String> args = []
+    List<String> gradleOpts = []
+
+    List<String> targetVersions = []
+    Amount<Duration> maxExecutionTimeRegression = Duration.millis(0)
+    Amount<DataAmount> maxMemoryRegression = DataAmount.bytes(0)
 
     PerformanceResults results
+    GradleExecuterProvider executerProvider = new GradleExecuterProvider()
 
     PerformanceResults run() {
-        assert targetVersions.size() == maxExecutionTimeRegression.size()
-        assert targetVersions.size() == maxMemoryRegression.size()
-
-        def baselineVersions = []
-        targetVersions.eachWithIndex { it, idx ->
-            def mostRecentFinalRelease = new ReleasedVersionDistributions().mostRecentFinalRelease.version.version
-            def ver = (it == 'last') ? mostRecentFinalRelease : it
-            baselineVersions << new BaselineVersion(version: ver,
-                    maxExecutionTimeRegression: maxExecutionTimeRegression[idx],
-                    maxMemoryRegression: maxMemoryRegression[idx],
-                    results: new MeasuredOperationList(name: "Gradle $ver")
-            )
-        }
+        assert !targetVersions.empty
+        assert testId
 
         results = new PerformanceResults(
-                baselineVersions: baselineVersions,
-                displayName: "Results for test project '$testProject' with tasks ${tasksToRun.join(', ')}")
+                testId: testId,
+                testProject: testProject,
+                tasks: tasksToRun,
+                args: args,
+                jvm: Jvm.current().toString(),
+                operatingSystem: OperatingSystem.current().toString(),
+                versionUnderTest: GradleVersion.current().getVersion(),
+                vcsBranch: Git.current().branchName,
+                vcsCommit: Git.current().commitId,
+                testTime: System.currentTimeMillis())
+
+        def releasedDistributions = new ReleasedVersionDistributions()
+        def releasedVersions = releasedDistributions.all*.version.version
+        def mostRecentFinalRelease = releasedDistributions.mostRecentFinalRelease.version.version
+        def currentBaseVersion = GradleVersion.current().getBaseVersion().version
+        def allVersions = targetVersions.collect { (it == 'last') ? mostRecentFinalRelease : it }.unique()
+        allVersions.remove(currentBaseVersion)
+
+        // A target version may be something that is yet unreleased, so filter that out
+        allVersions.removeAll { !releasedVersions.contains(it) }
+
+        assert !allVersions.isEmpty()
+
+        allVersions.each { it ->
+            def baselineVersion = results.baseline(it)
+            baselineVersion.maxExecutionTimeRegression = maxExecutionTimeRegression
+            baselineVersion.maxMemoryRegression = maxMemoryRegression
+        }
 
         println "Running performance tests for test project '$testProject', no. of runs: $runs"
         warmUpRuns.times {
             println "Executing warm-up run #${it + 1}"
-            runOnce()
+            runNow(1) //warm-up will not do any sub-runs
         }
         results.clear()
         runs.times {
             println "Executing test run #${it + 1}"
-            runOnce()
+            runNow(subRuns)
         }
+        reporter.report(results)
         results
     }
 
-    void runOnce() {
-        File projectDir = new TestProjectLocator().findProjectDir(testProject)
-        results.baselineVersions.reverse().each {
+    void runNow(int subRuns) {
+        File projectDir = testProjectLocator.findProjectDir(testProject)
+        results.baselineVersions.each {
             println "Gradle ${it.version}..."
-            runOnce(buildContext.distribution(it.version), projectDir, it.results)
+            runNow(buildContext.distribution(it.version), projectDir, it.results, subRuns)
         }
 
         println "Current Gradle..."
-        runOnce(current, projectDir, results.current)
+        runNow(current, projectDir, results.current, subRuns)
     }
 
-    void runOnce(GradleDistribution dist, File projectDir, MeasuredOperationList results) {
-        def executer = this.executer(dist, projectDir)
-        def operation = MeasuredOperation.measure { MeasuredOperation operation ->
-            executer.run()
+    void runNow(GradleDistribution dist, File projectDir, MeasuredOperationList results, int subRuns) {
+        def operation = timer.measure { MeasuredOperation operation ->
+            subRuns.times {
+                //creation of executer is included in measuer operation
+                //this is not ideal but it does not prevent us from finding performance regressions
+                //because extra time is equally added to all executions
+                def executer = executerProvider.executer(this, dist, projectDir)
+                dataCollector.beforeExecute(projectDir, executer)
+                executer.run()
+            }
         }
-        dataCollector.collect(projectDir, operation)
+        executerProvider.executer(this, dist, projectDir).withTasks("--stop").run()
+        if (operation.exception == null) {
+            dataCollector.collect(projectDir, operation)
+        }
         results.add(operation)
-    }
-
-    GradleExecuter executer(GradleDistribution dist, File projectDir) {
-        dist.executer(testDirectoryProvider).
-                requireGradleHome(true).
-                withDeprecationChecksDisabled().
-                withStackTraceChecksDisabled().
-                withArguments('-u').
-                inDirectory(projectDir).
-                withTasks(tasksToRun).
-                withArguments(args)
     }
 }

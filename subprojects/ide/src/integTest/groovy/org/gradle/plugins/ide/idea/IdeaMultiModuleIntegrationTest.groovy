@@ -20,12 +20,9 @@ import org.gradle.plugins.ide.AbstractIdeIntegrationTest
 import org.junit.Rule
 import org.junit.Test
 
-/**
- * @author Szczepan Faber, @date 03.03.11
- */
 class IdeaMultiModuleIntegrationTest extends AbstractIdeIntegrationTest {
     @Rule
-    public final TestResources testResources = new TestResources()
+    public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
     void buildsCorrectModuleDependencies() {
@@ -69,10 +66,14 @@ project(':shared:model') {
         executer.usingBuildScript(buildFile).usingSettingsFile(settingsFile).withTasks("ideaModule").run()
 
         //then
-        def apiDeps = parseImlDependencies(project: 'master/api', "api.iml")
-        ['shared-api', 'model'].each { assert apiDeps.contains(it) }
-        def modelDeps = parseImlDependencies(project: 'master/shared/model', "model.iml")
-        ['util'].each { assert modelDeps.contains(it) }
+        def dependencies = parseIml("master/api/api.iml").dependencies
+        assert dependencies.modules.size() == 2
+        dependencies.assertHasModule("COMPILE", "shared-api")
+        dependencies.assertHasModule("TEST", "model")
+
+        dependencies = parseIml("master/shared/model/model.iml").dependencies
+        assert dependencies.modules.size() == 1
+        dependencies.assertHasModule("TEST", "util")
     }
 
     @Test
@@ -139,30 +140,18 @@ project(':services:utilities') {
 
         //then
         assertIprContainsCorrectModules()
-        assertApiModuleContainsCorrectDependencies()
-        assertServicesUtilModuleContainsCorrectDependencies()
-    }
 
-    def assertServicesUtilModuleContainsCorrectDependencies() {
-        List moduleDeps = parseImlDependencies(project: 'master/services/utilities', "services-util.iml")
+        def moduleDeps = parseIml("master/api/api.iml").dependencies
+        assert moduleDeps.modules.size() == 2
+        moduleDeps.assertHasModule("COMPILE", "shared-api")
+        moduleDeps.assertHasModule("COMPILE", "very-cool-model")
 
-        assert moduleDeps.contains("very-cool-model")
-        assert moduleDeps.contains("util")
-        assert moduleDeps.contains("shared-api")
-        assert moduleDeps.contains("contrib-services-util")
-    }
-
-    List parseImlDependencies(options, file) {
-        def iml = parseFile(options, file)
-        def moduleDeps = iml.component.orderEntry.'@module-name'.collect { it.text() }
-        return moduleDeps
-    }
-
-    def assertApiModuleContainsCorrectDependencies() {
-        def moduleDeps = parseImlDependencies(project: 'master/api', "api.iml")
-
-        assert moduleDeps.contains("very-cool-model")
-        assert moduleDeps.contains("shared-api")
+        moduleDeps = parseIml("master/services/utilities/services-util.iml").dependencies
+        assert moduleDeps.modules.size() == 4
+        moduleDeps.assertHasModule("COMPILE", "shared-api")
+        moduleDeps.assertHasModule("COMPILE", "very-cool-model")
+        moduleDeps.assertHasModule("COMPILE", "util")
+        moduleDeps.assertHasModule("COMPILE", "contrib-services-util")
     }
 
     def assertIprContainsCorrectModules() {
@@ -301,5 +290,49 @@ allprojects {
         //then
         String content = getFile(project: 'master', 'master.ipr').text
         assert content.count('filepath="$PROJECT_DIR$/api/api.iml"') == 1
+    }
+
+    @Test
+    void buildsCorrectModuleDependenciesWithScopes() {
+        def settingsFile = file("master/settings.gradle")
+        settingsFile << """
+include 'api'
+include 'impl'
+include 'app'
+"""
+
+        def buildFile = file("master/build.gradle")
+        buildFile << """
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+}
+
+project(':impl') {
+    dependencies {
+        compile project(':api')
+    }
+}
+
+project(':app') {
+    dependencies {
+        compile project(':api')
+        testCompile project(':impl')
+        runtime project(':impl')
+    }
+}
+"""
+
+        //when
+        executer.usingBuildScript(buildFile).usingSettingsFile(settingsFile).withTasks("ideaModule").run()
+
+        //then
+        def dependencies = parseIml("master/app/app.iml").dependencies
+        assert dependencies.modules.size() == 3
+        dependencies.assertHasInheritedJdk()
+        dependencies.assertHasSource('false')
+        dependencies.assertHasModule('COMPILE', 'api')
+        dependencies.assertHasModule('TEST', 'impl')
+        dependencies.assertHasModule('RUNTIME', 'impl')
     }
 }

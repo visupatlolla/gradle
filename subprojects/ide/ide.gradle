@@ -13,11 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+sourceSets.main.java.srcDirs = []
+sourceSets.main.groovy.srcDirs = ['src/main/java', 'src/main/groovy']
+
 dependencies {
-    groovy libraries.groovy
+    compile libraries.groovy
 
     compile project(':scala')
     compile project(':core')
+    compile project(':launcher')
     compile project(':plugins')
     compile project(':ear')
     compile project(':toolingApi')
@@ -25,7 +30,7 @@ dependencies {
     compile libraries.inject
 
     testCompile libraries.xmlunit
-    testCompile project(':coreImpl')
+    testCompile project(':dependencyManagement')
 }
 
 useTestFixtures()

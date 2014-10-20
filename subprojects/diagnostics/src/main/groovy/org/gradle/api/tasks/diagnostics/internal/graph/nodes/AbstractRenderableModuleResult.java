@@ -16,28 +16,25 @@
 
 package org.gradle.api.tasks.diagnostics.internal.graph.nodes;
 
-import org.gradle.api.artifacts.ModuleVersionIdentifier;
-import org.gradle.api.artifacts.result.ResolvedModuleVersionResult;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.artifacts.result.ResolvedComponentResult;
 
 import java.util.Set;
 
-/**
- * by Szczepan Faber, created at: 8/10/12
- */
 public abstract class AbstractRenderableModuleResult implements RenderableDependency {
 
-    protected final ResolvedModuleVersionResult module;
+    protected final ResolvedComponentResult module;
 
-    public AbstractRenderableModuleResult(ResolvedModuleVersionResult module) {
+    public AbstractRenderableModuleResult(ResolvedComponentResult module) {
         this.module = module;
     }
 
-    public ModuleVersionIdentifier getId() {
+    public ComponentIdentifier getId() {
         return module.getId();
     }
 
     public String getName() {
-        return module.getId().getGroup() + ":" + module.getId().getName() + ":" + module.getId().getVersion();
+        return getId().getDisplayName();
     }
 
     public String getDescription() {

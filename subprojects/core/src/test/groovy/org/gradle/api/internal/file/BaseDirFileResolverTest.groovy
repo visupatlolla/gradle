@@ -19,7 +19,6 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.PathValidation
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection
-import org.gradle.internal.nativeplatform.filesystem.FileSystems
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.PreconditionVerifier
 import org.gradle.util.Requires
@@ -33,9 +32,6 @@ import java.util.concurrent.Callable
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
 
-/**
- * @author Hans Dockter
- */
 class BaseDirFileResolverTest {
     static final String TEST_PATH = 'testpath'
 
@@ -49,7 +45,7 @@ class BaseDirFileResolverTest {
 
     @Before public void setUp() {
         baseDir = rootDir.testDirectory
-        baseDirConverter = new BaseDirFileResolver(FileSystems.default, baseDir)
+        baseDirConverter = new BaseDirFileResolver(TestFiles.fileSystem(), baseDir)
         testFile = new File(baseDir, 'testfile')
         testDir = new File(baseDir, 'testdir')
     }
@@ -145,16 +141,13 @@ class BaseDirFileResolverTest {
     @Test public void testResolveRelativePath() {
         String relativeFileName = "relative"
         assertEquals(new File(baseDir, relativeFileName), baseDirConverter.resolve(relativeFileName))
+        assertEquals(new File(baseDir, relativeFileName), baseDirConverter.resolve(new StringBuffer(relativeFileName)))
         assertEquals(baseDir, baseDirConverter.resolve("."))
     }
 
     @Test public void testResolveFileWithAbsolutePath() {
         File absoluteFile = new File('nonRelative').canonicalFile
         assertEquals(absoluteFile, baseDirConverter.resolve(absoluteFile))
-    }
-
-    @Test public void testResolveRelativeObject() {
-        assertEquals(new File(baseDir, "12"), baseDirConverter.resolve(12))
     }
 
     @Test public void testResolveFileWithRelativePath() {

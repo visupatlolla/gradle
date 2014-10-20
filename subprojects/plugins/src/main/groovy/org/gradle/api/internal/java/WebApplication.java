@@ -16,19 +16,17 @@
 
 package org.gradle.api.internal.java;
 
-import org.gradle.api.artifacts.Dependency;
-import org.gradle.api.artifacts.DependencySet;
+import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.PublishArtifact;
-import org.gradle.api.artifacts.PublishArtifactSet;
-import org.gradle.api.internal.DefaultDomainObjectSet;
-import org.gradle.api.internal.artifacts.DefaultDependencySet;
-import org.gradle.api.internal.artifacts.DefaultPublishArtifactSet;
 import org.gradle.api.internal.component.SoftwareComponentInternal;
+import org.gradle.api.internal.component.Usage;
 
 import java.util.Collections;
+import java.util.Set;
 
 public class WebApplication implements SoftwareComponentInternal {
 
+    private final Usage webArchiveUsage = new WebArchiveUsage();
     private final PublishArtifact warArtifact;
 
     public WebApplication(PublishArtifact warArtifact) {
@@ -39,12 +37,21 @@ public class WebApplication implements SoftwareComponentInternal {
         return "web";
     }
 
-    public PublishArtifactSet getArtifacts() {
-        return new DefaultPublishArtifactSet("publish", new DefaultDomainObjectSet<PublishArtifact>(PublishArtifact.class, Collections.singleton(warArtifact)));
+    public Set<Usage> getUsages() {
+        return Collections.singleton(webArchiveUsage);
     }
 
-    public DependencySet getRuntimeDependencies() {
-        // TODO: What are the correct dependencies for a web application?
-        return new DefaultDependencySet("publish", new DefaultDomainObjectSet<Dependency>(Dependency.class));
+    private class WebArchiveUsage implements Usage {
+        public String getName() {
+            return "master";
+        }
+
+        public Set<PublishArtifact> getArtifacts() {
+            return Collections.singleton(warArtifact);
+        }
+
+        public Set<ModuleDependency> getDependencies() {
+            return Collections.emptySet();
+        }
     }
 }

@@ -16,23 +16,46 @@
 
 package org.gradle.launcher.daemon
 
+import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.launcher.daemon.logging.DaemonMessages
-import org.gradle.test.fixtures.ConcurrentTestUtil
+import org.gradle.launcher.daemon.server.exec.DaemonStoppedException
+import org.gradle.test.fixtures.server.http.CyclicBarrierHttpServer
 import org.gradle.util.TextUtil
-/**
- * by Szczepan Faber, created at: 1/20/12
- */
+import org.junit.Rule
+import spock.lang.IgnoreIf
+
 class StoppingDaemonIntegrationSpec extends DaemonIntegrationSpec {
-    def "can handle multiple concurrent stop requests"() {
-        given:
-        file('build.gradle') << '''
-file('marker.txt') << 'waiting'
-Thread.sleep(60000)
-'''
+    @Rule CyclicBarrierHttpServer server = new CyclicBarrierHttpServer()
+
+    def "daemon process exits and client logs nice error message when daemon stopped"() {
+        buildFile << """
+task block << {
+    new URL("$server.uri").text
+}
+"""
 
         when:
-        def build = executer.start()
-        ConcurrentTestUtil.poll(20) { assert file('marker.txt').file }
+        def build = executer.withTasks("block").start()
+        server.waitFor()
+        daemons.daemon.assertBusy()
+        executer.withArguments("--stop").run()
+        def failure = build.waitForFailure()
+
+        then:
+        daemons.daemon.stops()
+        failure.assertHasDescription(DaemonStoppedException.MESSAGE)
+    }
+
+    def "can handle multiple concurrent stop requests"() {
+        buildFile << """
+task block << {
+    new URL("$server.uri").text
+}
+"""
+
+        when:
+        def build = executer.withTasks("block").start()
+        server.waitFor()
 
         def stopExecutions = []
         5.times { idx ->
@@ -43,12 +66,27 @@ Thread.sleep(60000)
         def out = executer.withArguments("--stop").run().output
 
         then:
+        daemons.daemon.stops()
         out.contains(DaemonMessages.NO_DAEMONS_RUNNING)
+    }
+
+    @IgnoreIf({ AvailableJavaHomes.differentJdk == null})
+    def "can stop a daemon that is using a different java home"() {
+        given:
+        succeeds()
+        daemons.daemon.assertIdle()
+
+        when:
+        executer.withJavaHome(AvailableJavaHomes.differentJdk.javaHome)
+        executer.withArguments("--stop").run()
+
+        then:
+        daemons.daemon.stops()
     }
 
     def "reports exact number of daemons stopped and keeps console output clean"() {
         given:
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
         executer.run()
 
         when:

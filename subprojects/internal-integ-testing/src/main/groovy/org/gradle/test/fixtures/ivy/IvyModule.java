@@ -16,11 +16,17 @@
 
 package org.gradle.test.fixtures.ivy;
 
+import groovy.lang.Closure;
+import org.gradle.test.fixtures.Module;
 import org.gradle.test.fixtures.file.TestFile;
 
 import java.util.Map;
 
-public interface IvyModule {
+public interface IvyModule extends Module {
+    String getOrganisation();
+    String getModule();
+    String getRevision();
+
     TestFile getIvyFile();
 
     TestFile getJarFile();
@@ -34,17 +40,38 @@ public interface IvyModule {
 
     IvyModule dependsOn(String organisation, String module, String revision);
 
+    IvyModule extendsFrom(Map<String, ?> attributes);
+
+    IvyModule dependsOn(Map<String, ?> attributes);
+
     IvyModule artifact(Map<String, ?> options);
 
     /**
-     * Publishes ivy.xml plus all artifacts with different content to previous publication.
+     * Adds an artifact that is not declared in the ivy.xml file.
+     */
+    IvyModule undeclaredArtifact(Map<String, ?> options);
+
+    IvyModule withXml(Closure action);
+
+    IvyModule configuration(String name);
+
+    IvyModule configuration(Map<String, ?> options, String name);
+
+    /**
+     * Publishes ivy.xml plus all artifacts with different content (and size) to previous publication.
      */
     IvyModule publishWithChangedContent();
 
     /**
-     * Publishes ivy.xml plus all artifacts
+     * Publishes ivy.xml plus all artifacts. Publishes only those artifacts whose content has changed since the
+     * last call to {@code #publish()}.
      */
     IvyModule publish();
 
-    IvyDescriptor getIvy();
+    IvyDescriptor getParsedIvy();
+
+    /**
+     * Assert that exactly the ivy.xml and jar file for this module, plus checksum files, have been published.
+     */
+    void assertIvyAndJarFilePublished();
 }

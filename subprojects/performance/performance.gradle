@@ -1,18 +1,39 @@
 apply from: 'src/generator.groovy'
+apply plugin: 'javascript-base'
 
 configurations {
     junit
-    plugin
+    reports
+}
+
+repositories {
+    javaScript.googleApis()
 }
 
 dependencies {
     junit 'junit:junit:4.11'
-    groovy libraries.groovy
+    reports "jquery:jquery.min:1.11.0@js"
+    reports "flot:flot:0.8.1:min@js"
+
+    compile libraries.groovy
+    testFixturesCompile libraries.slf4j_api
     testFixturesCompile project(':internalIntegTesting')
-    plugin gradleApi()
+    testFixturesCompile 'com.googlecode.jatl:jatl:0.2.2'
+    testFixturesCompile 'org.eclipse.jgit:org.eclipse.jgit:3.0.0.201306101825-r'
+
+    testFixturesRuntime 'com.h2database:h2:1.3.171'
+
+    testCompile libraries.jsoup
 }
 
 useTestFixtures()
+useClassycle()
+
+task reportResources(type: Copy) {
+    from configurations.reports
+    into "$generatedResourcesDir/org/gradle/reporting"
+}
+sourceSets.main.output.dir generatedResourcesDir, builtBy: reportResources
 
 task small(type: ProjectGeneratorTask, description: 'Generates a small project') {
 }
@@ -91,84 +112,38 @@ task lotDependencies(type: ProjectGeneratorTask, description: 'Generates a small
 }
 
 task manyProjects(type: ProjectGeneratorTask) {
-    projects = 500
+    projects = 100
     sourceFiles = 0
 }
 
-task singleProjectNoBuildScript(type: ProjectGeneratorTask) {
-    projects = 1
-    sourceFiles = 0
-    rootProjectTemplates = []
-    subProjectTemplates = []
-}
-
-task manyProjectNoBuildScript(type: ProjectGeneratorTask) {
-    projects = 500
-    sourceFiles = 0
-    rootProjectTemplates = []
-    subProjectTemplates = []
-}
-
-task manyProjectMinimalBuildScript(type: ProjectGeneratorTask) {
-    projects = 500
-    sourceFiles = 0
-    rootProjectTemplates = ['minimal']
-    subProjectTemplates = ['minimal']
-}
-
-task manyProjectConfigInject(type: ProjectGeneratorTask) {
-    projects = 500
-    sourceFiles = 0
-    rootProjectTemplates = ['config-inject']
-    subProjectTemplates = []
-}
-
-task compilePlugin(type: JavaCompile) {
-    source 'src/configPlugin'
-    destinationDir file("$buildDir/configPlugin")
-    classpath = configurations.plugin
-}
-
-task manyProjectJavaConfig(type: ProjectGeneratorTask, dependsOn: compilePlugin) {
-    projects = 500
-    sourceFiles = 0
-    rootProjectTemplates = ['java-config']
-    subProjectTemplates = []
-}
-
-def generators = tasks.withType(ProjectGeneratorTask)
-generators.all {
+def generators = tasks.withType(ProjectGeneratorTask) {
     group = 'Project setup'
     testDependencies = configurations.junit
 }
+
 task all(dependsOn: generators)
 
-task prepareSamples(dependsOn: [small, multi, lotDependencies, withJUnit, withTestNG, withVerboseTestNG, withVerboseJUnit])
+task prepareSamples(dependsOn: [small, multi, lotDependencies, withJUnit, withTestNG, withVerboseTestNG, withVerboseJUnit, manyProjects])
 
-integTestTasks.all {
-    if (buildTypes.isActive('performanceTest') || buildTypes.isActive('localPerformanceTest')) {
-        dependsOn prepareSamples
-    } else {
-        enabled = false
-        dependsOn = []
-    }
-    maxParallelForks = 1
-}
+task report {
+    def reportDir = new File(buildDir, "performance-tests/report")
+    inputs.files sourceSets.testFixtures.runtimeClasspath
+    outputs.dir reportDir
 
-tasks.integTest.testLogging {
-    showStandardStreams = true
-    lifecycle {
-        exceptionFormat 'full'
-    }
-}
-
-eclipse {
-    classpath {
-        file.whenMerged { classpath ->
-            //**TODO
-            classpath.entries.removeAll {it.path.contains('src/test/groovy')}
-            classpath.entries.removeAll {it.path.contains('src/testFixtures/groovy')}
-            classpath.entries.removeAll {it.path.contains('src/integTest/groovy')}
+    doLast {
+        def cl = new URLClassLoader(sourceSets.testFixtures.runtimeClasspath.collect { it.toURI().toURL()} as URL[], ClassLoader.systemClassLoader.parent)
+        def store = cl.loadClass("org.gradle.performance.results.ResultsStore").newInstance()
+        try {
+            def generator = cl.loadClass("org.gradle.performance.results.ReportGenerator").newInstance()
+            generator.generate(store, reportDir)
+        } finally {
+            store.close()
         }
     }
+}
+
+integTest {
+    dependsOn prepareSamples
+    finalizedBy report
+    maxParallelForks = 1
 }

@@ -15,26 +15,25 @@
  */
 
 package org.gradle.api.publish.maven
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+
 import org.gradle.test.fixtures.maven.M2Installation
-import org.gradle.test.fixtures.maven.MavenFileRepository
+import org.gradle.test.fixtures.maven.MavenLocalRepository
 import org.gradle.util.SetSystemProperties
 import org.junit.Rule
 import spock.lang.Ignore
-
 /**
  * Tests “simple” maven publishing scenarios
  */
-class MavenPublishBasicIntegTest extends AbstractIntegrationSpec {
+class MavenPublishBasicIntegTest extends AbstractMavenPublishIntegTest {
     @Rule SetSystemProperties sysProp = new SetSystemProperties()
 
-    M2Installation m2Installation
-    MavenFileRepository m2Repo
+    MavenLocalRepository localM2Repo
+    private M2Installation m2Installation
 
     def "setup"() {
         m2Installation = new M2Installation(testDirectory)
-        using m2Installation
-        m2Repo = m2Installation.mavenRepo()
+        localM2Repo = m2Installation.mavenRepo()
+        executer.beforeExecute m2Installation
     }
 
     def "publishes nothing without defined publication"() {
@@ -82,14 +81,17 @@ class MavenPublishBasicIntegTest extends AbstractIntegrationSpec {
 
         then:
         def module = mavenRepo.module('org.gradle.test', 'empty-project', '1.0')
-        module.assertPublished()
+        module.assertPublishedAsPomModule()
         module.parsedPom.scopes.isEmpty()
+
+        and:
+        resolveArtifacts(module) == []
     }
 
     def "can publish simple jar"() {
         given:
         def repoModule = mavenRepo.module('group', 'root', '1.0')
-        def localModule = m2Repo.module('group', 'root', '1.0')
+        def localModule = localM2Repo.module('group', 'root', '1.0')
 
         and:
         settingsFile << "rootProject.name = 'root'"
@@ -132,6 +134,40 @@ class MavenPublishBasicIntegTest extends AbstractIntegrationSpec {
 
         then: "jar is published to maven local repository"
         localModule.assertPublishedAsJavaModule()
+
+        and:
+        resolveArtifacts(repoModule) == ['root-1.0.jar']
+    }
+
+    def "can publish to custom maven local repo defined in settings.xml"() {
+        given:
+        def customLocalRepo = new MavenLocalRepository(file("custom-maven-local"))
+        m2Installation.generateUserSettingsFile(customLocalRepo)
+
+        and:
+        settingsFile << "rootProject.name = 'root'"
+        buildFile << """
+            apply plugin: 'maven-publish'
+            apply plugin: 'java'
+
+            group = 'group'
+            version = '1.0'
+
+            publishing {
+                publications {
+                    maven(MavenPublication) {
+                        from components.java
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds 'publishToMavenLocal'
+
+        then:
+        !localM2Repo.module("group", "root", "1.0").artifactFile(type: "pom").exists()
+        customLocalRepo.module("group", "root", "1.0").assertPublishedAsJavaModule()
     }
 
     def "can publish a snapshot version"() {
@@ -160,7 +196,10 @@ class MavenPublishBasicIntegTest extends AbstractIntegrationSpec {
 
         then:
         def module = mavenRepo.module('org.gradle', 'snapshotPublish', '1.0-SNAPSHOT')
-        module.assertArtifactsPublished('snapshotPublish-1.0-SNAPSHOT.jar', 'snapshotPublish-1.0-SNAPSHOT.pom')
+        module.assertArtifactsPublished("snapshotPublish-${module.publishArtifactVersion}.jar", "snapshotPublish-${module.publishArtifactVersion}.pom", "maven-metadata.xml")
+
+        and:
+        resolveArtifacts(module) == ["snapshotPublish-${module.publishArtifactVersion}.jar"]
     }
 
     def "reports failure publishing when model validation fails"() {
@@ -189,11 +228,11 @@ class MavenPublishBasicIntegTest extends AbstractIntegrationSpec {
         fails 'publish'
 
         then:
-        failure.assertHasDescription("A problem occurred evaluating root project 'bad-project'")
-        failure.assertHasCause("A MavenPublication cannot include multiple components")
+        failure.assertHasDescription("A problem occurred configuring root project 'bad-project'.")
+        failure.assertHasCause("Maven publication 'maven' cannot include multiple components")
     }
 
-    @Ignore("Not yet implemented - currently the second publication will overwrite") // TODO:DAZ
+    @Ignore("Not yet implemented - currently the second publication will overwrite")
     def "cannot publish multiple maven publications with the same identity"() {
         given:
         settingsFile << "rootProject.name = 'bad-project'"
@@ -222,7 +261,7 @@ class MavenPublishBasicIntegTest extends AbstractIntegrationSpec {
         fails 'publish'
 
         then:
-        failure.assertHasDescription("A problem occurred evaluating root project 'bad-project'")
+        failure.assertHasDescription("A problem occurred configuring root project 'bad-project'.")
         failure.assertHasCause("Publication with name 'mavenJava' already exists")
     }
 }

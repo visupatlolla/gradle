@@ -20,9 +20,11 @@ import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.listener.ActionBroadcast;
 import org.gradle.plugins.ide.internal.generator.generator.Generator;
 
+import javax.inject.Inject;
 import java.io.File;
 
 /**
@@ -60,13 +62,14 @@ public class GeneratorTask<T> extends ConventionTask {
     @SuppressWarnings("UnusedDeclaration")
     @TaskAction
     void generate() {
-        if (getInputFile().exists()) {
+        File inputFile = getInputFile();
+        if (inputFile != null && inputFile.exists()) {
             try {
-                domainObject = generator.read(getInputFile());
+                domainObject = generator.read(inputFile);
             } catch (RuntimeException e) {
                 throw new GradleException(String.format("Cannot parse file '%s'.\n"
                         + "       Perhaps this file was tinkered with? In that case try delete this file and then retry.",
-                        getInputFile()), e);
+                        inputFile), e);
             }
         } else {
             domainObject = generator.defaultInstance();
@@ -76,6 +79,11 @@ public class GeneratorTask<T> extends ConventionTask {
         afterConfigured.execute(domainObject);
 
         generator.write(domainObject, getOutputFile());
+    }
+
+    @Inject
+    protected Instantiator getInstantiator() {
+        throw new UnsupportedOperationException();
     }
 
     /**

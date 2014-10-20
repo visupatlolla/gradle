@@ -42,7 +42,7 @@ class JDepend extends DefaultTask implements Reporting<JDependReports> {
     @InputDirectory
     File classesDir
 
-    // workaround for GRADLE-2020
+    // workaround for GRADLE-2026
     /**
      * Returns the directory containing the classes to be analyzed.
      */
@@ -54,12 +54,18 @@ class JDepend extends DefaultTask implements Reporting<JDependReports> {
     @Nested
     private final JDependReportsImpl reports
 
-    private final IsolatedAntBuilder antBuilder
+    JDepend() {
+        reports = instantiator.newInstance(JDependReportsImpl, this)
+    }
 
     @Inject
-    JDepend(Instantiator instantiator, IsolatedAntBuilder antBuilder) {
-        this.antBuilder = antBuilder
-        reports = instantiator.newInstance(JDependReportsImpl, this)
+    Instantiator getInstantiator() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    IsolatedAntBuilder getAntBuilder() {
+        throw new UnsupportedOperationException();
     }
 
     /**

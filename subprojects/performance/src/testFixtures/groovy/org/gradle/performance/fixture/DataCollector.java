@@ -16,12 +16,13 @@
 
 package org.gradle.performance.fixture;
 
+import org.gradle.integtests.fixtures.executer.GradleExecuter;
+import org.gradle.performance.measure.MeasuredOperation;
+
 import java.io.File;
 
-/**
- * by Szczepan Faber, created at: 8/14/12
- */
 public interface DataCollector {
+    void beforeExecute(File testProjectDir, GradleExecuter executer);
 
     void collect(File testProjectDir, MeasuredOperation operation);
 }

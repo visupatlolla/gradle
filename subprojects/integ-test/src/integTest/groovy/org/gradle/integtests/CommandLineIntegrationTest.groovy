@@ -19,7 +19,6 @@ import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.executer.ExecutionFailure
 import org.gradle.internal.jvm.Jvm
-import org.gradle.internal.nativeplatform.filesystem.FileSystems
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.PreconditionVerifier
@@ -31,12 +30,12 @@ import org.junit.Test
 
 public class CommandLineIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final TestResources resources = new TestResources()
+    @Rule public final TestResources resources = new TestResources(testDirectoryProvider)
     @Rule public final PreconditionVerifier verifier = new PreconditionVerifier()
 
     @Before
     void setup() {
-        executer.requireGradleHome(true)
+        executer.requireGradleHome()
     }
 
     @Test
@@ -106,7 +105,7 @@ public class CommandLineIntegrationTest extends AbstractIntegrationTest {
             binary = new File("/bin/$command")
         }
         assert binary.exists()
-        FileSystems.default.createSymbolicLink(binDir.file(command), binary.absoluteFile)
+        binDir.file(command).createLink(binary)
     }
 
     @Test
@@ -119,7 +118,9 @@ public class CommandLineIntegrationTest extends AbstractIntegrationTest {
     @Test
     public void checkDefaultGradleUserHome() {
         // the actual testing is done in the build script.
-        executer.withGradleUserHomeDir(null).withTasks("checkDefaultGradleUserHome").run();
+        File userHome = file('customUserHome')
+        executer.withUserHomeDir(userHome).withGradleUserHomeDir(null).withTasks("checkDefaultGradleUserHome").run();
+        assert userHome.file(".gradle").exists()
     }
 
     @Test
@@ -131,7 +132,7 @@ public class CommandLineIntegrationTest extends AbstractIntegrationTest {
     @Test
     public void canSpecifySystemPropertiesUsingGradleOptsEnvironmentVariable() {
         // the actual testing is done in the build script.
-        executer.withTasks("checkSystemProperty").withGradleOpts('-DcustomProp1=custom-value', "-DcustomProp2=custom value").run();
+        executer.withTasks("checkSystemProperty").withEnvironmentVars("GRADLE_OPTS": '-DcustomProp1=custom-value "-DcustomProp2=custom value"').run();
     }
 
     @Test
@@ -179,7 +180,7 @@ public class CommandLineIntegrationTest extends AbstractIntegrationTest {
     public void resolvesLinksWhenDeterminingHomeDirectory() {
         def script = file('bin/my app')
         script.parentFile.createDir()
-        FileSystems.default.createSymbolicLink(script, distribution.gradleHomeDir.file('bin/gradle'))
+        script.createLink(distribution.gradleHomeDir.file('bin/gradle'))
 
         def result = executer.usingExecutable(script.absolutePath).withTasks("help").run()
         assert result.output.contains("my app")

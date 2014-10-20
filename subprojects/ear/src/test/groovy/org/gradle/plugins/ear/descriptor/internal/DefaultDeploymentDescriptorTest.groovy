@@ -16,24 +16,37 @@
 
 package org.gradle.plugins.ear.descriptor.internal
 
-import javax.xml.parsers.DocumentBuilderFactory
+import org.gradle.api.Action
+import org.gradle.api.internal.DependencyInjectingInstantiator
+import org.gradle.api.internal.file.FileResolver
+import org.gradle.internal.reflect.Instantiator
+import org.gradle.internal.service.DefaultServiceRegistry
+import org.gradle.plugins.ear.descriptor.EarSecurityRole
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.junit.Rule
 import spock.lang.Specification
+
+import javax.xml.parsers.DocumentBuilderFactory
+
 import static org.gradle.util.TextUtil.toPlatformLineSeparators
 
-/**
- * @author: Szczepan Faber, created at: 6/3/11
- */
 class DefaultDeploymentDescriptorTest extends Specification {
 
-    def out = new StringWriter()
-    def descriptor = new DefaultDeploymentDescriptor(null)
+    private DefaultServiceRegistry serviceRegistry = new DefaultServiceRegistry();
+    private Instantiator instantiator = new DependencyInjectingInstantiator(serviceRegistry);
+
+
+    def descriptor = new DefaultDeploymentDescriptor({ it } as FileResolver, instantiator)
+    @Rule TestNameTestDirectoryProvider tmpDir
 
     def "writes default descriptor"() {
+        def file = tmpDir.file("out.xml")
+
         when:
-        descriptor.writeTo(out)
+        descriptor.writeTo(file)
 
         then:
-        def root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(out.toString().getBytes("utf-8"))).documentElement
+        def root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(file.bytes)).documentElement
         root.nodeName == 'application'
         root.getAttribute("xmlns") == "http://java.sun.com/xml/ns/javaee"
         root.getAttribute("xmlns:xsi") == "http://www.w3.org/2001/XMLSchema-instance"
@@ -43,6 +56,7 @@ class DefaultDeploymentDescriptorTest extends Specification {
     }
 
     def "writes version 1.3 default descriptor"() {
+        def out = new StringWriter()
         descriptor.version = '1.3'
 
         when:
@@ -56,6 +70,7 @@ class DefaultDeploymentDescriptorTest extends Specification {
     }
 
     def "writes customized descriptor"() {
+        def out = new StringWriter()
         descriptor.fileName = "myApp.xml"
         descriptor.version = "1.3"
         descriptor.applicationName = "myapp"
@@ -66,7 +81,10 @@ class DefaultDeploymentDescriptorTest extends Specification {
         descriptor.module("my.jar", "java")
         descriptor.webModule("my.war", "/")
         descriptor.securityRole "admin"
-        descriptor.securityRole "superadmin"
+        descriptor.securityRole({ role ->
+            role.roleName = "superadmin"
+            role.description = "Role of super admin"
+        } as Action<EarSecurityRole>)
         descriptor.withXml { it.asNode().appendNode("data-source", "my/data/source") }
 
         when:
@@ -93,6 +111,7 @@ class DefaultDeploymentDescriptorTest extends Specification {
     <role-name>admin</role-name>
   </security-role>
   <security-role>
+    <description>Role of super admin</description>
     <role-name>superadmin</role-name>
   </security-role>
   <library-directory>APP-INF/lib</library-directory>

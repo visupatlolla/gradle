@@ -19,7 +19,7 @@ package org.gradle.api.publish.maven;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.component.SoftwareComponent;
-import org.gradle.api.internal.HasInternalProtocol;
+import org.gradle.internal.HasInternalProtocol;
 import org.gradle.api.publish.Publication;
 
 /**
@@ -29,7 +29,9 @@ import org.gradle.api.publish.Publication;
  * <pre>
  * publishing {
  *   publications {
- *     myPublicationName(MavenPublication)
+ *     myPublicationName(MavenPublication) {
+ *       // Configure the publication here
+ *     }
  *   }
  * }
  * </pre>
@@ -69,7 +71,7 @@ import org.gradle.api.publish.Publication;
  *         classifier "source"
  *       }
  *       pom.withXml {
- *         asNode().appendNode('description', 'A demonstration of maven pom customisation')
+ *         asNode().appendNode('description', 'A demonstration of Maven POM customization')
  *       }
  *     }
  *   }
@@ -109,7 +111,7 @@ public interface MavenPublication extends Publication {
      * Currently 2 types of component are supported: 'components.java' (added by the JavaPlugin) and 'components.web' (added by the WarPlugin).
      * For any individual MavenPublication, only a single component can be provided in this way.
      *
-     * The following example demonstrates how to publish the 'java' component to a maven repository.
+     * The following example demonstrates how to publish the 'java' component to a Maven repository.
      * <pre autoTested="true">
      * apply plugin: "java"
      * apply plugin: "maven-publish"
@@ -136,7 +138,7 @@ public interface MavenPublication extends Publication {
      *     <li>An {@link org.gradle.api.tasks.bundling.AbstractArchiveTask} instance. Extension and classifier values are taken from the wrapped instance.</li>
      *     <li>Anything that can be resolved to a {@link java.io.File} via the {@link org.gradle.api.Project#file(Object)} method.
      *          Extension and classifier values are interpolated from the file name.</li>
-     *     <li>A {@link java.util.Map} that contains a 'file' entry that can be resolved to a {@link java.io.File}. The artifact is constructed as per the file input.
+     *     <li>A {@link java.util.Map} that contains a 'source' entry that can be resolved as any of the other input types, including file.
      *         This map can contain a 'classifier' and an 'extension' entry to further configure the constructed artifact.</li>
      * </ul>
      *
@@ -153,7 +155,7 @@ public interface MavenPublication extends Publication {
      *     maven(MavenPublication) {
      *       artifact sourceJar // Publish the output of the sourceJar task
      *       artifact 'my-file-name.jar' // Publish a file created outside of the build
-     *       artifact file: 'my-docs-file.htm', classifier: 'docs', extension: 'html' // Publish a file with specified classifier & extension
+     *       artifact source: sourceJar, classifier: 'src', extension: 'zip'
      *     }
      *   }
      * }
@@ -197,13 +199,13 @@ public interface MavenPublication extends Publication {
      * @param source The source of the artifact.
      * @param config An action to configure the values of the constructed {@link MavenArtifact}.
      */
-    MavenArtifact artifact(Object source, Action<MavenArtifact> config);
+    MavenArtifact artifact(Object source, Action<? super MavenArtifact> config);
 
     /**
      * Clears any previously added artifacts from {@link #getArtifacts} and creates artifacts from the specified sources.
      * Each supplied source is interpreted as per {@link #artifact(Object)}.
      *
-     * For example, to include the dependencies declared by a component but use a custom set of artifacts:
+     * For example, to exclude the dependencies declared by a component and instead use a custom set of artifacts:
      * <pre autoTested="true">
      * apply plugin: "java"
      * apply plugin: "maven-publish"
@@ -224,12 +226,42 @@ public interface MavenPublication extends Publication {
      *
      * @param sources The set of artifacts for this publication.
      */
-    void setArtifacts(Iterable<Object> sources);
+    void setArtifacts(Iterable<?> sources);
 
     /**
      * Returns the complete set of artifacts for this publication.
      * @return the artifacts.
      */
     MavenArtifactSet getArtifacts();
+
+    /**
+     * Returns the groupId for this publication.
+     */
+    String getGroupId();
+
+    /**
+     * Sets the groupId for this publication.
+     */
+    void setGroupId(String groupId);
+
+    /**
+     * Returns the artifactId for this publication.
+     */
+    String getArtifactId();
+
+    /**
+     * Sets the artifactId for this publication.
+     */
+    void setArtifactId(String artifactId);
+
+    /**
+     * Returns the version for this publication.
+     */
+    String getVersion();
+
+    /**
+     * Sets the version for this publication.
+     */
+    void setVersion(String version);
 
 }

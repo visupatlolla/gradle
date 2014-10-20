@@ -17,6 +17,7 @@ package org.gradle.api.plugins
 
 import org.gradle.api.JavaVersion
 import org.gradle.api.file.SourceDirectorySet
+import org.gradle.api.internal.file.FileLookup
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.tasks.DefaultSourceSetContainer
 import org.gradle.api.java.archives.Manifest
@@ -30,8 +31,6 @@ import org.gradle.util.ConfigureUtil
 /**
  * Is mixed in into the project when applying the {@link org.gradle.api.plugins.JavaBasePlugin} or the
  * {@link org.gradle.api.plugins.JavaPlugin}.
- *
- * @author Hans Dockter
  */
 class JavaPluginConvention {
     ProjectInternal project
@@ -61,18 +60,6 @@ class JavaPluginConvention {
     private JavaVersion srcCompat
     private JavaVersion targetCompat
 
-    /**
-     * Deprecated. Please use jar.metaInf instead. The property didn't add much value over the jar's setting
-     * and Gradle offers convenient ways of configuring all tasks of given type should someone needed.
-     * <p>
-     * The lines of metaInf file that will be configured by default to every jar task.
-     */
-    @Deprecated
-    List metaInf
-
-    @Deprecated
-    DefaultManifest manifest
-
     JavaPluginConvention(ProjectInternal project, Instantiator instantiator) {
         this.project = project
         sourceSets = instantiator.newInstance(DefaultSourceSetContainer.class, project.fileResolver, project.tasks, instantiator)
@@ -80,8 +67,6 @@ class JavaPluginConvention {
         docsDirName = 'docs'
         testResultsDirName = 'test-results'
         testReportDirName = 'tests'
-        manifest = manifest();
-        metaInf = []
     }
 
     /**
@@ -112,28 +97,28 @@ class JavaPluginConvention {
     }
 
     File getDependencyCacheDir() {
-        project.fileResolver.withBaseDir(project.buildDir).resolve(dependencyCacheDirName)
+        project.services.get(FileLookup).getFileResolver(project.buildDir).resolve(dependencyCacheDirName)
     }
 
     /**
      * Returns a file pointing to the root directory supposed to be used for all docs.
      */
     File getDocsDir() {
-        project.fileResolver.withBaseDir(project.buildDir).resolve(docsDirName)
+        project.services.get(FileLookup).getFileResolver(project.buildDir).resolve(docsDirName)
     }
 
     /**
      * Returns a file pointing to the root directory of the test results.
      */
     File getTestResultsDir() {
-        project.fileResolver.withBaseDir(project.buildDir).resolve(testResultsDirName)
+        project.services.get(FileLookup).getFileResolver(project.buildDir).resolve(testResultsDirName)
     }
 
     /**
      * Returns a file pointing to the root directory to be used for reports.
      */
     File getTestReportDir() {
-        project.fileResolver.withBaseDir(reportsDir).resolve(testReportDirName)
+        project.services.get(FileLookup).getFileResolver(reportsDir).resolve(testReportDirName)
     }
 
     private File getReportsDir() {

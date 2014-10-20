@@ -21,7 +21,7 @@ import org.junit.Rule
 
 class SamplesJavaApiAndImplIntegrationTest extends AbstractIntegrationSpec {
 
-    @Rule public final Sample apiAndImpl = new Sample('java/apiAndImpl')
+    @Rule public final Sample apiAndImpl = new Sample(temporaryFolder, 'java/apiAndImpl')
 
     static combined = ""
     static api = "-api"
@@ -53,9 +53,9 @@ class SamplesJavaApiAndImplIntegrationTest extends AbstractIntegrationSpec {
         module(combined).assertArtifactsPublished("apiAndImpl-1.0.jar", "apiAndImpl-1.0.pom")
 
         and: // poms have the right dependencies
-        compileDependenciesOf(api).assertDependsOnArtifacts("commons-codec")
-        compileDependenciesOf(impl).assertDependsOnArtifacts("commons-lang")
-        compileDependenciesOf(combined).assertDependsOnArtifacts("commons-lang", "commons-codec")
+        compileDependenciesOf(api).assertDependsOn("commons-codec:commons-codec:1.5")
+        compileDependenciesOf(impl).assertDependsOn("commons-lang:commons-lang:2.6")
+        compileDependenciesOf(combined).assertDependsOn("commons-lang:commons-lang:2.6", "commons-codec:commons-codec:1.5")
 
         and: // the fat jar contains classes from api and impl
         jar(combined).file("doubler/Doubler.class").exists()

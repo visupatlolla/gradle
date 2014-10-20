@@ -17,10 +17,11 @@
 
 package org.gradle.api.internal.tasks.util
 
+import org.gradle.api.internal.file.TestFiles
+
 import java.nio.charset.Charset
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.file.FileResolver
-import org.gradle.api.internal.file.IdentityFileResolver
 import org.gradle.process.JavaForkOptions
 import org.gradle.process.internal.DefaultJavaForkOptions
 import org.gradle.util.JUnit4GroovyMockery
@@ -58,7 +59,7 @@ public class DefaultJavaForkOptionsTest {
         assertThat(options.bootstrapClasspath.files, isEmpty())
         assertFalse(options.enableAssertions)
         assertFalse(options.debug)
-        assertThat(options.allJvmArgs, equalTo([fileEncodingProperty()]))
+        assert options.allJvmArgs == [fileEncodingProperty(), *localeProperties()]
     }
 
     @Test
@@ -91,7 +92,7 @@ public class DefaultJavaForkOptionsTest {
         options.systemProperties(key: 12, key2: null, "key3": 'value')
         options.jvmArgs('arg1')
 
-        assertThat(options.allJvmArgs, equalTo(['-Dkey=12', '-Dkey2', '-Dkey3=value', 'arg1', fileEncodingProperty()]))
+        assert options.allJvmArgs == ['-Dkey=12', '-Dkey2', '-Dkey3=value', 'arg1', fileEncodingProperty(), *localeProperties()]
     }
 
     @Test
@@ -114,16 +115,14 @@ public class DefaultJavaForkOptionsTest {
     public void allJvmArgsIncludeMinHeapSize() {
         options.minHeapSize = '64m'
         options.jvmArgs('arg1')
-
-        assertThat(options.allJvmArgs, equalTo(['arg1', '-Xms64m', fileEncodingProperty()]))
+        assert options.allJvmArgs == ['arg1', '-Xms64m', fileEncodingProperty(), *localeProperties()]
     }
 
     @Test
     public void allJvmArgsIncludeMaxHeapSize() {
         options.maxHeapSize = '1g'
         options.jvmArgs('arg1')
-
-        assertThat(options.allJvmArgs, equalTo(['arg1', '-Xmx1g', fileEncodingProperty()]))
+        assert options.allJvmArgs == ['arg1', '-Xmx1g', fileEncodingProperty(), *localeProperties()]
     }
 
     @Test
@@ -160,11 +159,9 @@ public class DefaultJavaForkOptionsTest {
 
     @Test
     public void allJvmArgsIncludeAssertionsEnabled() {
-        assertThat(options.allJvmArgs, equalTo([fileEncodingProperty()]))
-
+        assert options.allJvmArgs == [fileEncodingProperty(), *localeProperties()]
         options.enableAssertions = true
-
-        assertThat(options.allJvmArgs, equalTo([fileEncodingProperty(), '-ea']))
+        assert options.allJvmArgs == [fileEncodingProperty(), *localeProperties(), '-ea']
     }
 
     @Test
@@ -185,11 +182,9 @@ public class DefaultJavaForkOptionsTest {
 
     @Test
     public void allJvmArgsIncludeDebugArgs() {
-        assertThat(options.allJvmArgs, equalTo([fileEncodingProperty()]))
-
+        assert options.allJvmArgs == [fileEncodingProperty(), *localeProperties()]
         options.debug = true
-
-        assertThat(options.allJvmArgs, equalTo([fileEncodingProperty(), '-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005']))
+        assert options.allJvmArgs  == [fileEncodingProperty(), *localeProperties(), '-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005']
     }
 
     @Test
@@ -235,7 +230,7 @@ public class DefaultJavaForkOptionsTest {
     @Test
     public void canAddToBootstrapClasspath() {
         def files = ['file1.jar', 'file2.jar'].collect { new File(it).canonicalFile }
-        options = new DefaultJavaForkOptions(new IdentityFileResolver());
+        options = new DefaultJavaForkOptions(TestFiles.resolver());
         options.bootstrapClasspath(files[0])
         options.bootstrapClasspath(files[1])
 
@@ -245,7 +240,7 @@ public class DefaultJavaForkOptionsTest {
     @Test
     public void allJvmArgsIncludeBootstrapClasspath() {
         def files = ['file1.jar', 'file2.jar'].collect { new File(it).canonicalFile }
-        options = new DefaultJavaForkOptions(new IdentityFileResolver());
+        options = new DefaultJavaForkOptions(TestFiles.resolver());
         options.bootstrapClasspath(files)
 
         context.checking {
@@ -253,13 +248,13 @@ public class DefaultJavaForkOptionsTest {
             will(returnValue([isEmpty: {false}, getAsPath: {'<classpath>'}] as FileCollection))
         }
 
-        assertThat(options.allJvmArgs, equalTo(['-Xbootclasspath:' + files.join(System.properties['path.separator']), fileEncodingProperty()]))
+        assert options.allJvmArgs  == ['-Xbootclasspath:' + files.join(System.properties['path.separator']), fileEncodingProperty(), *localeProperties()]
     }
 
     @Test
     public void canSetBootstrapClasspathViaAllJvmArgs() {
         def files = ['file1.jar', 'file2.jar'].collect { new File(it).canonicalFile }
-        options = new DefaultJavaForkOptions(new IdentityFileResolver());
+        options = new DefaultJavaForkOptions(TestFiles.resolver());
         options.bootstrapClasspath(files[0])
 
         options.allJvmArgs = ['-Xbootclasspath:' + files[1]]
@@ -291,8 +286,16 @@ public class DefaultJavaForkOptionsTest {
         options.copyTo(target)
     }
 
-    private String fileEncodingProperty(String encoding = Charset.defaultCharset().name()) {
+    private static String fileEncodingProperty(String encoding = Charset.defaultCharset().name()) {
         return "-Dfile.encoding=$encoding"
+    }
+
+    private static List<String> localeProperties(Locale locale = Locale.default) {
+        ["country", "language", "variant"].sort().collectEntries {
+            ["user.$it", locale."$it"]
+        }.collect {
+            it.value ? "-D$it.key=$it.value" : "-D$it.key"
+        }
     }
 }
 

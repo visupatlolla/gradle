@@ -19,34 +19,37 @@ package org.gradle.api.plugins.sonar
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.test.fixtures.server.http.ServletContainer
 import org.gradle.util.AvailablePortFinder
-import org.gradle.util.ClasspathUtil
+import org.gradle.internal.classloader.ClasspathUtil
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import org.junit.Rule
-import org.mortbay.jetty.Server
-import org.mortbay.jetty.webapp.WebAppContext
+
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 
+@Requires(TestPrecondition.JDK7_OR_EARLIER)
 class SonarSmokeIntegrationTest extends AbstractIntegrationSpec {
     @Shared
     AvailablePortFinder portFinder = AvailablePortFinder.createPrivate()
 
     @AutoCleanup("stop")
-    Server webServer = new Server(0)
+    ServletContainer container
 
     @Rule
     TestNameTestDirectoryProvider tempDir = new TestNameTestDirectoryProvider()
 
     @Rule
-    TestResources testResources
+    TestResources testResources = new TestResources(temporaryFolder)
 
     int databasePort
 
     def setup() {
         def classpath = ClasspathUtil.getClasspath(getClass().classLoader).collect() { new File(it.toURI()) }
-        def warFile = classpath.find { it.name == "sonar-test-server-3.4.war" }
+        def warFile = classpath.find { it.name == "sonar-server-3.2-3.2.war" }
         assert warFile
-        def zipFile = classpath.find { it.name == "sonar-test-server-home-dir-3.4.0.1.zip" }
+        def zipFile = classpath.find { it.name == "sonar-test-server-home-dir-3.2-3.2.zip" }
         assert zipFile
 
         def sonarHome = tempDir.createDir("sonar-home")
@@ -61,28 +64,25 @@ sonar.jdbc.url=jdbc:h2:mem:sonartest
 sonar.embeddedDatabase.port=$databasePort
         """.trim()
 
-        def context = new WebAppContext()
-        context.war = warFile
-        webServer.addHandler(context)
-        webServer.start()
+        container = new ServletContainer(warFile)
+        container.start()
     }
 
     def "can run Sonar analysis"() {
+        executer.requireIsolatedDaemons()
         // Without forking, we run into problems with Sonar's BootStrapClassLoader, at least when running from IDEA.
-        // Problem is that BootStrapClassLoader, although generally isolated from its parent(s), always
+        // Problem is that BootStrapClassLoader, although generally isolated from its root(s), always
         // delegates to the system class loader. That class loader holds the test class path and therefore
         // also the Sonar dependencies with "provided" scope. Hence, the Sonar dependencies get loaded by
         // the wrong class loader.
-
         when:
-        executer.requireIsolatedDaemons()
-                .requireGradleHome(true)
-                .withArgument("-i")
-                .withArgument("-PserverUrl=http://localhost:${webServer.connectors[0].localPort}")
+        executer.requireGradleHome()
+                .withArgument("-PserverUrl=http://localhost:${container.port}")
                 .withArgument("-PdatabaseUrl=jdbc:h2:tcp://localhost:$databasePort/mem:sonartest")
                 .withTasks("build", "sonarAnalyze").run()
 
         then:
         noExceptionThrown()
+
     }
 }

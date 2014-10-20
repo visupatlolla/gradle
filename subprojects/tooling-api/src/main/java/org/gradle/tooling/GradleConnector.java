@@ -61,7 +61,17 @@ public abstract class GradleConnector {
      * @since 1.0-milestone-3
      */
     public static GradleConnector newConnector() {
-        return new ConnectorServices().createConnector();
+        return ConnectorServices.createConnector();
+    }
+
+    /**
+     * Creates a new {@link CancellationTokenSource} that can be used to cancel one or more {@link org.gradle.tooling.LongRunningOperation} executions.
+     *
+     * @return The instance. Never returns {@code null}.
+     * @since 2.1
+     */
+    public static CancellationTokenSource newCancellationTokenSource() {
+        return ConnectorServices.createCancellationTokenSource();
     }
 
     /**
@@ -120,6 +130,6 @@ public abstract class GradleConnector {
      * @throws GradleConnectionException On failure to establish a connection with the target Gradle version.
      * @since 1.0-milestone-3
      */
-    public abstract ProjectConnection connect() throws GradleConnectionException, UnsupportedVersionException;
+    public abstract ProjectConnection connect() throws GradleConnectionException;
 
 }

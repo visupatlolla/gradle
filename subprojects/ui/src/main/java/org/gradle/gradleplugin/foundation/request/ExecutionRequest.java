@@ -25,18 +25,16 @@ import org.gradle.logging.ShowStacktrace;
 import java.io.File;
 
 /**
- * This represents a reques to gradle that is executed in a separate process using the ProcessLauncherServer. This version is for directly executing commands in gradle (the most common type of
+ * This represents a request to gradle that is executed in a separate process using the ProcessLauncherServer. This version is for directly executing commands in gradle (the most common type of
  * request).
- *
- * @author mhunsicker
  */
 public class ExecutionRequest extends AbstractRequest {
 
     public static final Type TYPE = new Type() {
     };
 
-    public ExecutionRequest(long requestID, String fullCommandLine, String displayName, boolean forceOutputToBeShown, ExecutionQueue executionQueue) {
-        super(requestID, fullCommandLine, displayName, forceOutputToBeShown, executionQueue);
+    public ExecutionRequest(long requestID, String fullCommandLine, String displayName, boolean forceOutputToBeShown, ExecutionQueue.RequestCancellation cancellation) {
+        super(requestID, fullCommandLine, displayName, forceOutputToBeShown, cancellation);
     }
 
     /**

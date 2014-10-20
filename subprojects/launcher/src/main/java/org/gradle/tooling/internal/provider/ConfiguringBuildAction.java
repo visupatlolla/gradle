@@ -15,61 +15,78 @@
  */
 package org.gradle.tooling.internal.provider;
 
-import org.gradle.BuildResult;
-import org.gradle.GradleLauncher;
 import org.gradle.StartParameter;
-import org.gradle.api.logging.LogLevel;
+import org.gradle.TaskExecutionRequest;
 import org.gradle.cli.CommandLineArgumentException;
+import org.gradle.initialization.BuildAction;
+import org.gradle.initialization.BuildController;
 import org.gradle.initialization.DefaultCommandLineConverter;
-import org.gradle.initialization.GradleLauncherAction;
-import org.gradle.launcher.exec.InitializationAware;
-import org.gradle.logging.ShowStacktrace;
+import org.gradle.internal.DefaultTaskExecutionRequest;
+import org.gradle.launcher.cli.converter.PropertiesToStartParameterConverter;
+import org.gradle.tooling.internal.protocol.InternalLaunchable;
 import org.gradle.tooling.internal.protocol.exceptions.InternalUnsupportedBuildArgumentException;
 import org.gradle.tooling.internal.provider.connection.ProviderOperationParameters;
 
-import java.io.File;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
-class ConfiguringBuildAction<T> implements GradleLauncherAction<T>, InitializationAware, Serializable {
-    private LogLevel buildLogLevel;
-    private List<String> arguments;
-    private List<String> tasks;
-    private GradleLauncherAction<T> action;
-    private File projectDirectory;
-    private File gradleUserHomeDir;
-    private Boolean searchUpwards;
+/**
+ * This is the action serialized from the tooling API provider across to the daemon. It takes care of setting up the start parameters on the daemon
+ * side and then delegating to some other action to do the real work.
+ *
+ * @param <T> The result type.
+ */
+class ConfiguringBuildAction<T> implements BuildAction<T>, Serializable {
+    private final BuildAction<? extends T> action;
 
-    // Important that this is constructed on the client so that it has the right gradleHomeDir internally
-    private final StartParameter startParameterTemplate = new StartParameter();
+    final StartParameter startParameter;
 
-    public ConfiguringBuildAction() {}
-
-    public ConfiguringBuildAction(ProviderOperationParameters parameters, GradleLauncherAction<T> action) {
-        this.gradleUserHomeDir = parameters.getGradleUserHomeDir();
-        this.projectDirectory = parameters.getProjectDir();
-        this.searchUpwards = parameters.isSearchUpwards();
-        this.buildLogLevel = parameters.getBuildLogLevel();
-        this.arguments = parameters.getArguments(Collections.<String>emptyList());
-        this.tasks = parameters.getTasks();
+    public ConfiguringBuildAction(ProviderOperationParameters parameters, BuildAction<? extends T> action, Map<String, String> properties) {
         this.action = action;
+        startParameter = configureStartParameter(parameters, properties);
     }
 
-    public StartParameter configureStartParameter() {
-        StartParameter startParameter = startParameterTemplate.newInstance();
-        startParameter.setProjectDir(projectDirectory);
-        if (gradleUserHomeDir != null) {
-            startParameter.setGradleUserHomeDir(gradleUserHomeDir);
+    private List<TaskExecutionRequest> unpack(final List<InternalLaunchable> launchables) {
+        // Important that the launchables are unpacked on the client side, to avoid sending back any additional internal state that
+        // the launchable may hold onto. For example, GradleTask implementations hold onto every task for every project in the build
+        List<TaskExecutionRequest> requests = new ArrayList<TaskExecutionRequest>(launchables.size());
+        for (InternalLaunchable launchable : launchables) {
+            if (launchable instanceof TaskExecutionRequest) {
+                TaskExecutionRequest originalLaunchable = (TaskExecutionRequest) launchable;
+                TaskExecutionRequest launchableImpl = new DefaultTaskExecutionRequest(originalLaunchable.getArgs(), originalLaunchable.getProjectPath());
+                requests.add(launchableImpl);
+            } else {
+                throw new InternalUnsupportedBuildArgumentException(
+                        "Problem with provided launchable arguments: " + launchables + ". "
+                                + "\nOnly objects from this provider can be built."
+                );
+            }
         }
-        if (searchUpwards != null) {
-            startParameter.setSearchUpwards(searchUpwards);
+        return requests;
+    }
+
+    private StartParameter configureStartParameter(ProviderOperationParameters parameters, Map<String, String> properties) {
+        // Important that this is constructed on the client so that it has the right gradleHomeDir and other state internally
+        StartParameter startParameter = new StartParameter();
+
+        startParameter.setProjectDir(parameters.getProjectDir());
+        if (parameters.getGradleUserHomeDir() != null) {
+            startParameter.setGradleUserHomeDir(parameters.getGradleUserHomeDir());
         }
 
-        if (tasks != null) {
-            startParameter.setTaskNames(tasks);
+        List<InternalLaunchable> launchables = parameters.getLaunchables(null);
+        if (launchables != null) {
+            startParameter.setTaskRequests(unpack(launchables));
+        } else if (parameters.getTasks() != null) {
+            startParameter.setTaskNames(parameters.getTasks());
         }
 
+        new PropertiesToStartParameterConverter().convert(properties, startParameter);
+
+        List<String> arguments = parameters.getArguments(Collections.<String>emptyList());
         if (arguments != null) {
             DefaultCommandLineConverter converter = new DefaultCommandLineConverter();
             try {
@@ -86,19 +103,19 @@ class ConfiguringBuildAction<T> implements GradleLauncherAction<T>, Initializati
             }
         }
 
-        if (buildLogLevel != null) {
-            startParameter.setLogLevel(buildLogLevel);
+        if (parameters.isSearchUpwards() != null) {
+            startParameter.setSearchUpwards(parameters.isSearchUpwards());
         }
 
-        startParameter.setShowStacktrace(ShowStacktrace.ALWAYS);
+        if (parameters.getBuildLogLevel() != null) {
+            startParameter.setLogLevel(parameters.getBuildLogLevel());
+        }
+
         return startParameter;
     }
 
-    public BuildResult run(GradleLauncher launcher) {
-        return action.run(launcher);
-    }
-
-    public T getResult() {
-        return action.getResult();
+    public T run(BuildController buildController) {
+        buildController.setStartParameter(startParameter);
+        return action.run(buildController);
     }
 }

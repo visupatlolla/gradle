@@ -17,10 +17,11 @@ package org.gradle.launcher.daemon.server.exec;
 
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.initialization.GradleLauncherFactory;
+import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.launcher.daemon.logging.DaemonMessages;
 import org.gradle.launcher.daemon.protocol.Build;
-import org.gradle.launcher.exec.InProcessGradleLauncherActionExecuter;
+import org.gradle.launcher.exec.BuildActionExecuter;
+import org.gradle.launcher.exec.BuildActionParameters;
 import org.gradle.launcher.exec.ReportedException;
 
 /**
@@ -32,17 +33,19 @@ public class ExecuteBuild extends BuildCommandOnly {
 
     private static final Logger LOGGER = Logging.getLogger(ExecuteBuild.class);
     
-    final private GradleLauncherFactory launcherFactory;
+    final private BuildActionExecuter<BuildActionParameters> actionExecuter;
 
-    public ExecuteBuild(GradleLauncherFactory launcherFactory) {
-        this.launcherFactory = launcherFactory;
+    public ExecuteBuild(BuildActionExecuter<BuildActionParameters> actionExecuter) {
+        this.actionExecuter = actionExecuter;
     }
 
     protected void doBuild(DaemonCommandExecution execution, Build build) {
+        LOGGER.debug(DaemonMessages.STARTED_BUILD);
         LOGGER.info("Executing build with daemon context: {}", execution.getDaemonContext());
-        InProcessGradleLauncherActionExecuter executer = new InProcessGradleLauncherActionExecuter(launcherFactory);
         try {
-            execution.setResult(executer.execute(build.getAction(), build.getParameters()));
+            BuildCancellationToken cancellationToken = execution.getDaemonStateControl().getCancellationToken();
+            Object result = actionExecuter.execute(build.getAction(), cancellationToken, build.getParameters());
+            execution.setResult(result);
         } catch (ReportedException e) {
             /*
                 We have to wrap in a ReportedException so the other side doesn't re-log this exception, because it's already

@@ -45,7 +45,7 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
         when:
         def entries = zipFile.entries().toList()
         def entriesByPath = entries.groupBy { ZipEntry zipEntry -> zipEntry.name }
-        def dupes = entriesByPath.findAll() { it.value.size() > 1 }
+        def dupes = entriesByPath.findAll { it.value.size() > 1 && !it.key.contains('/META-INF/services/') }
         def dupesWithCount = dupes.collectEntries { [it.key, it.value.size()]}
 
         then:
@@ -76,18 +76,15 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
 
         // Core libs
         def coreLibs = contentsDir.file("lib").listFiles().findAll { it.name.startsWith("gradle-") }
-        assert coreLibs.size() == 11
+        assert coreLibs.size() == 15
         coreLibs.each { assertIsGradleJar(it) }
-        def wrapperJar = contentsDir.file("lib/gradle-wrapper-${version}.jar")
-        wrapperJar.assertIsFile()
-        assert wrapperJar.length() < 20 * 1024; // wrapper needs to be small. Let's check it's smaller than some arbitrary 'small' limit
 
         def toolingApiJar = contentsDir.file("lib/gradle-tooling-api-${version}.jar")
         toolingApiJar.assertIsFile()
-        assert toolingApiJar.length() < 200 * 1024; // tooling api jar is the small plain tooling api jar version and not the fat jar.
+        assert toolingApiJar.length() < 220 * 1024; // tooling api jar is the small plain tooling api jar version and not the fat jar.
 
         // Plugins
-        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-core-impl-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-dependency-management-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-plugins-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-ide-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-scala-${version}.jar"))
@@ -99,8 +96,14 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-maven-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-osgi-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-signing-${version}.jar"))
-        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-cpp-${version}.jar"))
         assertIsGradleJar(contentsDir.file("lib/plugins/gradle-ear-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-platform-native-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-ide-native-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-language-native-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-platform-jvm-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-language-jvm-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-language-java-${version}.jar"))
+        assertIsGradleJar(contentsDir.file("lib/plugins/gradle-language-groovy-${version}.jar"))
 
         // Docs
         contentsDir.file('getting-started.html').assertIsFile()

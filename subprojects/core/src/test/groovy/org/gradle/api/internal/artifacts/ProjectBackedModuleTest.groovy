@@ -16,14 +16,14 @@
 
 package org.gradle.api.internal.artifacts
 
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class ProjectBackedModuleTest extends Specification {
 
     def "module exposes project properties"() {
         given:
-        def project = HelperUtil.createRootProject()
+        def project = TestUtil.createRootProject()
         def module = new ProjectBackedModule(project)
 
         expect:
@@ -31,6 +31,7 @@ class ProjectBackedModuleTest extends Specification {
         module.group == project.group.toString()
         module.version == project.version.toString()
         module.status == project.status.toString()
+        module.projectPath == project.path
 
         when:
         project.group = "fo${1}o"

@@ -15,17 +15,17 @@
  */
 package org.gradle.cli;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.HashSet;
 
 public class CommandLineOption {
     private final Set<String> options = new HashSet<String>();
     private Class<?> argumentType = Void.TYPE;
     private String description;
-    private String subcommand;
     private String deprecationWarning;
     private boolean incubating;
+    private final Set<CommandLineOption> groupWith = new HashSet<CommandLineOption>();
 
     public CommandLineOption(Iterable<String> options) {
         for (String option : options) {
@@ -37,22 +37,18 @@ public class CommandLineOption {
         return options;
     }
 
+    public CommandLineOption hasArgument(Class<?> argumentType) {
+        this.argumentType = argumentType;
+        return this;
+    }
+
     public CommandLineOption hasArgument() {
-        argumentType = String.class;
+        this.argumentType = String.class;
         return this;
     }
 
     public CommandLineOption hasArguments() {
         argumentType = List.class;
-        return this;
-    }
-
-    public String getSubcommand() {
-        return subcommand;
-    }
-
-    public CommandLineOption mapsToSubcommand(String command) {
-        this.subcommand = command;
         return this;
     }
 
@@ -100,8 +96,17 @@ public class CommandLineOption {
         incubating = true;
         return this;
     }
-    
+
     public String getDeprecationWarning() {
         return deprecationWarning;
+    }
+
+    Set<CommandLineOption> getGroupWith() {
+        return groupWith;
+    }
+
+    void groupWith(Set<CommandLineOption> options) {
+        this.groupWith.addAll(options);
+        this.groupWith.remove(this);
     }
 }

@@ -19,9 +19,6 @@ package org.gradle.wrapper;
 import java.io.*;
 import java.net.*;
 
-/**
- * @author Hans Dockter
- */
 public class Download implements IDownload {
     private static final int PROGRESS_CHUNK = 20000;
     private static final int BUFFER_SIZE = 10000;
@@ -41,11 +38,7 @@ public class Download implements IDownload {
     }
 
     public void download(URI address, File destination) throws Exception {
-        if (destination.exists()) {
-            return;
-        }
         destination.getParentFile().mkdirs();
-
         downloadInternal(address, destination);
     }
 

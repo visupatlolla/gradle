@@ -22,7 +22,7 @@
 
     <section>
         <title>Usage</title>
-        <para>To use the Jetty plugin, include in your build script:</para>
+        <para>To use the Jetty plugin, include the following in your build script:</para>
         <sample id="useJettyPlugin" dir="webApplication/quickstart" title="Using the Jetty plugin">
             <sourcefile file="build.gradle" snippet="use-jetty-plugin"/>
         </sample>
@@ -101,6 +101,20 @@
                     <td>Description</td>
                 </tr>
             </thead>
+            <tr>
+                <td>
+                    <literal>contextPath</literal>
+                </td>
+                <td>
+                    <classname>String</classname>
+                </td>
+                <td>
+                    WAR file base name
+                </td>
+                <td>
+                    The application deployment location within the Jetty container.
+                </td>
+            </tr>
             <tr>
                 <td>
                     <literal>httpPort</literal>

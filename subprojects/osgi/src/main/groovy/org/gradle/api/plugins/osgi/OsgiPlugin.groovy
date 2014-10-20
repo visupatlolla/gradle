@@ -23,8 +23,6 @@ import org.gradle.api.plugins.JavaPlugin
 
 /**
  * A {@link Plugin} which extends the {@link JavaPlugin} to add OSGi meta-information to the project Jars.
- *
- * @author Hans Dockter
  */
 public class OsgiPlugin implements Plugin<Project> {
     public void apply(Project project) {
@@ -35,7 +33,6 @@ public class OsgiPlugin implements Plugin<Project> {
 
         project.plugins.withType(JavaPlugin) {
             def osgiManifest = osgiConvention.osgiManifest {
-                from project.manifest
                 classesDir = project.sourceSets.main.output.classesDir
                 classpath = project.configurations.runtime
             }

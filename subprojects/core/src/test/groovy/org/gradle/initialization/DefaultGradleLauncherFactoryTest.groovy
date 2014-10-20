@@ -15,79 +15,54 @@
  */
 package org.gradle.initialization
 
-import org.gradle.GradleLauncher
 import org.gradle.StartParameter
-import org.gradle.cli.CommandLineConverter
+import org.gradle.internal.nativeintegration.services.NativeServices
+import org.gradle.internal.service.DefaultServiceRegistry
+import org.gradle.internal.service.ServiceRegistry
+import org.gradle.internal.service.scopes.GlobalScopeServices
+import org.gradle.logging.LoggingServiceRegistry
 import spock.lang.Specification
 
 class DefaultGradleLauncherFactoryTest extends Specification {
-    final CommandLineConverter<StartParameter> parameterConverter = Mock()
-    final DefaultGradleLauncherFactory factory = new DefaultGradleLauncherFactory();
-
-    def setup() {
-        factory.setCommandLineConverter(parameterConverter);
-    }
-
-    def cleanup() {
-        GradleLauncher.injectCustomFactory(null);
-    }
-
-    def registersSelfWithGradleLauncher() {
-        StartParameter startParameter = new StartParameter();
-
-        when:
-        def result = GradleLauncher.createStartParameter('a')
-
-        then:
-        result == startParameter
-        1 * parameterConverter.convert(['a']) >> startParameter
-    }
+    final ServiceRegistry sharedServices = new DefaultServiceRegistry(LoggingServiceRegistry.newEmbeddableLogging(), NativeServices.getInstance()).addProvider(new GlobalScopeServices(false))
+    final DefaultGradleLauncherFactory factory = new DefaultGradleLauncherFactory(sharedServices)
 
     def newInstanceWithStartParameterAndRequestMetaData() {
-        StartParameter startParameter = new StartParameter();
+        StartParameter startParameter = new StartParameter()
+        BuildCancellationToken cancellationToken = Mock()
         BuildRequestMetaData metaData = new DefaultBuildRequestMetaData(System.currentTimeMillis());
 
         expect:
-        def launcher = factory.newInstance(startParameter, metaData)
+        def launcher = factory.newInstance(startParameter, cancellationToken, metaData)
         launcher.gradle.parent == null
         launcher.gradle.startParameter == startParameter
         launcher.gradle.services.get(BuildRequestMetaData) == metaData
     }
 
     def newInstanceWithStartParameterWhenNoBuildRunning() {
-        StartParameter startParameter = new StartParameter();
+        StartParameter startParameter = new StartParameter()
+        BuildCancellationToken cancellationToken = Mock()
 
         expect:
-        def launcher = factory.newInstance(startParameter)
+        def launcher = factory.newInstance(startParameter, cancellationToken)
         launcher.gradle.parent == null
         launcher.gradle.services.get(BuildRequestMetaData) instanceof DefaultBuildRequestMetaData
     }
 
     def newInstanceWithStartParameterWhenBuildRunning() {
-        StartParameter startParameter = new StartParameter();
+        StartParameter startParameter = new StartParameter()
+        BuildCancellationToken cancellationToken = Mock()
         BuildClientMetaData clientMetaData = Mock()
         BuildRequestMetaData requestMetaData = new DefaultBuildRequestMetaData(clientMetaData, 90)
-        DefaultGradleLauncher parent = factory.newInstance(startParameter, requestMetaData);
+        DefaultGradleLauncher parent = factory.newInstance(startParameter, cancellationToken, requestMetaData);
         parent.buildListener.buildStarted(parent.gradle)
 
         expect:
-        def launcher = factory.newInstance(startParameter)
+        def launcher = factory.newInstance(startParameter, cancellationToken)
         launcher.gradle.parent == parent.gradle
         def request = launcher.gradle.services.get(BuildRequestMetaData)
         request instanceof DefaultBuildRequestMetaData
         request != requestMetaData
         request.client == clientMetaData
     }
-
-    def createStartParameter() {
-        StartParameter startParameter = new StartParameter();
-
-        when:
-        def result = factory.createStartParameter('a')
-
-        then:
-        result == startParameter
-        1 * parameterConverter.convert(['a']) >> startParameter
-    }
-
 }

@@ -16,11 +16,15 @@
 
 package org.gradle.api.plugins;
 
+import org.gradle.api.Action;
+import org.gradle.api.Incubating;
 import org.gradle.api.UnknownDomainObjectException;
+import org.gradle.internal.HasInternalProtocol;
 
 /**
  * Allows adding 'namespaced' DSL extensions to a target object.
  */
+@HasInternalProtocol
 public interface ExtensionContainer {
 
     /**
@@ -32,17 +36,6 @@ public interface ExtensionContainer {
      * @param extension Any object whose methods and properties will extend the target object
      */
     void add(String name, Object extension);
-
-    /**
-     * Deprecated. Use {@link #create}
-     *
-     * @param name The name for the extension
-     * @param type The type of the extension
-     * @param constructionArguments The arguments to be used to construct the extension instance
-     * @deprecated use {@link #create}
-     */
-    @Deprecated
-    void add(String name, Class<?> type, Object... constructionArguments);
 
     /**
      * Adds a new extension to this container, that itself is dynamically made {@link ExtensionAware}.
@@ -91,6 +84,15 @@ public interface ExtensionContainer {
      * @return extension or null
      */
     Object findByName(String name);
+
+    /**
+     * Looks for the extension of the specified type and configures it with the supplied action.
+     * @param type extension type
+     * @param action the configure action
+     * @throws UnknownDomainObjectException if no exception is found.
+     */
+    @Incubating
+    <T> void configure(Class<T> type, Action<? super T> action);
 
     /**
      * The extra properties extension in this extension container.

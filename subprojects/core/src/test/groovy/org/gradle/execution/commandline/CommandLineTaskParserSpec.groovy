@@ -16,94 +16,77 @@
 
 package org.gradle.execution.commandline
 
-import org.gradle.api.DefaultTask
-import org.gradle.api.Project
-import org.gradle.api.tasks.TaskAction
+import org.gradle.api.Task
+import org.gradle.execution.TaskSelectionResult
 import org.gradle.execution.TaskSelector
-import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.internal.DefaultTaskExecutionRequest
 import spock.lang.Specification
 
 import static com.google.common.collect.Sets.newHashSet
-import static java.util.Collections.emptyList
 
-/**
- * by Szczepan Faber, created at: 10/8/12
- */
 class CommandLineTaskParserSpec extends Specification {
-
-    Project project = new ProjectBuilder().build()
-    CommandLineTaskParser parser = new CommandLineTaskParser()
-    TaskSelector selector = Mock()
-    SomeTask task = project.task('someTask', type: SomeTask)
-    SomeTask task2 = project.task('someTask2', type: SomeTask)
-    SomeTask task3 = project.task('someTask3', type: SomeTask)
+    def selector = Mock(TaskSelector)
+    def taskConfigurer = Mock(CommandLineTaskConfigurer)
+    def task = Mock(Task)
+    def task2 = Mock(Task)
+    def task3 = Mock(Task)
+    def parser = new CommandLineTaskParser(taskConfigurer, selector)
 
     def setup() {
-        parser.taskConfigurer = Mock(CommandLineTaskConfigurer)
-        parser.taskConfigurer.configureTasks(_, _) >> { args -> args[1] }
+        taskConfigurer.configureTasks(_, _) >> { args -> args[1] }
     }
 
-    def "deals with empty input"() {
-        expect:
-        parser.parseTasks(emptyList(), selector).empty
-    }
-
-    def "parses a single task"() {
+    def "parses a single task selector"() {
         given:
-        selector.getSelection('foo') >> new TaskSelector.TaskSelection('foo task', [task] as Set)
+        def request = new DefaultTaskExecutionRequest(['foo'], 'project')
+        def selection = new TaskSelector.TaskSelection(':project', ':foo', asTaskSelectionResults(task))
+
+        selector.getSelection('project', 'foo') >> selection
 
         when:
-        def out = parser.parseTasks(['foo'], selector)
+        def out = parser.parseTasks(request)
 
         then:
-        out.size() == 1
-        out.get('foo task') == [task] as Set
+        out == [selection]
     }
 
-    def "parses single task with multiple matches"() {
+    def "parses multiple tasks selectors"() {
         given:
-        selector.getSelection('foo') >> new TaskSelector.TaskSelection('foo task', [task, task2] as Set)
+        def request = new DefaultTaskExecutionRequest(['foo', 'bar'])
+        def selection1 = new TaskSelector.TaskSelection(':project', ':foo', asTaskSelectionResults(task, task2))
+        def selection2 = new TaskSelector.TaskSelection(':project', ':bar', asTaskSelectionResults(task3))
+
+        selector.getSelection(null, 'foo') >> selection1
+        selector.getSelection(null, 'bar') >> selection2
 
         when:
-        def out = parser.parseTasks(['foo'], selector)
+        def out = parser.parseTasks(request)
 
         then:
-        out.size() == 2
-        out.get('foo task') == [task, task2] as Set
-    }
-
-    def "parses multiple matching tasks"() {
-        given:
-        selector.getSelection('foo') >> new TaskSelector.TaskSelection('foo task', [task, task2] as Set)
-        selector.getSelection('bar') >> new TaskSelector.TaskSelection('bar task', [task3] as Set)
-
-        when:
-        def out = parser.parseTasks(['foo', 'bar'], selector)
-
-        then:
-        out.size() == 3
-        out.get('foo task') == [task, task2] as Set
-        out.get('bar task') == [task3] as Set
+        out == [selection1, selection2]
     }
 
     def "configures tasks if configuration options specified"() {
         given:
-        selector.getSelection('foo') >> new TaskSelector.TaskSelection('foo task', [task, task2] as Set)
-        selector.getSelection('bar') >> new TaskSelector.TaskSelection('bar task', [task3] as Set)
-        selector.getSelection('lastTask') >> new TaskSelector.TaskSelection('last task', [task3] as Set)
+        def request = new DefaultTaskExecutionRequest(['foo', '--all', 'bar', '--include', 'stuff', 'lastTask'])
+        selector.getSelection(null, 'foo') >> new TaskSelector.TaskSelection(':project', 'foo task', asTaskSelectionResults(task, task2))
+        selector.getSelection(null, 'bar') >> new TaskSelector.TaskSelection(':project', 'bar task', asTaskSelectionResults(task3))
+        selector.getSelection(null, 'lastTask') >> new TaskSelector.TaskSelection(':project', 'last task', asTaskSelectionResults(task3))
 
         when:
-        def out = parser.parseTasks(['foo', '--all', 'bar', '--include', 'stuff', 'lastTask'], selector)
+        def out = parser.parseTasks(request)
 
         then:
-        out.size() == 4
-        1 * parser.taskConfigurer.configureTasks(newHashSet(task, task2), ['--all', 'bar', '--include', 'stuff', 'lastTask']) >> ['bar', '--include', 'stuff', 'lastTask']
-        1 * parser.taskConfigurer.configureTasks(newHashSet(task3), ['--include', 'stuff', 'lastTask']) >> ['lastTask']
-        1 * parser.taskConfigurer.configureTasks(newHashSet(task3), []) >> []
-        0 * parser.taskConfigurer._
+        out.size() == 3
+        1 * taskConfigurer.configureTasks(newHashSet(task, task2), ['--all', 'bar', '--include', 'stuff', 'lastTask']) >> ['bar', '--include', 'stuff', 'lastTask']
+        1 * taskConfigurer.configureTasks(newHashSet(task3), ['--include', 'stuff', 'lastTask']) >> ['lastTask']
+        1 * taskConfigurer.configureTasks(newHashSet(task3), []) >> []
+        0 * taskConfigurer._
     }
 
-    public static class SomeTask extends DefaultTask {
-        @TaskAction public void dummy() {}
+    TaskSelectionResult asTaskSelectionResults(Task... someTasks) {
+        TaskSelectionResult mock = Mock(TaskSelectionResult)
+        _ * mock.collectTasks(_) >> { Object args -> args[0].addAll(someTasks) }
+        mock
     }
 }

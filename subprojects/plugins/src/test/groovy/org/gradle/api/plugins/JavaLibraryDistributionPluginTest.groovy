@@ -16,42 +16,33 @@
 package org.gradle.api.plugins
 
 import org.gradle.api.Project
+import org.gradle.api.distribution.DistributionContainer
+import org.gradle.api.distribution.plugins.DistributionPlugin
 import org.gradle.api.tasks.bundling.Zip
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class JavaLibraryDistributionPluginTest extends Specification {
-    private final Project project = HelperUtil.createRootProject();
-    private final JavaLibraryDistributionPlugin plugin = new JavaLibraryDistributionPlugin();
+    private final Project project = TestUtil.builder().withName("test-project").build()
 
     def "applies JavaPlugin and adds convention object with default values"() {
         when:
-        plugin.apply(project)
+        project.apply(plugin: JavaLibraryDistributionPlugin)
 
         then:
         project.plugins.hasPlugin(JavaPlugin.class)
-        project.extensions.getByType(DistributionExtension.class) != null
-        project.distribution.name == project.name
-
+        project.extensions.getByType(DistributionContainer.class) != null
+        project.plugins.hasPlugin(DistributionPlugin.class)
+        project.distributions.main.baseName == project.name
     }
 
     def "adds distZip task to project"() {
         when:
-        plugin.apply(project)
+        project.apply(plugin: JavaLibraryDistributionPlugin)
 
         then:
-        def task = project.tasks[JavaLibraryDistributionPlugin.TASK_DIST_ZIP_NAME]
+        def task = project.tasks.distZip
         task instanceof Zip
-        task.archiveName == "${project.distribution.name}.zip"
-    }
-
-    public void "distribution name is configurable"() {
-        when:
-        plugin.apply(project)
-        project.distribution.name = "SuperApp";
-
-        then:
-        def distZipTask = project.tasks[JavaLibraryDistributionPlugin.TASK_DIST_ZIP_NAME]
-        distZipTask.archiveName == "SuperApp.zip"
+        task.archiveName == "test-project.zip"
     }
 }

@@ -67,6 +67,7 @@ class ConcurrentTestUtil extends ExternalResource {
     //simplistic polling assertion. attempts asserting every x millis up to some max timeout
     static void poll(int timeout = 10, Closure assertion) {
         def expiry = System.currentTimeMillis() + timeout * 1000 // convert to ms
+        long sleepTime = 100
         while(true) {
             try {
                 assertion()
@@ -75,7 +76,8 @@ class ConcurrentTestUtil extends ExternalResource {
                 if (System.currentTimeMillis() > expiry) {
                     throw t
                 }
-                Thread.sleep(100);
+                sleepTime = Math.min(250, (long) (sleepTime * 1.2))
+                Thread.sleep(sleepTime);
             }
         }
     }
@@ -166,7 +168,7 @@ class ConcurrentTestUtil extends ExternalResource {
         }
     }
 
-    private void onFailure(Throwable t) {
+    private void failed(Throwable t) {
         lock.lock()
         try {
             if (failureHandler != null) {
@@ -189,7 +191,7 @@ class ConcurrentTestUtil extends ExternalResource {
             LOG.info("Waiting for test threads to complete.")
             while (!threads.isEmpty()) {
                 if (!threadsChanged.awaitUntil(timeout)) {
-                    onFailure(new IllegalStateException("Timeout waiting for test threads to complete."))
+                    failed(new IllegalStateException("Timeout waiting for test threads to complete."))
                     break;
                 }
             }
@@ -235,7 +237,7 @@ class ConcurrentTestUtil extends ExternalResource {
         try {
             threads.remove(thread)
             if (failure) {
-                onFailure(failure)
+                failed(failure)
             }
             threadsChanged.signalAll()
         } finally {
@@ -493,7 +495,7 @@ class StartAsyncAction extends AbstractAsyncAction {
     }
 
     /**
-     * Runs the given action, and then waits until another another thread calls {@link #done()}.  Asserts that the start action does not block waiting for
+     * Runs the given action, and then waits until another thread calls {@link #done()}.  Asserts that the start action does not block waiting for
      * the async action to complete.
      *
      * @param action The start action

@@ -15,18 +15,27 @@
  */
 package org.gradle.api.internal;
 
-import org.gradle.api.Action;
+import groovy.lang.Closure;
 import org.gradle.api.NamedDomainObjectContainer;
 
 public class NamedDomainObjectContainerConfigureDelegate extends ConfigureDelegate {
+    private final NamedDomainObjectContainer _container;
 
-    public NamedDomainObjectContainerConfigureDelegate(Object owner, final NamedDomainObjectContainer container) {
-        super(owner, container, new Action<String>() {
-            public void execute(String name) {
-                container.create(name);
-            }
-        });
+    public NamedDomainObjectContainerConfigureDelegate(Object owner, NamedDomainObjectContainer container) {
+        super(owner, container);
+        _container = container;
     }
 
+    @Override
+    protected boolean _isConfigureMethod(String name, Object[] params) {
+        return params.length == 1 && params[0] instanceof Closure;
+    }
 
+    @Override
+    protected Object _configure(String name, Object[] params) {
+        if (params.length == 0) {
+            return _container.create(name);
+        }
+        return _container.create(name, (Closure) params[0]);
+    }
 }

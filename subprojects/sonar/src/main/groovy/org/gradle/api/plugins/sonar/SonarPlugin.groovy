@@ -21,8 +21,9 @@ import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.api.plugins.sonar.model.*
-import org.gradle.internal.reflect.Instantiator
 import org.gradle.internal.jvm.Jvm
+import org.gradle.internal.reflect.Instantiator
+import org.gradle.testing.jacoco.plugins.JacocoPlugin
 import org.gradle.util.GradleVersion
 
 import javax.inject.Inject
@@ -60,7 +61,7 @@ class SonarPlugin implements Plugin<ProjectInternal> {
     }
 
     private SonarAnalyze configureSonarTask(Project project) {
-        project.tasks.add(SONAR_ANALYZE_TASK_NAME, SonarAnalyze)
+        project.tasks.create(SONAR_ANALYZE_TASK_NAME, SonarAnalyze)
     }
 
     private SonarRootModel configureSonarRootModel(Project project) {
@@ -85,6 +86,8 @@ class SonarPlugin implements Plugin<ProjectInternal> {
 
     private SonarDatabase configureSonarDatabase() {
         def database = instantiator.newInstance(SonarDatabase)
+        database.url = "jdbc:derby://localhost:1527/sonar"
+        database.driverClassName = "org.apache.derby.jdbc.ClientDriver"
         database.username = "sonar"
         database.password = "sonar"
         database
@@ -129,22 +132,26 @@ class SonarPlugin implements Plugin<ProjectInternal> {
             def test = project.sourceSets.test
 
             sonarProject.conventionMapping.with {
-                sourceDirs = { main.allSource.srcDirs.findAll { it.exists() } }
-                testDirs = { test.allSource.srcDirs.findAll { it.exists() } }
-                binaryDirs = { main.runtimeClasspath.findAll { it.directory } }
+                sourceDirs = { main.allSource.srcDirs as List }
+                testDirs = { test.allSource.srcDirs as List }
+                binaryDirs = { [main.output.classesDir] }
                 libraries = {
-                    def libraries = main.runtimeClasspath.findAll { it.file }
+                    def libraries = main.compileClasspath
                     def runtimeJar = Jvm.current().runtimeJar
                     if (runtimeJar != null) {
-                        libraries << runtimeJar
+                        libraries += project.files(runtimeJar)
                     }
                     libraries
                 }
-                testReportPath = { project.test.testResultsDir.exists() ? project.test.testResultsDir : null }
+                testReportPath = { project.test.reports.junitXml.destination }
                 language = { "java" }
             }
+            project.plugins.withType(JacocoPlugin) {
+                sonarProject.withProjectProperties { props ->
+                    props['sonar.jacoco.reportPath'] = project.test.jacoco.destinationFile
+                }
+            }
         }
-
         sonarProject
     }
 }

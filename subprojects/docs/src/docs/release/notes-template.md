@@ -19,22 +19,10 @@ The following are the features that have been promoted in this Gradle release.
 
 ## Fixed issues
 
-## Incubating features
-
-Incubating features are intended to be used, but not yet guaranteed to be backwards compatible.
-By giving early access to new features, real world feedback can be incorporated into their design.
-See the User guide section on the “[Feature Lifecycle](userguide/feature_lifecycle.html)” for more information.
-
-The following are the new incubating features or changes to existing incubating features in this Gradle release.
-
-<!--
-### Example incubating feature
--->
-
 ## Deprecations
 
 Features that have become superseded or irrelevant due to the natural evolution of Gradle become *deprecated*, and scheduled to be removed
-in the next major Gradle version (Gradle 2.0). See the User guide section on the “[Feature Lifecycle](userguide/feature_lifecycle.html)” for more information.
+in the next major Gradle version (Gradle 3.0). See the User guide section on the “[Feature Lifecycle](userguide/feature_lifecycle.html)” for more information.
 
 The following are the newly deprecated items in this Gradle release. If you have concerns about a deprecation, please raise it via the [Gradle Forums](http://forums.gradle.org).
 
@@ -53,7 +41,7 @@ The following are the newly deprecated items in this Gradle release. If you have
 We would like to thank the following community members for making contributions to this release of Gradle.
 
 <!--
-* Some Person - fixed some issue (GRADLE-1234)
+* [Some person](https://github.com/some-person) - fixed some issue (GRADLE-1234)
 -->
 
 We love getting contributions from the Gradle community. For information on contributing, please see [gradle.org/contribute](http://gradle.org/contribute).

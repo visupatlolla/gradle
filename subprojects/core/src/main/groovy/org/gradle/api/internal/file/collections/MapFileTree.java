@@ -16,11 +16,14 @@
 package org.gradle.api.internal.file.collections;
 
 import groovy.lang.Closure;
+import org.gradle.api.Action;
 import org.gradle.api.file.FileVisitDetails;
 import org.gradle.api.file.FileVisitor;
 import org.gradle.api.file.RelativePath;
-import org.gradle.internal.Factory;
+import org.gradle.api.internal.ClosureBackedAction;
 import org.gradle.api.internal.file.AbstractFileTreeElement;
+import org.gradle.internal.Factory;
+import org.gradle.internal.nativeintegration.filesystem.Chmod;
 
 import java.io.File;
 import java.io.InputStream;
@@ -35,15 +38,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * A {@link MinimalFileTree} which is composed using a mapping from relative path to file source.
  */
 public class MapFileTree implements MinimalFileTree, FileSystemMirroringFileTree {
-    private final Map<RelativePath, Closure> elements = new LinkedHashMap<RelativePath, Closure>();
+    private final Map<RelativePath, Action<OutputStream>> elements = new LinkedHashMap<RelativePath, Action<OutputStream>>();
     private final Factory<File> tmpDirSource;
+    private final Chmod chmod;
 
-    public MapFileTree(final File tmpDir) {
-        this(new Factory<File>() { public File create() { return tmpDir; }});
+    public MapFileTree(final File tmpDir, Chmod chmod) {
+        this(new Factory<File>() { public File create() { return tmpDir; }}, chmod);
     }
 
-    public MapFileTree(Factory<File> tmpDirSource) {
+    public MapFileTree(Factory<File> tmpDirSource, Chmod chmod) {
         this.tmpDirSource = tmpDirSource;
+        this.chmod = chmod;
     }
 
     private File getTmpDir() {
@@ -61,12 +66,12 @@ public class MapFileTree implements MinimalFileTree, FileSystemMirroringFileTree
     public void visit(FileVisitor visitor) {
         AtomicBoolean stopFlag = new AtomicBoolean();
         Visit visit = new Visit(visitor, stopFlag);
-        for (Map.Entry<RelativePath, Closure> entry : elements.entrySet()) {
+        for (Map.Entry<RelativePath, Action<OutputStream>> entry : elements.entrySet()) {
             if (stopFlag.get()) {
                 break;
             }
             RelativePath path = entry.getKey();
-            Closure generator = entry.getValue();
+            Action<OutputStream> generator = entry.getValue();
             visit.visit(path, generator);
         }
     }
@@ -76,7 +81,12 @@ public class MapFileTree implements MinimalFileTree, FileSystemMirroringFileTree
      * of the element to.
      */
     public void add(String path, Closure contentClosure) {
-        elements.put(RelativePath.parse(true, path), contentClosure);
+        Action<OutputStream> action = new ClosureBackedAction<OutputStream>(contentClosure);
+        add(path, action);
+    }
+
+    public void add(String path, Action<OutputStream> contentWriter) {
+        elements.put(RelativePath.parse(true, path), contentWriter);
     }
 
     private class Visit {
@@ -95,23 +105,24 @@ public class MapFileTree implements MinimalFileTree, FileSystemMirroringFileTree
             }
 
             visitDirs(path.getParent(), visitor);
-            visitor.visitDir(new FileVisitDetailsImpl(path, null, stopFlag));
+            visitor.visitDir(new FileVisitDetailsImpl(path, null, stopFlag, chmod));
         }
 
-        public void visit(RelativePath path, Closure generator) {
+        public void visit(RelativePath path, Action<OutputStream> generator) {
             visitDirs(path.getParent(), visitor);
-            visitor.visitFile(new FileVisitDetailsImpl(path, generator, stopFlag));
+            visitor.visitFile(new FileVisitDetailsImpl(path, generator, stopFlag, chmod));
         }
     }
 
     private class FileVisitDetailsImpl extends AbstractFileTreeElement implements FileVisitDetails {
         private final RelativePath path;
-        private final Closure generator;
+        private final Action<OutputStream> generator;
         private final long lastModified;
         private final AtomicBoolean stopFlag;
         private File file;
 
-        public FileVisitDetailsImpl(RelativePath path, Closure generator, AtomicBoolean stopFlag) {
+        public FileVisitDetailsImpl(RelativePath path, Action<OutputStream> generator, AtomicBoolean stopFlag, Chmod chmod) {
+            super(chmod);
             this.path = path;
             this.generator = generator;
             this.stopFlag = stopFlag;
@@ -148,7 +159,7 @@ public class MapFileTree implements MinimalFileTree, FileSystemMirroringFileTree
         }
 
         public void copyTo(OutputStream outstr) {
-            generator.call(outstr);
+            generator.execute(outstr);
         }
 
         public InputStream open() {

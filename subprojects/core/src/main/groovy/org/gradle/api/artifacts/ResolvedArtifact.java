@@ -19,8 +19,6 @@ import java.io.File;
 
 /**
  * Information about a resolved artifact.
- * 
- * @author Hans Dockter
  */
 public interface ResolvedArtifact {
     File getFile();
@@ -31,15 +29,6 @@ public interface ResolvedArtifact {
      * @return The module.
      */
     ResolvedModuleVersion getModuleVersion();
-
-    /**
-     * Returns one of the dependencies which this artifact belongs to.
-     *
-     * @return One of the dependencies which this artifact belongs to.
-     * @deprecated An artifact can belong to multiple dependencies. Use {@link #getModuleVersion()} instead.
-     */
-    @Deprecated
-    ResolvedDependency getResolvedDependency();
 
     String getName();
 

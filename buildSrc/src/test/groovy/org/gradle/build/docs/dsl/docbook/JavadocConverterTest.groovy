@@ -100,6 +100,16 @@ line 2</para>'''
         format(result.docbook) == '''<para>&lt;&gt;&amp; /&gt;</para>'''
     }
 
+    def ignoresHtmlComments() {
+        _ * classMetaData.rawCommentText >> '<!-- <p>ignore me</p> --><p>para 1'
+
+        when:
+        def result = parser.parse(classMetaData, listener)
+
+        then:
+        format(result.docbook) == '''<para>para 1</para>'''
+    }
+
     def convertsPElementsToParaElements() {
         _ * classMetaData.rawCommentText >> '<p>para 1</p><P>para 2</P>'
 
@@ -140,6 +150,16 @@ line 2</para>'''
         format(result.docbook) == '''<para>This is <literal>code</literal>. So is <literal>this</literal>.</para>'''
     }
 
+    def convertsLiteralTagsToText() {
+        _ * classMetaData.rawCommentText >> '{@literal <b>markup</b> {@ignore}}'
+
+        when:
+        def result = parser.parse(classMetaData, listener)
+
+        then:
+        format(result.docbook) == '''<para>&lt;b&gt;markup&lt;/b&gt; {@ignore}</para>'''
+    }
+
     def doesNotInterpretContentsOfCodeTagAsHtml() {
         _ * classMetaData.rawCommentText >> '{@code List<String> && a < 9} <code>&amp;</code>'
 
@@ -163,6 +183,16 @@ line 2</para>'''
         format(result.docbook) == '''<programlisting language="java">this is some
 
 literal code</programlisting>'''
+    }
+
+    def preElementCanContainReservedCharacters() {
+        _ * classMetaData.rawCommentText >> ''' * <pre>a << b</pre>'''
+
+        when:
+        def result = parser.parse(classMetaData, listener)
+
+        then:
+        format(result.docbook) == '''<programlisting language="java">a &lt;&lt; b</programlisting>'''
     }
 
     def implicitlyEndsCurrentParagraphAtNextBlockElement() {
@@ -259,6 +289,16 @@ literal code</programlisting><para> does something.
 
     def convertsAnEmElementToAnEmphasisElement() {
         _ * classMetaData.rawCommentText >> '<em>text</em>'
+
+        when:
+        def result = parser.parse(classMetaData, listener)
+
+        then:
+        format(result.docbook) == '''<para><emphasis>text</emphasis></para>'''
+    }
+
+    def convertsAStrongElementToAnEmphasisElement() {
+        _ * classMetaData.rawCommentText >> '<strong>text</strong>'
 
         when:
         def result = parser.parse(classMetaData, listener)

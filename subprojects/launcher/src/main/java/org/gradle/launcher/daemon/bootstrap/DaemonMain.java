@@ -29,6 +29,7 @@ import org.gradle.launcher.daemon.server.Daemon;
 import org.gradle.launcher.daemon.server.DaemonServices;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.logging.LoggingServiceRegistry;
+import org.gradle.messaging.remote.Address;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -49,11 +50,11 @@ public class DaemonMain extends EntryPoint {
 
     private static final Logger LOGGER = Logging.getLogger(DaemonMain.class);
 
-    private final DaemonServerConfiguration configuration;
     private PrintStream originalOut;
     private PrintStream originalErr;
 
-    public static void main(String[] args) {
+    @Override
+    protected void doAction(String[] args, ExecutionListener listener) {
         //The first argument is not really used but it is very useful in diagnosing, i.e. running 'jps -m'
         if (args.length < 4) {
             invalidArgs("Following arguments are required: <gradle-version> <daemon-dir> <timeout-millis> <daemonUid> <optional startup jvm opts>");
@@ -75,11 +76,27 @@ public class DaemonMain extends EntryPoint {
         }
         LOGGER.debug("Assuming the daemon was started with following jvm opts: {}", startupOpts);
 
-        DaemonServerConfiguration parameters = new DefaultDaemonServerConfiguration(
-                daemonUid, daemonBaseDir, idleTimeoutMs, startupOpts);
-        DaemonMain daemonMain = new DaemonMain(parameters);
+        DaemonServerConfiguration parameters = new DefaultDaemonServerConfiguration(daemonUid, daemonBaseDir, idleTimeoutMs, startupOpts);
+        LoggingServiceRegistry loggingRegistry = LoggingServiceRegistry.newProcessLogging();
+        LoggingManagerInternal loggingManager = loggingRegistry.newInstance(LoggingManagerInternal.class);
+        DaemonServices daemonServices = new DaemonServices(parameters, loggingRegistry, loggingManager);
+        File daemonLog = daemonServices.getDaemonLogFile();
 
-        daemonMain.run();
+        initialiseLogging(loggingManager, daemonLog);
+
+        Daemon daemon = daemonServices.get(Daemon.class);
+        daemon.start();
+
+        try {
+            DaemonContext daemonContext = daemonServices.get(DaemonContext.class);
+            Long pid = daemonContext.getPid();
+            daemonStarted(pid, daemon.getUid(), daemon.getAddress(), daemonLog);
+
+            // Block until idle
+            daemon.requestStopOnIdleTimeout(parameters.getIdleTimeout(), TimeUnit.MILLISECONDS);
+        } finally {
+            daemon.stop();
+        }
     }
 
     private static void invalidArgs(String message) {
@@ -88,42 +105,9 @@ public class DaemonMain extends EntryPoint {
         System.exit(1);
     }
 
-    public DaemonMain(DaemonServerConfiguration configuration) {
-        this.configuration = configuration;
-    }
-
-    protected void doAction(ExecutionListener listener) {
-        LoggingServiceRegistry loggingRegistry = LoggingServiceRegistry.newProcessLogging();
-        LoggingManagerInternal loggingManager = loggingRegistry.newInstance(LoggingManagerInternal.class);
-        DaemonServices daemonServices = new DaemonServices(configuration, loggingRegistry, loggingManager);
-        File daemonLog = daemonServices.getDaemonLogFile();
-        final DaemonContext daemonContext = daemonServices.get(DaemonContext.class);
-
-        initialiseLogging(loggingManager, daemonLog);
-
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            public void run() {
-                LOGGER.info("Daemon[pid = {}] process has finished.", daemonContext.getPid());
-            }
-        });
-
-        Daemon daemon = startDaemon(daemonServices);
-
-        Long pid = daemonContext.getPid();
-        LOGGER.lifecycle(DaemonMessages.PROCESS_STARTED + ((pid == null)? "":" Pid: " + pid + "."));
-        daemonStarted(pid, daemonLog);
-
-        try {
-            daemon.requestStopOnIdleTimeout(configuration.getIdleTimeout(), TimeUnit.MILLISECONDS);
-            LOGGER.info("Daemon hit idle timeout (" + configuration.getIdleTimeout() + "ms), stopping...");
-        } finally {
-            daemon.stop();
-        }
-    }
-
-    protected void daemonStarted(Long pid, File daemonLog) {
+    protected void daemonStarted(Long pid, String uid, Address address, File daemonLog) {
         //directly printing to the stream to avoid log level filtering.
-        new DaemonStartupCommunication().printDaemonStarted(originalOut, pid, daemonLog);
+        new DaemonStartupCommunication().printDaemonStarted(originalOut, pid, uid, address, daemonLog);
         try {
             originalOut.close();
             originalErr.close();
@@ -167,12 +151,6 @@ public class DaemonMain extends EntryPoint {
         loggingManager.setLevel(LogLevel.DEBUG);
 
         loggingManager.start();
-    }
-
-    protected Daemon startDaemon(DaemonServices daemonServices) {
-        Daemon daemon = daemonServices.get(Daemon.class);
-        daemon.start();
-        return daemon;
     }
 
     private void redirectOutputsAndInput(PrintStream printStream) {

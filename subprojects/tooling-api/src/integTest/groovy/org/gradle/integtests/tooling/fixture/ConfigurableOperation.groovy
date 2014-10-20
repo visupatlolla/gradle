@@ -16,28 +16,27 @@
 
 package org.gradle.integtests.tooling.fixture
 
-import org.gradle.tooling.LongRunningOperation
+import org.gradle.integtests.fixtures.executer.ExecutionResult
+import org.gradle.integtests.fixtures.executer.OutputScrapingExecutionResult
+import org.gradle.tooling.ModelBuilder
 import org.gradle.tooling.ProgressListener
 
-/**
- * by Szczepan Faber, created at: 12/19/11
- */
 class ConfigurableOperation {
 
-    LongRunningOperation operation
+    def operation
 
     def progressMessages = []
     def listener = { event -> progressMessages << event.description } as ProgressListener
     def stdout = new ByteArrayOutputStream()
     def stderr = new ByteArrayOutputStream()
+    Object modelInstance
 
-    public ConfigurableOperation(LongRunningOperation operation) {
+    //LongRunningOperation is only available since milestone-7, hence omitting the type
+    public ConfigurableOperation(operation) {
         init(operation)
     }
 
-    public ConfigurableOperation() {}
-
-    void init(LongRunningOperation operation) {
+    void init(operation) {
         this.operation = operation
         this.operation.addProgressListener(listener)
         this.operation.standardOutput = stdout
@@ -52,6 +51,10 @@ class ConfigurableOperation {
         return stderr.toString()
     }
 
+    ExecutionResult getResult() {
+        return new OutputScrapingExecutionResult(standardOutput, standardError)
+    }
+
     ConfigurableOperation setStandardInput(String input) {
         this.operation.standardInput = new ByteArrayInputStream(input.toString().bytes)
         return this
@@ -59,5 +62,17 @@ class ConfigurableOperation {
 
     List getProgressMessages() {
         return progressMessages
+    }
+
+    ConfigurableOperation buildModel() {
+        assert operation instanceof ModelBuilder
+        def model = (ModelBuilder) operation;
+        this.modelInstance = model.get()
+        this
+    }
+
+    Object getModel() {
+        assert modelInstance != null : "Model was not built."
+        this.modelInstance
     }
 }

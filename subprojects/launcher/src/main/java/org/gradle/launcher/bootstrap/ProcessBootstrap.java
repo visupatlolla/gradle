@@ -20,13 +20,16 @@ import org.gradle.api.internal.DefaultClassPathProvider;
 import org.gradle.api.internal.DefaultClassPathRegistry;
 import org.gradle.api.internal.classpath.DefaultModuleRegistry;
 import org.gradle.internal.classpath.ClassPath;
-import org.gradle.util.ClassLoaderFactory;
-import org.gradle.util.DefaultClassLoaderFactory;
-import org.gradle.util.MutableURLClassLoader;
+import org.gradle.internal.classloader.ClassLoaderFactory;
+import org.gradle.internal.classloader.DefaultClassLoaderFactory;
+import org.gradle.internal.classloader.MutableURLClassLoader;
 
 import java.lang.reflect.Method;
 
 public class ProcessBootstrap {
+    /**
+     * Sets up the ClassLoader structure for the given class, creates an instance and invokes {@link EntryPoint#run(String[])} on it.
+     */
     public void run(String mainClassName, String[] args) {
         try {
             runNoExit(mainClassName, args);
@@ -46,7 +49,8 @@ public class ProcessBootstrap {
         ClassLoader runtimeClassLoader = new MutableURLClassLoader(antClassLoader, runtimeClasspath);
         Thread.currentThread().setContextClassLoader(runtimeClassLoader);
         Class<?> mainClass = runtimeClassLoader.loadClass(mainClassName);
-        Method mainMethod = mainClass.getMethod("main", String[].class);
-        mainMethod.invoke(null, new Object[]{args});
+        Object entryPoint = mainClass.newInstance();
+        Method mainMethod = mainClass.getMethod("run", String[].class);
+        mainMethod.invoke(entryPoint, new Object[]{args});
     }
 }

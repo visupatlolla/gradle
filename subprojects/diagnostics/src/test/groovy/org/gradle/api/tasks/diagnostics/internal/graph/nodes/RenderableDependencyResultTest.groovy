@@ -15,17 +15,14 @@
  */
 package org.gradle.api.tasks.diagnostics.internal.graph.nodes
 
-import org.gradle.api.artifacts.ModuleVersionSelector
-import org.gradle.api.artifacts.result.ResolvedModuleVersionResult
+import org.gradle.api.artifacts.component.ModuleComponentSelector
+import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import spock.lang.Specification
 
-import static org.gradle.api.internal.artifacts.DefaultModuleVersionSelector.newSelector
+import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 import static org.gradle.api.internal.artifacts.result.ResolutionResultDataBuilder.newModule
-import org.gradle.api.artifacts.result.ResolvedDependencyResult
 
-/**
- * by Szczepan Faber, created at: 10/9/12
- */
 class RenderableDependencyResultTest extends Specification {
 
     def "renders name"() {
@@ -39,11 +36,11 @@ class RenderableDependencyResultTest extends Specification {
         expect:
         dep(requested, same).name == 'org.mockito:mockito-core:1.0'
         dep(requested, differentVersion).name == 'org.mockito:mockito-core:1.0 -> 2.0'
-        dep(requested, differentName).name == 'org.mockito:mockito-core:1.0 -> mockito:1.0'
+        dep(requested, differentName).name == 'org.mockito:mockito-core:1.0 -> org.mockito:mockito:1.0'
         dep(requested, differentGroup).name == 'org.mockito:mockito-core:1.0 -> com.mockito:mockito:2.0'
     }
 
-    private RenderableDependencyResult dep(ModuleVersionSelector requested, ResolvedModuleVersionResult selected) {
+    private RenderableDependencyResult dep(ModuleComponentSelector requested, ResolvedComponentResult selected) {
         ResolvedDependencyResult dependencyResult = Stub() {
             getRequested() >> requested
             getSelected() >> selected

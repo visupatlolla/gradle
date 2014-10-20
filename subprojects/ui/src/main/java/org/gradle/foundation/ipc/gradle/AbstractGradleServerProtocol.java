@@ -45,8 +45,6 @@ import java.util.List;
  * This defines the basic behavior of all gradle protocols for interprocess communication. It manages handshaking, detecting if the client executed prematurely, as well as executing alternate external
  * processes. All you need to do is extend this, implement the abstract functions, and make sure you call setHasReceivedBuildCompleteNotification() when whatever you were doing is complete (so we know
  * any exiting is not premature).
- *
- * @author mhunsicker
  */
 public abstract class AbstractGradleServerProtocol implements ProcessLauncherServer.Protocol {
     private static final String INIT_SCRIPT_EXTENSION = ".gradle";
@@ -119,7 +117,7 @@ public abstract class AbstractGradleServerProtocol implements ProcessLauncherSer
     }
 
     /**
-     * Notification that a message has been received. If we just connected, we'll do a quick handshake to verify the client, then we just pass the rest on our our output panel.
+     * Notification that a message has been received. If we just connected, we'll do a quick handshake to verify the client, then we just pass the rest on our output panel.
      *
      * @param message the message that was received.
      */
@@ -313,7 +311,7 @@ public abstract class AbstractGradleServerProtocol implements ProcessLauncherSer
     }
 
     /**
-     * Notification that the client has shutdown. Note: this can occur before communciations has ever started. You SHOULD get this notification before receiving serverExited, even if the client fails
+     * Notification that the client has shutdown. Note: this can occur before communications has ever started. You SHOULD get this notification before receiving serverExited, even if the client fails
      * to launch or locks up.
      *
      * @param returnCode the return code of the client application

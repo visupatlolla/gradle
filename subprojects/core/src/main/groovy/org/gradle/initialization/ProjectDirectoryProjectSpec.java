@@ -15,24 +15,18 @@
  */
 package org.gradle.initialization;
 
-import org.apache.commons.lang.builder.EqualsBuilder;
-import org.apache.commons.lang.builder.HashCodeBuilder;
-import org.gradle.api.internal.project.ProjectIdentifier;
-import org.gradle.api.internal.project.IProjectRegistry;
 import org.gradle.api.InvalidUserDataException;
+import org.gradle.api.internal.project.ProjectIdentifier;
+import org.gradle.api.internal.project.ProjectRegistry;
 
 import java.io.File;
-import java.io.Serializable;
+import java.util.List;
 
-public class ProjectDirectoryProjectSpec extends AbstractProjectSpec implements Serializable {
+public class ProjectDirectoryProjectSpec extends AbstractProjectSpec {
     private final File dir;
 
     public ProjectDirectoryProjectSpec(File dir) {
         this.dir = dir;
-    }
-
-    public String getDisplayName() {
-        return String.format("with project directory '%s'", dir);
     }
 
     protected String formatNoMatchesMessage() {
@@ -43,25 +37,22 @@ public class ProjectDirectoryProjectSpec extends AbstractProjectSpec implements 
         return String.format("Multiple projects in this build have project directory '%s': %s", dir, matches);
     }
 
-    protected boolean select(ProjectIdentifier project) {
-        return project.getProjectDir().equals(dir);
+    @Override
+    protected <T extends ProjectIdentifier> void select(ProjectRegistry<? extends T> candidates, List<? super T> matches) {
+        for (T candidate : candidates.getAllProjects()) {
+            if (candidate.getProjectDir().equals(dir)) {
+                matches.add(candidate);
+            }
+        }
     }
 
     @Override
-    protected void checkPreconditions(IProjectRegistry<?> registry) {
+    protected void checkPreconditions(ProjectRegistry<?> registry) {
         if (!dir.exists()) {
             throw new InvalidUserDataException(String.format("Project directory '%s' does not exist.", dir));
         }
         if (!dir.isDirectory()) {
             throw new InvalidUserDataException(String.format("Project directory '%s' is not a directory.", dir));
         }
-    }
-
-    public boolean equals(Object obj) {
-        return EqualsBuilder.reflectionEquals(this, obj);
-    }
-
-    public int hashCode() {
-        return HashCodeBuilder.reflectionHashCode(this);
     }
 }

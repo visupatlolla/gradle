@@ -16,17 +16,15 @@
 package org.gradle.groovy.scripts.internal;
 
 import groovy.lang.Script;
+import org.codehaus.groovy.classgen.Verifier;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.groovy.scripts.Transformer;
 
 import java.io.File;
 
-/**
- * @author Hans Dockter
- */
 public interface ScriptCompilationHandler {
     void compileToDir(ScriptSource source, ClassLoader classLoader, File scriptCacheDir, Transformer transformer,
-                      Class<? extends Script> scriptBaseClass);
+                      Class<? extends Script> scriptBaseClass, Verifier verifier);
 
     <T extends Script> Class<? extends T> loadFromDir(ScriptSource source, ClassLoader classLoader, File scriptCacheDir,
                                        Class<T> scriptBaseClass);

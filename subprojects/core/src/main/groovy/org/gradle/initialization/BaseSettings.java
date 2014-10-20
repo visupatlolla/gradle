@@ -21,45 +21,60 @@ import org.gradle.api.initialization.ProjectDescriptor;
 import org.gradle.api.initialization.Settings;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.SettingsInternal;
-import org.gradle.api.internal.project.IProjectRegistry;
+import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.initialization.ClassLoaderScope;
+import org.gradle.api.internal.initialization.ScriptHandlerFactory;
+import org.gradle.api.internal.plugins.DefaultObjectConfigurationAction;
+import org.gradle.api.internal.plugins.PluginManager;
+import org.gradle.api.internal.project.AbstractPluginAware;
+import org.gradle.api.internal.project.ProjectRegistry;
+import org.gradle.configuration.ScriptPluginFactory;
 import org.gradle.groovy.scripts.ScriptSource;
+import org.gradle.internal.service.ServiceRegistry;
+import org.gradle.internal.service.scopes.ServiceRegistryFactory;
 
 import java.io.File;
-import java.net.URLClassLoader;
 
-/**
- * @author Hans Dockter
- */
-public class BaseSettings implements SettingsInternal {
+public class BaseSettings extends AbstractPluginAware implements SettingsInternal {
     public static final String DEFAULT_BUILD_SRC_DIR = "buildSrc";
-
     private ScriptSource settingsScript;
 
     private StartParameter startParameter;
-
-    private URLClassLoader classloader;
 
     private File settingsDir;
 
     private DefaultProjectDescriptor rootProjectDescriptor;
 
+    private ProjectDescriptor defaultProjectDescriptor;
+
     private GradleInternal gradle;
-    private IProjectDescriptorRegistry projectDescriptorRegistry;
 
-    protected BaseSettings() {
-    }
+    private ProjectDescriptorRegistry projectDescriptorRegistry;
 
-    public BaseSettings(GradleInternal gradle,
-                        IProjectDescriptorRegistry projectDescriptorRegistry,
-                        URLClassLoader classloader, File settingsDir, ScriptSource settingsScript,
-                        StartParameter startParameter) {
+    private FileResolver fileResolver;
+
+    private final ScriptPluginFactory scriptPluginFactory;
+    private final ScriptHandlerFactory scriptHandlerFactory;
+    private final ClassLoaderScope classLoaderScope;
+    private final ClassLoaderScope rootClassLoaderScope;
+    private final PluginManager pluginManager;
+
+    public BaseSettings(ServiceRegistryFactory serviceRegistryFactory, GradleInternal gradle,
+                        ClassLoaderScope classLoaderScope, ClassLoaderScope rootClassLoaderScope, File settingsDir,
+                        ScriptSource settingsScript, StartParameter startParameter) {
         this.gradle = gradle;
-        this.projectDescriptorRegistry = projectDescriptorRegistry;
+        this.rootClassLoaderScope = rootClassLoaderScope;
         this.settingsDir = settingsDir;
         this.settingsScript = settingsScript;
         this.startParameter = startParameter;
-        this.classloader = classloader;
+        this.classLoaderScope = classLoaderScope;
+        ServiceRegistry services = serviceRegistryFactory.createFor(this);
+        this.fileResolver = services.get(FileResolver.class);
+        this.scriptPluginFactory = services.get(ScriptPluginFactory.class);
+        this.scriptHandlerFactory = services.get(ScriptHandlerFactory.class);
+        this.projectDescriptorRegistry = services.get(ProjectDescriptorRegistry.class);
         rootProjectDescriptor = createProjectDescriptor(null, settingsDir.getName(), settingsDir);
+        pluginManager = services.get(PluginManager.class);
     }
 
     @Override
@@ -76,7 +91,7 @@ public class BaseSettings implements SettingsInternal {
     }
 
     public DefaultProjectDescriptor createProjectDescriptor(DefaultProjectDescriptor parent, String name, File dir) {
-        return new DefaultProjectDescriptor(parent, name, dir, projectDescriptorRegistry);
+        return new DefaultProjectDescriptor(parent, name, dir, projectDescriptorRegistry, fileResolver);
     }
 
     public DefaultProjectDescriptor findProject(String path) {
@@ -134,16 +149,20 @@ public class BaseSettings implements SettingsInternal {
         return projectPath;
     }
 
-    public URLClassLoader getClassLoader() {
-        return classloader;
-    }
-
     public ProjectDescriptor getRootProject() {
         return rootProjectDescriptor;
     }
 
     public void setRootProjectDescriptor(DefaultProjectDescriptor rootProjectDescriptor) {
         this.rootProjectDescriptor = rootProjectDescriptor;
+    }
+
+    public ProjectDescriptor getDefaultProject() {
+        return defaultProjectDescriptor;
+    }
+
+    public void setDefaultProject(ProjectDescriptor defaultProjectDescriptor) {
+        this.defaultProjectDescriptor = defaultProjectDescriptor;
     }
 
     public File getRootDir() {
@@ -174,15 +193,32 @@ public class BaseSettings implements SettingsInternal {
         this.settingsScript = settingsScript;
     }
 
-    public IProjectDescriptorRegistry getProjectDescriptorRegistry() {
+    public ProjectDescriptorRegistry getProjectDescriptorRegistry() {
         return projectDescriptorRegistry;
     }
 
-    public void setProjectDescriptorRegistry(IProjectDescriptorRegistry projectDescriptorRegistry) {
+    public void setProjectDescriptorRegistry(ProjectDescriptorRegistry projectDescriptorRegistry) {
         this.projectDescriptorRegistry = projectDescriptorRegistry;
     }
 
-    public IProjectRegistry<DefaultProjectDescriptor> getProjectRegistry() {
+    public ProjectRegistry<DefaultProjectDescriptor> getProjectRegistry() {
         return projectDescriptorRegistry;
+    }
+
+    @Override
+    protected DefaultObjectConfigurationAction createObjectConfigurationAction() {
+        return new DefaultObjectConfigurationAction(fileResolver, scriptPluginFactory, scriptHandlerFactory, getRootClassLoaderScope(), this);
+    }
+
+    public ClassLoaderScope getRootClassLoaderScope() {
+        return rootClassLoaderScope;
+    }
+
+    public ClassLoaderScope getClassLoaderScope() {
+        return classLoaderScope;
+    }
+
+    public PluginManager getPluginManager() {
+        return pluginManager;
     }
 }

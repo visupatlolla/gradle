@@ -17,7 +17,6 @@ package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.executer.ExecutionFailure
-import org.gradle.internal.nativeplatform.filesystem.FileSystems
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.PreconditionVerifier
 import org.gradle.util.Requires
@@ -30,10 +29,34 @@ class CopyErrorIntegrationTest extends AbstractIntegrationTest {
     @Rule public PreconditionVerifier verifier = new PreconditionVerifier()
 
     @Test
+    public void givesReasonableErrorMessageWhenPathCannotBeConverted() {
+        file('src/thing.txt').createFile()
+
+        testFile('build.gradle') << '''
+            task copy(type: Copy) {
+                from('src') {
+                    into project.repositories
+                }
+                into 'dest'
+            }
+'''
+
+        ExecutionFailure failure = inTestDirectory().withTasks('copy').runWithFailure()
+        failure.assertHasCause("""Cannot convert the provided notation to a String: [].
+The following types/formats are supported:
+  - String or CharSequence instances e.g. 'some/path'
+  - Boolean values e.g. true, Boolean.TRUE
+  - Number values e.g. 42, 3.14
+  - A File instance
+  - A Closure that returns any supported value.
+  - A Callable that returns any supported value.""")
+    }
+
+    @Test
     @Requires(TestPrecondition.SYMLINKS)
     public void reportsSymLinkWhichPointsToNothing() {
         TestFile link = testFile('src/file')
-        FileSystems.default.createSymbolicLink(link, testFile('missing'))
+        link.createLink(testFile('missing'))
 
         Assert.assertFalse(link.isDirectory())
         Assert.assertFalse(link.isFile())

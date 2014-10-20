@@ -32,16 +32,32 @@ configurations.all {
 
 def findDefaultVersionInCatalog(String group, String name) {
     //some custom logic that resolves the default version into a specific version
+    "1.0"
 }
 //END SNIPPET custom-versioning-scheme
 
 //START SNIPPET blacklisting_version
 configurations.all {
     resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-        if (details.requested.group == 'org.cool.software' && details.requested.name == 'cool-library' && details.requested.version == '1.2') {
+        if (details.requested.group == 'org.software' && details.requested.name == 'some-library' && details.requested.version == '1.2') {
             //prefer different version which contains some necessary fixes
             details.useVersion '1.2.1'
         }
     }
 }
 //END SNIPPET blacklisting_version
+
+//START SNIPPET module_substitution
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.name == 'groovy-all') {
+            //prefer 'groovy' over 'groovy-all':
+            details.useTarget group: details.requested.group, name: 'groovy', version: details.requested.version
+        }
+        if (details.requested.name == 'log4j') {
+            //prefer 'log4j-over-slf4j' over 'log4j', with fixed version:
+            details.useTarget "org.slf4j:log4j-over-slf4j:1.7.7"
+        }
+    }
+}
+//END SNIPPET module_substitution

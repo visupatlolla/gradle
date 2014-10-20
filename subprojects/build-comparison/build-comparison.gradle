@@ -15,16 +15,18 @@
  */
 
 dependencies {
-    groovy libraries.groovy
+    compile libraries.groovy
 
+    compile project(":resources")
     compile project(":core")
     compile project(":toolingApi")
     compile project(":reporting")
-    compile project(":ide") // for FileOutcomeIdentifier enum
+    compile project(':plugins')
+    compile project(':ear')
     compile libraries.guava
     compile libraries.slf4j_api
 
-    testCompile "org.jsoup:jsoup:1.6.3"
+    testCompile libraries.jsoup
 }
 
 processResources {

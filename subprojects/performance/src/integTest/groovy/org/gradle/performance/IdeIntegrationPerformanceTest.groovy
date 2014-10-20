@@ -16,54 +16,52 @@
 
 package org.gradle.performance
 
-import org.gradle.performance.fixture.PerformanceTestRunner
-import spock.lang.Specification
 import spock.lang.Unroll
 
-import static org.gradle.performance.fixture.DataAmount.kbytes
-import static org.gradle.performance.fixture.Duration.millis
+import static org.gradle.performance.measure.Duration.millis
 
-/**
- * by Szczepan Faber, created at: 2/9/12
- */
-class IdeIntegrationPerformanceTest extends Specification {
+class IdeIntegrationPerformanceTest extends AbstractPerformanceTest {
     @Unroll("Project '#testProject' eclipse")
     def "eclipse"() {
-        expect:
-        def result = new PerformanceTestRunner(testProject: testProject,
-                tasksToRun: ['eclipse'],
-                runs: 5,
-                warmUpRuns: 1,
-                targetVersions: ['1.0', '1.1', '1.2', 'last'],
-                maxExecutionTimeRegression: maxExecutionTimeRegression,
-                maxMemoryRegression: [kbytes(3000), kbytes(3000), kbytes(3000), kbytes(3000)]
-        ).run()
+        given:
+        runner.testId = "eclipse $testProject"
+        runner.testProject = testProject
+        runner.tasksToRun = ['eclipse']
+        runner.maxExecutionTimeRegression = maxExecutionTimeRegression
+        runner.targetVersions = ['1.0', '1.4', '1.8', '1.12', 'last']
+
+        when:
+        def result = runner.run()
+
+        then:
         result.assertCurrentVersionHasNotRegressed()
 
         where:
         testProject       | maxExecutionTimeRegression
-        "small"           | [millis(500), millis(500), millis(500), millis(500)]
-        "multi"           | [millis(1500), millis(1000), millis(1000), millis(1000)]
-        "lotDependencies" | [millis(3000), millis(1000), millis(1000), millis(1000)]
+        "small"           | millis(800)
+        "multi"           | millis(500)
+        "lotDependencies" | millis(500)
     }
 
     @Unroll("Project '#testProject' idea")
     def "idea"() {
-        expect:
-        def result = new PerformanceTestRunner(testProject: testProject,
-                tasksToRun: ['idea'],
-                runs: 5,
-                warmUpRuns: 1,
-                targetVersions: ['1.0', '1.1', '1.2', 'last'],
-                maxExecutionTimeRegression: maxExecutionTimeRegression,
-                maxMemoryRegression: [kbytes(3000), kbytes(3000), kbytes(3000), kbytes(3000)]
-        ).run()
+        given:
+        runner.testId = "idea $testProject"
+        runner.testProject = testProject
+        runner.tasksToRun = ['idea']
+        runner.maxExecutionTimeRegression = maxExecutionTimeRegression
+        runner.targetVersions = ['1.0', '1.8', '1.10', '1.12', 'last']
+
+        when:
+        def result = runner.run()
+
+        then:
         result.assertCurrentVersionHasNotRegressed()
 
         where:
         testProject       | maxExecutionTimeRegression
-        "small"           | [millis(500), millis(500), millis(500), millis(500)]
-        "multi"           | [millis(1500), millis(1000), millis(1000), millis(1000)]
-        "lotDependencies" | [millis(3000), millis(1000), millis(1000), millis(1000)]
+        "small"           | millis(800)
+        "multi"           | millis(500)
+        "lotDependencies" | millis(500)
     }
 }

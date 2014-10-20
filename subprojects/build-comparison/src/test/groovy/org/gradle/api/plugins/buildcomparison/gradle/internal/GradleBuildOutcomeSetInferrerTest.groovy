@@ -16,7 +16,7 @@
 
 package org.gradle.api.plugins.buildcomparison.gradle.internal
 
-import org.gradle.api.internal.filestore.PathNormalisingKeyFileStore
+import org.gradle.internal.resource.local.PathNormalisingKeyFileStore
 import org.gradle.api.plugins.buildcomparison.fixtures.ProjectOutcomesBuilder
 import org.gradle.api.plugins.buildcomparison.outcome.internal.archive.GeneratedArchiveBuildOutcome
 import org.gradle.api.plugins.buildcomparison.outcome.internal.unknown.UnknownBuildOutcome
@@ -28,7 +28,7 @@ import org.gradle.tooling.model.internal.outcomes.ProjectOutcomes
 import org.junit.Rule
 import spock.lang.Specification
 
-import static org.gradle.tooling.internal.provider.FileOutcomeIdentifier.*
+import static org.gradle.api.plugins.buildcomparison.outcome.internal.FileOutcomeIdentifier.*
 
 class GradleBuildOutcomeSetInferrerTest extends Specification {
 

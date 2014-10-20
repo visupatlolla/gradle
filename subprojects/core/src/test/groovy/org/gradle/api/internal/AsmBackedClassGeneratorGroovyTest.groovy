@@ -16,11 +16,17 @@
 
 package org.gradle.api.internal
 
-import org.gradle.internal.reflect.DirectInstantiator
-import spock.lang.Specification
-import spock.lang.Issue
-import org.gradle.util.ConfigureUtil
 import org.gradle.api.Action
+import org.gradle.api.NonExtensible
+import org.gradle.api.plugins.ExtensionAware
+import org.gradle.internal.reflect.DirectInstantiator
+import org.gradle.internal.service.ServiceRegistry
+import org.gradle.internal.typeconversion.TypeConversionException
+import org.gradle.util.ConfigureUtil
+import spock.lang.Issue
+import spock.lang.Specification
+
+import javax.inject.Inject
 
 class AsmBackedClassGeneratorGroovyTest extends Specification {
 
@@ -38,7 +44,7 @@ class AsmBackedClassGeneratorGroovyTest extends Specification {
 
         when:
         conf(thing) {
-            m1(1,2,3)
+            m1(1, 2, 3)
             p1 = 1
             p1 = p1 + 1
         }
@@ -136,11 +142,237 @@ class AsmBackedClassGeneratorGroovyTest extends Specification {
         tester.lastArgs.size() == 2
         tester.lastArgs.first() == "1"
         tester.lastArgs.last().is(closure)
+
+        expect: // can return values
+        tester.oneActionReturnsString({}) == "string"
+        tester.lastArgs.last() instanceof ClosureBackedAction
+        tester.twoArgsReturnsString("foo", {}) == "string"
+        tester.lastArgs.last() instanceof ClosureBackedAction
+        tester.oneActionReturnsInt({}) == 1
+        tester.lastArgs.last() instanceof ClosureBackedAction
+        tester.twoArgsReturnsInt("foo", {}) == 1
+        tester.lastArgs.last() instanceof ClosureBackedAction
+        tester.oneActionReturnsArray({}) == [] as Object[]
+        tester.lastArgs.last() instanceof ClosureBackedAction
+        tester.twoArgsReturnsArray("foo", {}) == [] as Object[]
+        tester.lastArgs.last() instanceof ClosureBackedAction
+    }
+
+    def "can coerce enum values"() {
+        given:
+        def i = create(EnumCoerceTestSubject)
+
+        when:
+        i.enumProperty = "abc"
+
+        then:
+        i.enumProperty == TestEnum.ABC
+
+        when:
+        i.someEnumMethod("DEF")
+
+        then:
+        i.enumProperty == TestEnum.DEF
+
+        when:
+        i.enumProperty "abc"
+
+        then:
+        i.enumProperty == TestEnum.ABC
+
+        when:
+        i.enumProperty "foo"
+
+        then:
+        thrown TypeConversionException
+
+        when:
+        i.enumMethodWithStringOverload("foo")
+
+        then:
+        i.stringValue == "foo"
+
+        when:
+        i.enumMethodWithStringOverload(TestEnum.DEF)
+
+        then:
+        i.enumProperty == TestEnum.DEF
+    }
+
+    def "can call methods during construction"() {
+        /*
+            We route all methods through invokeMethod, which requires fields
+            added in the subclass. We have special handling for the case where
+            methods are called before this field has been initialised; this tests that.
+         */
+        when:
+        def i = create(CallsMethodDuringConstruction)
+
+        then:
+        i.setDuringConstructor == i.class
+        i.setAtFieldInit == i.class
+    }
+
+    def "can call private methods internally"() {
+        /*
+            We have to specially handle private methods in our dynamic protocol.
+         */
+        given:
+        def i = create(CallsPrivateMethods)
+
+        when:
+        i.flagCalled("a")
+
+        then:
+        i.calledWith == String
+
+        when:
+        i.flagCalled(1.2)
+
+        then:
+        i.calledWith == Number
+
+        when:
+        i.flagCalled([])
+
+        then:
+        i.calledWith == Object
+
+        when:
+        i.flagCalled(1)
+
+        then:
+        i.calledWith == Integer
+    }
+
+    def "can use non extensible objects"() {
+        def i = create(NonExtensibleObject)
+
+        when:
+        i.testEnum "ABC"
+
+        then:
+        i.testEnum == TestEnum.ABC
+
+        !(TestEnum instanceof ExtensionAware)
+        !(TestEnum instanceof IConventionAware)
+        !(TestEnum instanceof HasConvention)
+
+        when:
+        i.ext.foo = "bar"
+
+        then:
+        def e = thrown(MissingPropertyException)
+        e.property == "ext"
     }
 
     def conf(o, c) {
         ConfigureUtil.configure(c, o)
     }
+
+    @Issue("https://issues.gradle.org/browse/GRADLE-2863")
+    def "checked exceptions from private methods are thrown"() {
+        when:
+        create(CallsPrivateMethods).callsPrivateThatThrowsCheckedException("1")
+
+        then:
+        thrown IOException
+    }
+
+    @Issue("https://issues.gradle.org/browse/GRADLE-2863")
+    def "private methods are called with Groovy semantics"() {
+        when:
+        def foo = "bar"
+        def obj = create(CallsPrivateMethods)
+
+        then:
+        obj.callsPrivateStringMethodWithGString("$foo") == "BAR"
+    }
+
+    def "can inject service using a service getter method"() {
+        given:
+        def services = Mock(ServiceRegistry)
+        def service = Mock(Runnable)
+        _ * services.get(Runnable) >> service
+
+        when:
+        def obj = create(BeanWithServices, services)
+
+        then:
+        obj.thing == service
+        obj.getThing() == service
+        obj.getProperty("thing") == service
+    }
+
+    def "can optionally set injected service using a service setter method"() {
+        given:
+        def services = Mock(ServiceRegistry)
+        def service = Mock(Runnable)
+
+        when:
+        def obj = create(BeanWithMutableServices, services)
+        obj.thing = service
+
+        then:
+        obj.thing == service
+        obj.getThing() == service
+        obj.getProperty("thing") == service
+
+        and:
+        0 * services._
+    }
+
+    def "service lookup is lazy and the result is cached"() {
+        given:
+        def services = Mock(ServiceRegistry)
+        def service = Mock(Runnable)
+
+        when:
+        def obj = create(BeanWithServices, services)
+
+        then:
+        0 * services._
+
+        when:
+        obj.thing
+
+        then:
+        1 * services.get(Runnable) >> service
+        0 * services._
+
+        when:
+        obj.thing
+
+        then:
+        0 * services._
+    }
+}
+
+enum TestEnum {
+    ABC, DEF
+}
+
+class EnumCoerceTestSubject {
+    TestEnum enumProperty
+
+    String stringValue
+
+    void someEnumMethod(TestEnum testEnum) {
+        this.enumProperty = testEnum
+    }
+
+    void enumMethodWithStringOverload(TestEnum testEnum) {
+        enumProperty = testEnum
+    }
+
+    void enumMethodWithStringOverload(String stringValue) {
+        this.stringValue = stringValue
+    }
+}
+
+@NonExtensible
+class NonExtensibleObject {
+    TestEnum testEnum
 }
 
 class DynamicThing {
@@ -210,6 +442,126 @@ class ActionsTester {
         lastArgs = [s, closure]
     }
 
+    String oneActionReturnsString(Action action) {
+        lastMethod = "oneAction"
+        lastArgs = [action]
+        action.execute(subject)
+        "string"
+    }
 
+    String twoArgsReturnsString(String first, Action action) {
+        lastMethod = "twoArgs"
+        lastArgs = [first, action]
+        action.execute(subject)
+        "string"
+    }
 
+    int oneActionReturnsInt(Action action) {
+        lastMethod = "oneAction"
+        lastArgs = [action]
+        action.execute(subject)
+        1
+    }
+
+    int twoArgsReturnsInt(String first, Action action) {
+        lastMethod = "twoArgs"
+        lastArgs = [first, action]
+        action.execute(subject)
+        1
+    }
+
+    Object[] oneActionReturnsArray(Action action) {
+        lastMethod = "oneAction"
+        lastArgs = [action]
+        action.execute(subject)
+        [] as Object[]
+    }
+
+    Object[] twoArgsReturnsArray(String first, Action action) {
+        lastMethod = "twoArgs"
+        lastArgs = [first, action]
+        action.execute(subject)
+        [] as Object[]
+    }
+
+}
+
+class CallsMethodDuringConstruction {
+
+    Class setAtFieldInit = getClass()
+    Map<String, String> someMap = [:]
+    Class setDuringConstructor
+
+    CallsMethodDuringConstruction() {
+        setDuringConstructor = setAtFieldInit
+        someMap['a'] = 'b'
+        assert setDuringConstructor
+    }
+}
+
+class CallsPrivateMethods {
+
+    Class calledWith
+
+    void flagCalled(arg) {
+        doFlagCalled(arg)
+    }
+
+    private doFlagCalled(String s) {
+        calledWith = String
+    }
+
+    private doFlagCalled(Number s) {
+        calledWith = Number
+    }
+
+    private doFlagCalled(Integer s) {
+        calledWith = Integer
+    }
+
+    private doFlagCalled(Object s) {
+        calledWith = Object
+    }
+
+    // It's important here that we take an untyped arg, and call a method that types a typed arg
+    // See https://issues.gradle.org/browse/GRADLE-2863
+    def callsPrivateThatThrowsCheckedException(s) {
+        try {
+            throwsCheckedException(s)
+        } catch (Exception e) {
+            assert e instanceof IOException
+            throw e
+        }
+    }
+
+    private throwsCheckedException(String a) {
+        throw new IOException("!")
+    }
+
+    def callsPrivateStringMethodWithGString(GString gString) {
+        upperCaser(gString)
+    }
+
+    private upperCaser(String str) {
+        str.toUpperCase()
+    }
+}
+
+class BeanWithServices {
+    ServiceRegistry services
+
+    BeanWithServices(ServiceRegistry services) {
+        this.services = services
+    }
+
+    @Inject
+    Runnable getThing() { throw new UnsupportedOperationException() }
+}
+
+class BeanWithMutableServices extends BeanWithServices {
+    BeanWithMutableServices(ServiceRegistry services) {
+        super(services)
+    }
+
+    void setThing(Runnable runnnable) { throw new UnsupportedOperationException() }
 }

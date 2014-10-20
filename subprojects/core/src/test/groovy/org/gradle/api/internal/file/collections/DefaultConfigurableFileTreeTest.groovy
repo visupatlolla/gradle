@@ -20,6 +20,7 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Task
 import org.gradle.api.file.FileTree
 import org.gradle.api.internal.file.FileResolver
+import org.gradle.api.internal.file.copy.FileCopier
 import org.gradle.api.internal.tasks.TaskResolver
 import org.gradle.api.tasks.StopExecutionException
 import org.gradle.api.tasks.TaskDependency
@@ -41,48 +42,41 @@ import static org.gradle.util.Matchers.isEmpty
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
 
-/**
- * @author Hans Dockter
- */
 class DefaultConfigurableFileTreeTest extends AbstractTestForPatternSet {
     JUnit4Mockery context = new JUnit4GroovyMockery();
-    TaskResolver taskResolverStub = context.mock(TaskResolver.class);
+    TaskResolver taskResolverStub = context.mock(TaskResolver)
+    FileCopier fileCopier = context.mock(FileCopier)
     DefaultConfigurableFileTree fileSet
     FileResolver fileResolverStub = [resolve: {it as File}] as FileResolver
-    @Rule public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
+    @Rule public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     File testDir = tmpDir.testDirectory
 
     PatternFilterable getPatternSet() {
         return fileSet
     }
 
-    Class getPatternSetType() {
-        DefaultConfigurableFileTree
-    }
-
     @Before public void setUp() {
         super.setUp()
-        fileSet = patternSetType.newInstance(testDir, fileResolverStub, taskResolverStub)
+        fileSet = new DefaultConfigurableFileTree(testDir, fileResolverStub, taskResolverStub, fileCopier)
     }
 
     @Test public void testFileSetConstructionWithBaseDir() {
-        fileSet = new DefaultConfigurableFileTree(testDir, fileResolverStub, taskResolverStub)
         assertEquals(testDir, fileSet.dir)
     }
 
     @Test public void testFileSetConstructionFromMap() {
-        fileSet = new DefaultConfigurableFileTree(fileResolverStub, taskResolverStub, dir: testDir, includes: ['include'])
+        fileSet = new DefaultConfigurableFileTree(fileResolverStub, taskResolverStub, dir: testDir, includes: ['include'], fileCopier)
         assertEquals(testDir, fileSet.dir)
         assertEquals(['include'] as Set, fileSet.includes)
     }
 
     @Test(expected = InvalidUserDataException) public void testFileSetConstructionWithNoBaseDirSpecified() {
-        DefaultConfigurableFileTree fileSet = new DefaultConfigurableFileTree([:], fileResolverStub, taskResolverStub)
+        DefaultConfigurableFileTree fileSet = new DefaultConfigurableFileTree([:], fileResolverStub, taskResolverStub, fileCopier)
         fileSet.contains(new File('unknown'))
     }
 
     @Test public void testFileSetConstructionWithBaseDirAsString() {
-        DefaultConfigurableFileTree fileSet = new DefaultConfigurableFileTree(fileResolverStub, taskResolverStub, dir: 'dirname')
+        DefaultConfigurableFileTree fileSet = new DefaultConfigurableFileTree(fileResolverStub, taskResolverStub, dir: 'dirname', fileCopier)
         assertEquals(new File('dirname'), fileSet.dir);
     }
 
@@ -299,7 +293,7 @@ class DefaultConfigurableFileTreeTest extends AbstractTestForPatternSet {
     @Test
     public void canGetAndSetTaskDependencies() {
         FileResolver fileResolverStub = context.mock(FileResolver.class);
-        fileSet = patternSetType.newInstance(testDir, fileResolverStub, taskResolverStub)
+        fileSet = new DefaultConfigurableFileTree(testDir, fileResolverStub, taskResolverStub, fileCopier)
 
         assertThat(fileSet.getBuiltBy(), isEmpty());
 

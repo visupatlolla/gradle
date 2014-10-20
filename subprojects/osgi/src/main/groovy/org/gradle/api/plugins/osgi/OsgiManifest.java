@@ -23,8 +23,6 @@ import java.util.Map;
 
 /**
  * Represents a manifest file for a JAR containing an OSGi bundle.
- * 
- * @author Hans Dockter
  */
 public interface OsgiManifest extends org.gradle.api.java.archives.Manifest {
     /**
@@ -73,7 +71,7 @@ public interface OsgiManifest extends org.gradle.api.java.archives.Manifest {
     OsgiManifest instructionReplace(String name, String... values);
 
     /**
-     * Returns all exisiting instruction.
+     * Returns all existing instruction.
      *
      * @return A map with instructions. The key of the map is the instruction name, the value a list of arguments.
      */

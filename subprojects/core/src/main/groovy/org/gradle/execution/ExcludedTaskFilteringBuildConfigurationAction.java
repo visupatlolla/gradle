@@ -18,6 +18,7 @@ package org.gradle.execution;
 import org.gradle.api.Task;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.specs.Spec;
+import org.gradle.api.specs.Specs;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -26,27 +27,23 @@ import java.util.Set;
  * A {@link BuildConfigurationAction} which filters excluded tasks.
  */
 public class ExcludedTaskFilteringBuildConfigurationAction implements BuildConfigurationAction {
+    private final TaskSelector taskSelector;
+
+    public ExcludedTaskFilteringBuildConfigurationAction(TaskSelector taskSelector) {
+        this.taskSelector = taskSelector;
+    }
 
     public void configure(BuildExecutionContext context) {
         GradleInternal gradle = context.getGradle();
         Set<String> excludedTaskNames = gradle.getStartParameter().getExcludedTaskNames();
         if (!excludedTaskNames.isEmpty()) {
-            TaskSelector selector = createSelector(gradle);
-            final Set<Task> excludedTasks = new HashSet<Task>();
+            final Set<Spec<Task>> filters = new HashSet<Spec<Task>>();
             for (String taskName : excludedTaskNames) {
-                excludedTasks.addAll(selector.getSelection(taskName).getTasks());
+                filters.add(taskSelector.getFilter(taskName));
             }
-            gradle.getTaskGraph().useFilter(new Spec<Task>() {
-                public boolean isSatisfiedBy(Task task) {
-                    return !excludedTasks.contains(task);
-                }
-            });
+            gradle.getTaskGraph().useFilter(Specs.and(filters));
         }
 
         context.proceed();
-    }
-
-    TaskSelector createSelector(GradleInternal gradle) {
-        return new TaskSelector(gradle);
     }
 }

@@ -17,41 +17,10 @@
 package org.gradle.execution.taskgraph;
 
 import org.gradle.api.execution.TaskExecutionListener;
-import org.gradle.api.internal.TaskInternal;
-import org.gradle.api.specs.Spec;
-import org.gradle.api.specs.Specs;
 
-class DefaultTaskPlanExecutor implements TaskPlanExecutor {
-
-    public void process(TaskExecutionPlan taskExecutionPlan, TaskExecutionListener taskListener) {
-        Spec<TaskInfo> anyTask = Specs.satisfyAll();
-        TaskInfo taskInfo = taskExecutionPlan.getTaskToExecute(anyTask);
-        while (taskInfo != null) {
-            processTask(taskInfo, taskExecutionPlan, taskListener);
-            taskInfo = taskExecutionPlan.getTaskToExecute(anyTask);
-        }
+class DefaultTaskPlanExecutor extends AbstractTaskPlanExecutor {
+    public void process(final TaskExecutionPlan taskExecutionPlan, final TaskExecutionListener taskListener) {
+        taskWorker(taskExecutionPlan, taskListener).run();
         taskExecutionPlan.awaitCompletion();
-    }
-
-    protected void processTask(TaskInfo taskInfo, TaskExecutionPlan taskExecutionPlan, TaskExecutionListener taskListener) {
-        try {
-            executeTask(taskInfo, taskListener);
-        } catch (Throwable e) {
-            taskInfo.setExecutionFailure(e);
-        } finally {
-            taskExecutionPlan.taskComplete(taskInfo);
-        }
-    }
-
-    // TODO:PARALLEL It would be good to move this logic into a TaskExecuter wrapper, but we'd need a way to give it a TaskExecutionListener that
-    // is wired to the various add/remove listener methods on TaskExecutionGraph
-    private void executeTask(TaskInfo taskInfo, TaskExecutionListener taskListener) {
-        TaskInternal task = taskInfo.getTask();
-        taskListener.beforeExecute(task);
-        try {
-            task.executeWithoutThrowingTaskFailure();
-        } finally {
-            taskListener.afterExecute(task, task.getState());
-        }
     }
 }

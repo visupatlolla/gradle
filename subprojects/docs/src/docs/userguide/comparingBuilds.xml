@@ -18,7 +18,7 @@
     <title>Comparing Builds</title>
     <note>
         <para>
-            Build comparison support is an <firstterm>incubating</firstterm> feature. This means that it is incomplete and not yet at regular Gradle production quality.
+            Build comparison support is an <link linkend="feature_lifecycle">incubating</link> feature. This means that it is incomplete and not yet at regular Gradle production quality.
             This also means that this Gradle User Guide chapter is a work in progress.
         </para>
     </note>
@@ -127,14 +127,14 @@
     <section>
         <title>Current Capabilities</title>
         <para>
-            As this is an <firstterm>incubating</firstterm> feature, a limited set of the eventual functionality has been implemented at this time.
+            As this is an <link linkend="feature_lifecycle">incubating</link> feature, a limited set of the eventual functionality has been implemented at this time.
         </para>
         <section>
             <title>Supported builds</title>
             <para>
-                Only support for executing Gradle builds is available at this time.
-                Source and target build must execute with Gradle newer or equal to <literal>1.0</literal>.
-                Host build must be at least <literal>1.2</literal>.
+                Only support for comparing Gradle builds is available at this time.
+                Both the source and target build must execute with Gradle newer or equal to version <literal>1.0</literal>.
+                The host build must be at least version <literal>1.2</literal>.
             </para>
             <para>
                 Future versions will provide support for executing builds from other build systems such as Apache Ant
@@ -148,7 +148,7 @@
                 This includes <literal>jar</literal>, <literal>war</literal> and <literal>ear</literal> archives.
             </para>
             <para>
-                Future versions will provide support for comparing outcomes such as test execution (i.e. which tests were executed, which tests failed etc.)
+                Future versions will provide support for comparing outcomes such as test execution (i.e. which tests were executed, which tests failed, etc.)
             </para>
         </section>
     </section>
@@ -179,7 +179,7 @@
 }
         </programlisting>
         <para>
-            The above example configures a comparison between two different projects using two different Gradle versions.
+            The example above specifies a comparison between two different projects using two different Gradle versions.
         </para>
         <section>
             <title>Trying Gradle upgrades</title>
@@ -205,7 +205,7 @@ compareGradleBuilds {
             <para>
                 If there are any differences between the <firstterm>compared outcomes</firstterm>, the task will fail. The location of the HTML report
                 providing insight into the comparison will be given. If all compared outcomes are found to be identical, and there are no uncompared outcomes,
-                and there are no unknown build outcomes the task will succeed.
+                and there are no unknown build outcomes, the task will succeed.
             </para>
             <para>
                 You can configure the task to not fail on compared outcome differences by setting the <literal>ignoreFailures</literal> property to true.

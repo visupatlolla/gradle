@@ -16,11 +16,10 @@
 package org.gradle.api.publish.maven.internal.artifact;
 
 import org.gradle.api.Action;
-import org.gradle.api.Buildable;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.DefaultDomainObjectSet;
 import org.gradle.api.internal.file.AbstractFileCollection;
-import org.gradle.api.internal.notations.api.NotationParser;
+import org.gradle.internal.typeconversion.NotationParser;
 import org.gradle.api.internal.tasks.AbstractTaskDependency;
 import org.gradle.api.internal.tasks.TaskDependencyInternal;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
@@ -33,25 +32,25 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class DefaultMavenArtifactSet extends DefaultDomainObjectSet<MavenArtifact> implements MavenArtifactSet {
+    private final String publicationName;
     private final TaskDependencyInternal builtBy = new ArtifactsTaskDependency();
     private final ArtifactsFileCollection files = new ArtifactsFileCollection();
-    private final NotationParser<MavenArtifact> mavenArtifactParser;
+    private final NotationParser<Object, MavenArtifact> mavenArtifactParser;
 
-    public DefaultMavenArtifactSet(NotationParser<MavenArtifact> mavenArtifactParser) {
+    public DefaultMavenArtifactSet(String publicationName, NotationParser<Object, MavenArtifact> mavenArtifactParser) {
         super(MavenArtifact.class);
+        this.publicationName = publicationName;
         this.mavenArtifactParser = mavenArtifactParser;
     }
 
-    // TODO:DAZ Should this be evaluated lazily? (eg if passed a closure that returns a file)
-    public MavenArtifact addArtifact(Object source) {
+    public MavenArtifact artifact(Object source) {
         MavenArtifact artifact = mavenArtifactParser.parseNotation(source);
         add(artifact);
         return artifact;
     }
 
-    // TODO:DAZ Should this be evaluated lazily? (eg evaluate config closure when publishing)
-    public MavenArtifact addArtifact(Object source, Action<MavenArtifact> config) {
-        MavenArtifact artifact = addArtifact(source);
+    public MavenArtifact artifact(Object source, Action<? super MavenArtifact> config) {
+        MavenArtifact artifact = artifact(source);
         config.execute(artifact);
         return artifact;
     }
@@ -63,7 +62,7 @@ public class DefaultMavenArtifactSet extends DefaultDomainObjectSet<MavenArtifac
     private class ArtifactsFileCollection extends AbstractFileCollection {
 
         public String getDisplayName() {
-            return "maven artifacts";
+            return String.format("artifacts for " + publicationName + " publication");
         }
 
         @Override
@@ -83,9 +82,7 @@ public class DefaultMavenArtifactSet extends DefaultDomainObjectSet<MavenArtifac
     private class ArtifactsTaskDependency extends AbstractTaskDependency {
         public void resolve(TaskDependencyResolveContext context) {
             for (MavenArtifact mavenArtifact : DefaultMavenArtifactSet.this) {
-                if (mavenArtifact instanceof Buildable) {
-                    context.add(mavenArtifact);
-                }
+                context.add(mavenArtifact);
             }
         }
     }

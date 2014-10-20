@@ -15,21 +15,24 @@
  */
 package org.gradle.groovy.compile
 
+import com.google.common.collect.Ordering
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
-import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.TargetVersions
+import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.executer.ExecutionFailure
 import org.gradle.integtests.fixtures.executer.ExecutionResult
-import org.gradle.util.VersionNumber
 import org.junit.Rule
 
-import com.google.common.collect.Ordering
-
-@TargetVersions(['1.5.8', '1.6.9', '1.7.11', '1.8.8', '2.0.5'])
+@TargetVersions(['1.5.8', '1.6.9', '1.7.11', '1.8.8', '2.0.5', '2.1.9', '2.2.2', '2.3.6', '2.4.0-beta-2'])
 abstract class BasicGroovyCompilerIntegrationSpec extends MultiVersionIntegrationSpec {
-    @Rule TestResources resources = new TestResources()
+    @Rule
+    TestResources resources = new TestResources(temporaryFolder)
 
     String groovyDependency = "org.codehaus.groovy:groovy-all:$version"
+
+    String getGroovyVersionNumber() {
+        version.split(":", 2)[0]
+    }
 
     def setup() {
         // necessary for picking up some of the output/errorOutput when forked executer is used
@@ -47,6 +50,26 @@ abstract class BasicGroovyCompilerIntegrationSpec extends MultiVersionIntegratio
 
         where:
         module << ["groovy-all", "groovy"]
+    }
+
+    def "groovyToolClassesAreNotVisible"() {
+        if (versionLowerThan("2.0")) {
+            return
+        }
+
+        groovyDependency = "org.codehaus.groovy:groovy:$version"
+
+        expect:
+        fails("compileGroovy")
+        errorOutput.contains('unable to resolve class AntBuilder')
+
+        when:
+        buildFile << "dependencies { compile 'org.codehaus.groovy:groovy-ant:${version}' }"
+
+        then:
+        succeeds("compileGroovy")
+        !errorOutput
+        file("build/classes/main/Thing.class").exists()
     }
 
     def "compileBadCode"() {
@@ -69,14 +92,6 @@ abstract class BasicGroovyCompilerIntegrationSpec extends MultiVersionIntegratio
     }
 
     def "canCompileAgainstGroovyClassThatDependsOnExternalClass"() {
-        if (getClass() == AntInProcessGroovyCompilerIntegrationTest &&
-                (version == '1.6.9' || version == '1.7.11' || versionNumber >= VersionNumber.parse('1.8.7'))) {
-            // known not to work in 1.7.11, 1.8.7 and beyond (see comment on GRADLE-2404)
-            // only works with 1.6.9 if JUnit makes it on Ant (!) class path, which is no longer the case
-            // note that these problems only apply to useAnt=true; fork=false
-            return
-        }
-
         expect:
         succeeds("test")
     }
@@ -87,6 +102,44 @@ abstract class BasicGroovyCompilerIntegrationSpec extends MultiVersionIntegratio
         output.contains(new File("src/main/groovy/compile/test/Person.groovy").toString())
         output.contains(new File("src/main/groovy/compile/test/Person2.groovy").toString())
         !errorOutput
+    }
+
+    def "configurationScriptNotSupported"() {
+        if (!versionLowerThan("2.1")) {
+            return
+        }
+
+        expect:
+        fails("compileGroovy")
+        failure.assertHasCause("Using a Groovy compiler configuration script requires Groovy 2.1+ but found Groovy $groovyVersionNumber")
+    }
+
+    def "useConfigurationScript"() {
+        if (versionLowerThan("2.1")) {
+            return
+        }
+
+        expect:
+        fails("compileGroovy")
+        compileErrorOutput.contains('Cannot find matching method java.lang.String#bar()')
+    }
+
+    def "failsBecauseOfMissingConfigFile"() {
+        if (versionLowerThan("2.1")) {
+            return
+        }
+        expect:
+        fails("compileGroovy")
+        failure.assertHasCause("File '${file('groovycompilerconfig.groovy')}' specified for property 'groovyOptions.configurationScript' does not exist.")
+    }
+
+    def "failsBecauseOfInvalidConfigFile"() {
+        if (versionLowerThan("2.1")) {
+            return
+        }
+        expect:
+        fails("compileGroovy")
+        failure.assertHasCause("Could not execute Groovy compiler configuration script: ${file('groovycompilerconfig.groovy')}")
     }
 
     protected ExecutionResult run(String... tasks) {
@@ -115,9 +168,7 @@ dependencies {
     compile '${groovyDependency.toString()}'
 }
 
-DeprecationLogger.whileDisabled {
-    ${compilerConfiguration()}
-}
+${compilerConfiguration()}
         """
     }
 
@@ -136,9 +187,9 @@ DeprecationLogger.whileDisabled {
     }
 
     int compareToVersion(String other) {
-        def versionParts = version.split("\\.") as List
+        def versionParts = groovyVersionNumber.split("\\.") as List
         def otherParts = other.split("\\.") as List
-        def ordering = Ordering.<Integer>natural().lexicographical()
+        def ordering = Ordering.<Integer> natural().lexicographical()
         ordering.compare(versionParts, otherParts)
     }
 }

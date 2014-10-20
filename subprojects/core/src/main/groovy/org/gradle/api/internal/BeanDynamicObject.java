@@ -18,6 +18,8 @@ package org.gradle.api.internal;
 import groovy.lang.*;
 import groovy.lang.MissingMethodException;
 import org.codehaus.groovy.runtime.InvokerInvocationException;
+import org.gradle.api.internal.coerce.MethodArgumentsTransformer;
+import org.gradle.api.internal.coerce.TypeCoercingMethodArgumentsTransformer;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -28,11 +30,14 @@ import java.util.Map;
  * A {@link DynamicObject} which uses groovy reflection to provide access to the properties and methods of a bean.
  */
 public class BeanDynamicObject extends AbstractDynamicObject {
-    
+
     private final Object bean;
     private final boolean includeProperties;
     private final DynamicObject delegate;
     private final boolean implementsMissing;
+
+    // NOTE: If this guy starts caching internally, consider sharing an instance
+    private final MethodArgumentsTransformer argsTransformer = new TypeCoercingMethodArgumentsTransformer();
 
     public BeanDynamicObject(Object bean) {
         this(bean, true);
@@ -56,7 +61,7 @@ public class BeanDynamicObject extends AbstractDynamicObject {
             return new GroovyObjectAdapter();
         }
     }
-    
+
     public BeanDynamicObject withNoProperties() {
         return new BeanDynamicObject(bean, false);
     }
@@ -94,7 +99,7 @@ public class BeanDynamicObject extends AbstractDynamicObject {
 
     @Override
     public boolean hasProperty(String name) {
-        return delegate.hasProperty(name);    
+        return delegate.hasProperty(name);
     }
 
     @Override
@@ -104,22 +109,24 @@ public class BeanDynamicObject extends AbstractDynamicObject {
 
     @Override
     public void setProperty(final String name, Object value) throws MissingPropertyException {
-        delegate.setProperty(name, value); 
+        delegate.setProperty(name, value);
     }
 
     @Override
     public Map<String, ?> getProperties() {
-        return delegate.getProperties();        
+        return delegate.getProperties();
     }
 
     @Override
     public boolean hasMethod(String name, Object... arguments) {
-        return delegate.hasMethod(name, arguments);                        
+        return delegate.hasMethod(name, arguments);
     }
 
     @Override
     public Object invokeMethod(String name, Object... arguments) throws MissingMethodException {
-        return delegate.invokeMethod(name, arguments);        
+        // Maybe transform the arguments before calling the method (e.g. type coercion)
+        arguments = argsTransformer.transform(bean, name, arguments);
+        return delegate.invokeMethod(name, arguments);
     }
 
     private class MetaClassAdapter implements DynamicObject {
@@ -160,9 +167,7 @@ public class BeanDynamicObject extends AbstractDynamicObject {
             MetaClass metaClass = getMetaClass();
             MetaProperty property = metaClass.hasProperty(bean, name);
             if (property == null) {
-                if (property == null) {
-                    getMetaClass().invokeMissingProperty(bean, name, null, false);
-                }
+                getMetaClass().invokeMissingProperty(bean, name, null, false);
             }
 
             if (property instanceof MetaBeanProperty && ((MetaBeanProperty) property).getSetter() == null) {
@@ -175,6 +180,10 @@ public class BeanDynamicObject extends AbstractDynamicObject {
                 };
             }
             try {
+
+                // Attempt type coercion before trying to set the property
+                value = argsTransformer.transform(bean, MetaProperty.getSetterName(name), value)[0];
+
                 metaClass.setProperty(bean, name, value);
             } catch (InvokerInvocationException e) {
                 if (e.getCause() instanceof RuntimeException) {
@@ -207,11 +216,11 @@ public class BeanDynamicObject extends AbstractDynamicObject {
             return properties;
         }
 
-        public boolean hasMethod(String name, Object... arguments) {
+        public boolean hasMethod(final String name, final Object... arguments) {
             return !getMetaClass().respondsTo(bean, name, arguments).isEmpty();
         }
 
-        public Object invokeMethod(String name, Object... arguments) throws MissingMethodException {
+        public Object invokeMethod(final String name, final Object... arguments) throws MissingMethodException {
             try {
                 return getMetaClass().invokeMethod(bean, name, arguments);
             } catch (InvokerInvocationException e) {
@@ -219,8 +228,6 @@ public class BeanDynamicObject extends AbstractDynamicObject {
                     throw (RuntimeException) e.getCause();
                 }
                 throw e;
-            } catch (MissingMethodException e) {
-                throw methodMissingException(name, arguments);
             }
         }
 
@@ -242,7 +249,7 @@ public class BeanDynamicObject extends AbstractDynamicObject {
        So in this case we use these methods directly on the GroovyObject in case it does implement logic at this level.
      */
     private class GroovyObjectAdapter extends MetaClassAdapter {
-        private final GroovyObject groovyObject = (GroovyObject)bean;
+        private final GroovyObject groovyObject = (GroovyObject) bean;
 
 
         @Override

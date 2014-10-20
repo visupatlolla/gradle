@@ -21,18 +21,25 @@ import org.gradle.api.tasks.testing.TestResult;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * by Szczepan Faber, created at: 11/13/12
- */
 public class TestClassResult {
     private final List<TestMethodResult> methodResults = new ArrayList<TestMethodResult>();
     private final String className;
-    private final long startTime;
+    private long startTime;
     private int failuresCount;
+    private int skippedCount;
+    private long id;
 
-    public TestClassResult(String className, long startTime) {
+    public TestClassResult(long id, String className, long startTime) {
+        if (id < 1) {
+            throw new IllegalArgumentException("id must be > 0");
+        }
+        this.id = id;
         this.className = className;
         this.startTime = startTime;
+    }
+
+    public long getId() {
+        return id;
     }
 
     public String getClassName() {
@@ -42,6 +49,9 @@ public class TestClassResult {
     public TestClassResult add(TestMethodResult methodResult) {
         if (methodResult.getResultType() == TestResult.ResultType.FAILURE) {
             failuresCount++;
+        }
+        if(methodResult.getResultType() == TestResult.ResultType.SKIPPED) {
+            skippedCount++;
         }
         methodResults.add(methodResult);
         return this;
@@ -63,6 +73,11 @@ public class TestClassResult {
         return failuresCount;
     }
 
+
+    public int getSkippedCount() {
+        return skippedCount;
+    }
+
     public long getDuration() {
         long end = startTime;
         for (TestMethodResult m : methodResults) {
@@ -71,5 +86,9 @@ public class TestClassResult {
             }
         }
         return end - startTime;
+    }
+
+    public void setStartTime(long startTime) {
+        this.startTime = startTime;
     }
 }

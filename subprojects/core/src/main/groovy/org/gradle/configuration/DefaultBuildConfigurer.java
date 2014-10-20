@@ -15,29 +15,34 @@
  */
 package org.gradle.configuration;
 
-import org.gradle.api.Action;
-import org.gradle.api.Project;
-import org.gradle.api.internal.Actions;
+import org.gradle.StartParameter;
 import org.gradle.api.internal.GradleInternal;
-import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
+import org.gradle.execution.ProjectConfigurer;
+import org.gradle.util.SingleMessageLogger;
 
 public class DefaultBuildConfigurer implements BuildConfigurer {
-    private Action<Project> actions;
-    private final static Logger LOG = Logging.getLogger(DefaultBuildConfigurer.class);
+    private final ProjectConfigurer projectConfigurer;
 
-    public DefaultBuildConfigurer(Action<? super ProjectInternal>... actions) {
-        this.actions = Actions.castBefore(ProjectInternal.class, Actions.composite(actions));
+    public DefaultBuildConfigurer(ProjectConfigurer projectConfigurer) {
+        this.projectConfigurer = projectConfigurer;
     }
 
     public void configure(GradleInternal gradle) {
+        maybeInformAboutIncubatingMode(gradle.getStartParameter());
         if (gradle.getStartParameter().isConfigureOnDemand()) {
-            LOG.lifecycle("Thanks for using the incubating configuration-on-demand mode. Enjoy it and let us know how it works for you.");
-            gradle.addProjectEvaluationListener(new ImplicitTasksConfigurer());
-            gradle.getRootProject().evaluate();
+            projectConfigurer.configure(gradle.getRootProject());
         } else {
-            gradle.getRootProject().allprojects(actions);
+            projectConfigurer.configureHierarchy(gradle.getRootProject());
+        }
+    }
+
+    private void maybeInformAboutIncubatingMode(StartParameter startParameter) {
+        if (startParameter.getParallelThreadCount() != 0 && startParameter.isConfigureOnDemand()) {
+            SingleMessageLogger.incubatingFeatureUsed("Parallel execution with configuration on demand");
+        } else if (startParameter.getParallelThreadCount() != 0) {
+            SingleMessageLogger.incubatingFeatureUsed("Parallel execution");
+        } else if (startParameter.isConfigureOnDemand()) {
+            SingleMessageLogger.incubatingFeatureUsed("Configuration on demand");
         }
     }
 }

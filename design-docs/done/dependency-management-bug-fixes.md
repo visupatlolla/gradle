@@ -1,9 +1,119 @@
+# Expiring of changing module artifacts from cache is inadequate in some cases, overly aggressive in others
+
+* GRADLE-2175: Snapshot dependencies with sources/test classifier are not considered 'changing'
+* GRADLE-2364: Cannot run build with --offline after attempting build with a broken repository
+
+### Description
+
+When it's time to update a changing module, we expire the module descriptor and all artifact entries from the cache. The mechanism to do so it quite naive:
+
+1. We lookup the module descriptor in the cache for the repository, and determine if it needs updating (should be expired)
+2. If so, we iterate over all artifacts declared by the module descriptor and remove the cache entry for each artifact. The artifact files remain, but the repository reference is removed.
+3. When resolving artifacts we do not consider if the owning module is changing or not, we assume if the artifact is available then it is up-to-date.
+
+This leads to a couple of issues:
+* Sometimes the module descriptor does not declare all of the artifacts that have been cached (eg source/javadoc artifacts). These are then not expired, and will never be updated (GRADLE-2175).
+* If we fail to resolve the changing module (eg broken repository) then we have already removed the module+artifacts from the cache, so they are not available for --offline builds. (GRADLE-2364)
+
+### Implementation approach
+
+The goal is to never remove information from the meta-data stores, but instead to replace out-of-date information with its newer equivalent. To achieve
+this, we will introduce a synthetic version for changing modules.
+
+1. Increment the cache layout version in `DefaultCacheLockingManager`. Will need to update `LocallyAvailableResourceFinderFactory` for this change.
+2. Change `ModuleDescriptorCache.CachedModuleDescriptor` to add a `descriptorHash` property.
+3. Change `DefaultModuleDescriptorCache` to store the hash of the module descriptor from the `ModuleDescriptorStore` as part of the `ModuleDescriptorCacheEntry`.
+4. Split CachedArtifactIndex/CachedArtifact from CachedExternalResourceIndex/CachedExternalResource to handle cached Artifacts. Let ArtifactAtRepositoryCachedExternalResourceIndex implement CachedArtifactIndex.
+5. Change `CachedArtifact` to add a `descriptorHash` property.
+6. Change `CachingModuleVersionRepository.resolve()` to use the owning module version's descriptorHash as the artifact's descriptorHash when storing.
+   The final implementation should avoid loading the module descriptor multiple times. It should be possible to attach the module version descriptorHash,
+   when resolving the module metadata, to the `Artifact that will later be passed to `resolve()`.
+7. Change `CachePolicy.mustRefreshArtifact()` to expire a cached artifact if its descriptorHash != its owning module version's descriptorHash, except
+   when offline.
+8. Change `CachingModuleVersionRepository.lookupModuleInCache()` so that it no longer calls `expireArtifactsForChangingModule()`.
+9. Change `BuildableModuleVersionDescriptor.resolved()` so that an optional "module source" can be provided. Add a corresponding property. All callers
+   will use `null` for now.
+10. Change `CacheModuleVersionRepository` to use a "module source" that contains the information that it will later need to resolve the artifacts of
+    the module - the module descriptor and whether the module is changing or not.
+11. Change `ModuleVersionRepository.resolve()` to accept an additional "module source" parameter. Change all callers to use `null`. This will mean that
+    `ModuleVersionRepository` can no longer extend `ArtifactResolver` and that `UserResolverChain` will need to create an adapter.
+12. Change `UserResolverChain` to call `resolve()` with the "module source" specified in the resolve result.
+13. Change `CachingModuleVersionRepository.resolve()` to use the "module source" instead of loading the module descriptor.
+
+### User-visible changes and backward-compatibility issues
+
+* Beside the bugfixes for changing module caching, no user-visible change to cache behaviour.
+* New cached module format means updated cache version, requiring artifacts to be re-downloaded where no SHA1 keys are published.
+* Since org.apache.ivy.ModuleDescriptor is not part of our public API (except via ivy DependencyResolver), any change to using this internally should not impact users.
+
+### Integration test coverage
+
+* Will download changed version of ${name}-${classifier}.${ext} of changing module referenced with classifier.
+* Will download changed version of source jar of changing module referenced with type="source"
+    * Verify that we will not download unchanged version of changing module
+* Verify that we recover from failed resolution of module after initial successful resolution
+    * Failure cases are authorization error (401), server error (500) and connection exception
+    * Will re-attempt download on subsequent resolve and recover
+    * Will use previously cached version if run with --offline after failure
+
+# Download and parse `maven-metadata.xml` at most once when resolving Maven snapshot versions
+
+* GRADLE-2585.
+
+### Description
+
+Currently, the `maven-metadata.xml` for a version is downloaded and parsed:
+
+* Once when checking for a `pom.xml`
+* Once when checking for a JAR, in the case where the POM is missing.
+* Once for each artifact download.
+
+This a performance issue, in particular for IDE import, when a snapshot version is resolved multiple times, and multiple artifacts are downloaded. This
+is also a correctness issue, as `maven-metadata.xml` may be changed while resolving, meaning that mismatched POM and artifacts may be used.
+
+The goal is to parse the `maven-metadata.xml` exactly once per resolve, mapping the snapshot version to a timestamp version, then use this timestamp
+version internally to refer to the resolved version.
+
+### Implementation approach
+
+1. Change `MavenResolver` to override `getDependency()`.
+2. In `MavenResolver.getDependency()`, if the requested version is a snapshot:
+    1. Attempt to map the requested version to a timestamp version:
+        1. Attempt to download `maven-metadata.xml`.
+        2. If present, clone the dependency descriptor to add a `timestamp` extra property to the descriptor's `dependencyRevisionId`.
+3. Call `super.getDependency()` and return the result.
+4. Change `M2ResourcePattern.toPath()` to check for the `timestamp` extra property when building the artifact path, and substitute it into the pattern
+   if present.
+5. Change `MavenResolver.findIvyFileRef()` and`getArtifactRef()` so that they no longer does any special behaviour for snapshot versions.
+
+In theory, the `timestamp` property added in `getDependency()` will travel back to `getArtifactRef()` at this point.
+
+Some additional refactoring will be done to continue to move away from the Ivy contracts and domain objects:
+
+6. Increment the cache layout version in `DefaultCacheLockingManager`.
+7. Change `CachingModuleVersionRepository` so that when resolving the module meta-data, it takes the "module source" returned by
+   its delegate repository and stores it in the cached module descriptor entry.
+8. Change `CachingModuleVersionRepository` so that when resolving an artifact, it passes the "module source" to its delegate repository.
+9. Change `ExternalResourceResolver` to add `getDependency()` and `resolve()` methods that match those of `ModuleVersionRepository`. Change
+   `ExternalResourceResolverAdapter` to simply call these methods.
+10. Change `MavenResolver.getDependency()` to return a "module source" that includes the timestamp, when known, and to use this when resolving the
+    aritfacts.
+
+### User-visible changes and backward-compatibility issues
+
+None, except faster builds for those using snapshots.
+
+### Integration test coverage
+
+* Mostly removing a bunch of `expectMetaDataGet()` calls from various integration tests.
+* Check `maven-metadata.xml` is downloaded no more than once per build.
+
 # File stores recover from process crash while adding file to store
 
 When Gradle crashes after writing to a `FileStore` implementation, it can leave a partially written file behind. Subsequent invocations of Gradle
 will attempt to use this partial file.
 
-See [GRADLE-2457](http://issues.gradle.org/browse/GRADLE-2457)
+See [GRADLE-2457](https://issues.gradle.org/browse/GRADLE-2457)
 
 ### Test coverage
 
@@ -33,7 +143,7 @@ Something like this:
 
 # Ignore cached missing module entry when module is missing for all repositories
 
-See [GRADLE-2455](http://issues.gradle.org/browse/GRADLE-2455)
+See [GRADLE-2455](https://issues.gradle.org/browse/GRADLE-2455)
 
 Currently, we cache the fact that a module is missing from a given repository. This is to avoid a remote lookup when a resolution uses multiple repositories,
 and a given module is not hosted in every repository.
@@ -70,7 +180,7 @@ When resolving a dependency descriptor in `UserResolverChain` for a particular r
 SHA-1 checksums should be 40 hex characters long. When publishing, Gradle generates a checksum string that does not include leading zeros, so
 that sometimes the checksum is shorter than 40 characters.
 
-See [GRADLE-2456](http://issues.gradle.org/browse/GRADLE-2456)
+See [GRADLE-2456](https://issues.gradle.org/browse/GRADLE-2456)
 
 ### Test coverage
 
@@ -85,7 +195,7 @@ See [GRADLE-2456](http://issues.gradle.org/browse/GRADLE-2456)
 
 # Errors writing cached module descriptor are silently ignored
 
-See [GRADLE-2458](http://issues.gradle.org/browse/GRADLE-2458)
+See [GRADLE-2458](https://issues.gradle.org/browse/GRADLE-2458)
 
 ### Test coverage
 
@@ -99,7 +209,7 @@ No specific coverage at this point, other than unit testing.
 
 # Honor SSL system properties when accessing HTTP repositories
 
-See [GRADLE-2234](http://issues.gradle.org/browse/GRADLE-2234)
+See [GRADLE-2234](https://issues.gradle.org/browse/GRADLE-2234)
 
 ### Test coverage
 
@@ -228,3 +338,148 @@ for now we'll need an implementation backed by ExternalResourceRepository#list (
 
 Later we may add a ModuleVersionLister backed by an Artifactory REST listing, our own file format, etc... The idea would be that these ModuleVersionLister
 implementations will be pluggable in the future, so you could combine maven-metadata.xml with ivy.xml in a single repository, for example.
+
+# GRADLE-2861 Handle parent pom with unknown placeholders (DONE)
+
+See [GRADLE-2861](https://issues.gradle.org/browse/GRADLE-2861)
+
+Currently, the POM parser (inherited from Ivy) attaches special extra attributes to the `ModuleDescriptor` for a POM. These are later used by the POM parser
+when it parses a child POM. Sometimes these attributes cause badly formed XML to be generated, hence the failure listed in the jira issue.
+
+The solution is to have the parser request the parent POM artifact directly, rather than indirectly via the module meta-data:
+
+1. Add a `LocallyAvailableExternalResource getArtifact(Artifact)` method to `DescriptorParseContext`.
+    - Implementation can reuse the `ModuleVersionResolveResult` from the existing `getModuleDescriptor()` method. This result includes an `ArtifactResolver` which
+      can be used to resolve an `Artifact` to a `File`. There's an example of how to adapt a `File` to a `LocallyAvailableExternalResource` instance in
+      `AbstractModuleDescriptorParser.parseMetaData()`.
+2. Change the `GradlePomModuleDescriptorParser.parseOtherPom()` to use this new method to fetch and parse the parent POM artifact, rather than using the parsed
+   `ModuleDescriptor` for the parent. For this step, can continue to represent the parent pom using a `ModuleDescriptor` inside the parser.
+3. Change `GradlePomModuleDescriptorParser` to represent the parent POM using a `PomReader` rather than a `ModuleDescriptor`.
+4. Clean out `GradlePomModuleDescriptorBuilder` so that it no longer defines any extra properties on the parsed `ModuleDescriptor`.
+5. Change `IvyXmlModuleDescriptorParser.parseOtherIvyFile()` to use the new method to fetch and parse the Ivy descriptor artifact.
+6. Remove `DescriptorParseContext.getModuleDescriptor()`. It should no longer be required.
+
+## Test coverage
+
+* Unignore the existing test case in `BadPomFileResolveIntegrationTest`.
+* Add a test case to `MavenParentPomResolveIntegrationTest` to cover two Maven modules that share a common parent.
+* Add a test case to `MavenParentPomResolveIntegrationTest` to cover a Maven module that has a parent and grandparent module.
+
+# Latest status dynamic versions work across multiple repositories (DONE)
+
+See [GRADLE-2502](https://issues.gradle.org/browse/GRADLE-2502)
+
+### Test coverage
+
+1. Using `latest.integration`
+    1. Empty repository fails with not found.
+    2. Publish `1.0` and `1.1` with status `integration`. Resolves to `1.1`.
+    3. Publish `1.2` with status `release`. Resolves to `1.2`
+    4. Publish `1.3` with no ivy.xml. Resolves to `1.3`.
+2. Using `latest.milestone`
+    1. Empty repository fails with not found.
+    2. Publish `2.0` with no ivy.xml. Fails with not found.
+    3. Publish `1.3` with status `integration`. Fails with not found.
+    4. Publish `1.0` and `1.1` with ivy.xml and status `milestone`. Resolves to `1.1`.
+    5. Publish `1.2` with status `release`. Resolves to `1.2`
+3. Using `latest.release`
+    1. Empty repository fails with not found.
+    2. Publish `2.0` with no ivy.xml. Fails with not found.
+    3. Publish `1.3` with status `milestone`. Fails with not found.
+    4. Publish `1.0` and `1.1` with ivy.xml and status `release`. Resolves to `1.1`.
+4. Multiple repositories.
+5. Checking for changes. Using `latest.release`
+    1. Publish `1.0` with status `release` and `2.0` with status `milestone`.
+    2. Resolve and assert directory listing and `1.0` artifacts downloaded.
+    3. Resolve and assert directory listing downloaded.
+    4. Publish `1.1` with status `release`.
+    5. Resolve and assert directory listing and `1.1` artifacts downloaded.
+6. Maven integration
+    1. Publish `1.0`. Check `latest.integration` resolves to `1.0` and `latest.release` fails with not found.
+    2. Publish `1.1-SNAPSHOT`. Check `latest.integration` resolves to `1.1-SNAPSHOT` and `latest.release` fails with not found.
+7. Version ranges
+8. Repository with multiple patterns.
+9. Repository with `[type]` in pattern before `[revision]`.
+10. Multiple dynamic versions match the same remote revision.
+
+### Implementation strategy
+
+Change ExternalResourceResolver.getDependency() to use the following algorithm:
+1. Calculate an ordered list of candidate versions.
+    1. For a static version selector the list contains a single candidate.
+    2. For a dynamic version selector the list is the full set of versions for the module.
+        * For a Maven repository, this is determined using `maven-metadata.xml` if available, falling back to a directory listing.
+        * For an Ivy repository, this is determined using a directory listing.
+        * Fail if directory listing is not available.
+2. For each candidate version:
+    1. If the version matcher does not accept the module version, continue.
+    2. Fetch the module version meta-data, as described below. If not found, continue.
+    3. If the version matcher requires the module meta-data and it does not accept the meta-data, continue.
+    4. Use the module version.
+3. Return not found.
+
+To fetch the meta-data for a module version:
+1. Download the meta data descriptor resource, via the resource cache. If found, parse.
+    1. Validate module version in meta-data == the expected module version.
+2. Check for a jar artifact, via the resource cache. If found, use default meta-data. The meta-data must have `default` set to `true` and `status` set to `integration`.
+3. Return not found.
+
+# Correct handling of packaging and dependency type declared in poms (DONE)
+
+* GRADLE-2188: Artifact not found resolving dependencies with packaging/type "orbit"
+
+### Description
+
+Our engine for parsing Maven pom files is borrowed from ivy, and assumes the 'packaging' element equals the artifact type, with a few exceptions (ejb, bundle, eclipse-plugin, maven-plugin).
+This is different from the way Maven does the calculation, which is:
+
+* Type defaults to 'jar' but can be explicitly declared.
+* Maven maps the type to an [extension, classifier] combination using some hardcoded rules. Unknown types are mapped to [type, ""].
+* To resolve the artefact, maven looks for an artefact with the given artifactId, version, classifier and extension.
+
+### Strategic solution
+
+At present, our model of an Artifact is heavily based on ivy; for this fix we can introduce the concept of mapping between our internal model and a repository-centric
+artifact model. This will be a small step toward an independent Gradle model of artifacts, which then maps to repository specific things link extension, classifier, etc.
+
+### User visible changes
+
+* When the dependency declaration has no 'type' specified, or a 'type' that maps to the extension 'jar'
+    * Resolution of a POM module with packaging in ['', 'pom', 'jar', 'ejb', 'bundle', 'maven-plugin', 'eclipse-plugin'] will not change
+    * Resolution of a POM with packaging 'foo' that maps to 'module.foo', a deprecation warning will be emitted and the artifact 'module.foo' will be used
+    * Resolution of a POM with packaging 'foo' that maps to 'module.jar', the artifact 'module.jar' will be successfully found. (ie 'orbit'). An extra HTTP
+      request will be required to first look for 'module.foo'.
+* When the dependency declaration has a 'type' specified that maps to an extension 'ext' (other than 'jar')
+    * Resolution of a POM module with packaging in ['pom', 'jar', 'ejb', 'bundle', 'maven-plugin', 'eclipse-plugin'] will emit a deprecation warning before using 'module.jar' if it exists
+    * Resolution of a POM with packaging 'foo' and actual artifact 'module.foo', a deprecation warning will be emitted and the artifact 'module.foo' will be used
+    * Resolution of a POM with packaging 'foo' and actual artifact 'module.ext', the artifact 'module.ext' will be successfully found. An extra HTTP
+      request will be required to first look for 'module.foo'.
+
+### Integration test coverage
+
+* Coverage for resolving pom dependencies referenced in various ways:
+    * Need modules published in maven repositories with packaging = ['', 'pom', 'jar', 'war', 'eclipse-plugin', 'custom']
+    * Test resolution of artifacts in these modules via
+        1. Direct dependency in a Gradle project
+        2. Transitive dependency in a maven module (pom) which is itself a dependency of a Gradle project
+        3. Transitive dependency in an ivy module (ivy.xml) which is itself a dependency of a Gradle project
+    * For 1. and 2., need dependency declaration with and without type attribute specified
+    * Must verify that deprecation warning is logged appropriately
+* Sad-day coverage for the case where neither packaging nor type can successfully locate the maven artifact. Error message should report 'type'-based location.
+
+### Implementation approach
+
+* Determine 2 locations for the primary artifact:
+    * The 'packaging' location: apply the current logic to determine location from module packaging attribute
+        * Retain current packaging->extension mapping for specific packaging types
+    * The 'type' location: Use maven3 rules to map type->extension+classifier, and construct a location
+* If both locations are the same, use the artifact at that location.
+* If not, look for the artifact in the packaging location
+    * If found, emit a deprecation warning and use that location
+    * If not found, use the artifact from the type location
+* In 2.0, we will remove the packaging->extension mapping and the deprecation warning
+
+# Handle pom-only modules in mavenLocal (DONE)
+
+* GRADLE-2034: Existence of pom file requires that declared artifacts can be found in the same repository
+* GRADLE-2369: Dependency resolution fails for mavenLocal(), mavenCentral() if artifact partially in mavenLocal()

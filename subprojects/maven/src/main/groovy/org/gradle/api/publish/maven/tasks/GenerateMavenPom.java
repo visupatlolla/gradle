@@ -18,52 +18,43 @@ package org.gradle.api.publish.maven.tasks;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Incubating;
-import org.gradle.api.artifacts.Dependency;
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.file.AbstractFileCollection;
 import org.gradle.api.internal.file.FileResolver;
-import org.gradle.api.internal.tasks.DefaultTaskDependency;
 import org.gradle.api.publish.maven.MavenPom;
-import org.gradle.api.publish.maven.internal.MavenPomGenerator;
-import org.gradle.api.publish.maven.internal.MavenPomInternal;
-import org.gradle.api.publish.maven.internal.MavenProjectIdentity;
+import org.gradle.api.publish.maven.internal.dependencies.MavenDependencyInternal;
+import org.gradle.api.publish.maven.internal.publication.MavenPomInternal;
+import org.gradle.api.publish.maven.internal.tasks.MavenPomFileGenerator;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
-import org.gradle.api.tasks.TaskDependency;
 
 import javax.inject.Inject;
 import java.io.File;
-import java.util.Collections;
-import java.util.Set;
 
 /**
- * Generates an Ivy XML Module Descriptor file.
+ * Generates a Maven module descriptor (POM) file.
  *
  * @since 1.4
  */
 @Incubating
 public class GenerateMavenPom extends DefaultTask {
 
-    private final FileCollection pomFile;
-    private final FileResolver fileResolver;
     private MavenPom pom;
     private Object destination;
 
-    @Inject
-    public GenerateMavenPom(FileResolver fileResolver) {
-        this.fileResolver = fileResolver;
-
+    public GenerateMavenPom() {
         // Never up to date; we don't understand the data structures.
         getOutputs().upToDateWhen(Specs.satisfyNone());
+    }
 
-        this.pomFile = new PomFileCollection();
+    @Inject
+    protected FileResolver getFileResolver() {
+        throw new UnsupportedOperationException();
     }
 
     /**
-     * The Maven pom.
+     * The Maven POM.
      *
-     * @return The Maven pom.
+     * @return The Maven POM.
      */
     public MavenPom getPom() {
         return pom;
@@ -74,13 +65,13 @@ public class GenerateMavenPom extends DefaultTask {
     }
 
     /**
-     * The file the pom will be written to.
+     * The file the POM will be written to.
      *
-     * @return The file the pom will be written to
+     * @return The file the POM will be written to
      */
     @OutputFile
     public File getDestination() {
-        return destination == null ? null : fileResolver.resolve(destination);
+        return destination == null ? null : getFileResolver().resolve(destination);
     }
 
     /**
@@ -94,55 +85,20 @@ public class GenerateMavenPom extends DefaultTask {
         this.destination = destination;
     }
 
-    public FileCollection getPomFile() {
-        return pomFile;
-    }
-
     @TaskAction
     public void doGenerate() {
         MavenPomInternal pomInternal = (MavenPomInternal) getPom();
 
-        MavenPomGenerator pomGenerator = new MavenPomGenerator();
-        copyIdentity(pomInternal.getProjectIdentity(), pomGenerator);
-        copyDependencies(pomInternal.getRuntimeDependencies(), pomGenerator);
+        MavenPomFileGenerator pomGenerator = new MavenPomFileGenerator(pomInternal.getProjectIdentity());
+        pomGenerator.setPackaging(pomInternal.getPackaging());
+
+        for (MavenDependencyInternal runtimeDependency : pomInternal.getRuntimeDependencies()) {
+            pomGenerator.addRuntimeDependency(runtimeDependency);
+        }
+
         pomGenerator.withXml(pomInternal.getXmlAction());
 
         pomGenerator.writeTo(getDestination());
     }
 
-    private void copyIdentity(MavenProjectIdentity projectIdentity, MavenPomGenerator pom) {
-        pom.setArtifactId(projectIdentity.getArtifactId());
-        pom.setGroupId(projectIdentity.getGroupId());
-        pom.setVersion(projectIdentity.getVersion());
-        pom.setPackaging(projectIdentity.getPackaging());
-    }
-
-    private void copyDependencies(Set<Dependency> runtimeDependencies, MavenPomGenerator pom) {
-        for (Dependency runtimeDependency : runtimeDependencies) {
-            pom.addRuntimeDependency(runtimeDependency);
-        }
-    }
-
-    private class PomFileCollection extends AbstractFileCollection {
-        private final DefaultTaskDependency dependency;
-
-        public PomFileCollection() {
-            this.dependency = new DefaultTaskDependency();
-            this.dependency.add(GenerateMavenPom.this);
-        }
-
-        @Override
-        public String getDisplayName() {
-            return "pom-file";
-        }
-
-        @Override
-        public TaskDependency getBuildDependencies() {
-            return dependency;
-        }
-
-        public Set<File> getFiles() {
-            return Collections.singleton(getDestination());
-        }
-    }
 }

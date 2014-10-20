@@ -17,16 +17,17 @@ package org.gradle.api.plugins.quality
 
 import org.gradle.api.Project
 import org.gradle.api.plugins.GroovyBasePlugin
+import org.gradle.api.plugins.GroovyPlugin
 import org.gradle.api.tasks.SourceSet
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
-import static org.gradle.util.Matchers.dependsOn
+import static org.gradle.api.tasks.TaskDependencyMatchers.dependsOn
 import static org.hamcrest.Matchers.hasItems
 import static spock.util.matcher.HamcrestSupport.that
 import org.gradle.api.plugins.ReportingBasePlugin
 
 class CodeNarcPluginTest extends Specification {
-    Project project = HelperUtil.createRootProject()
+    Project project = TestUtil.createRootProject()
 
     def setup() {
         project.plugins.apply(CodeNarcPlugin)
@@ -50,7 +51,11 @@ class CodeNarcPluginTest extends Specification {
     def "adds codenarc extension"() {
         expect:
         CodeNarcExtension codenarc = project.extensions.codenarc
+        codenarc.config.inputFiles.singleFile == project.file("config/codenarc/codenarc.xml")
         codenarc.configFile == project.file("config/codenarc/codenarc.xml")
+        codenarc.maxPriority1Violations == 0
+        codenarc.maxPriority2Violations == 0
+        codenarc.maxPriority3Violations == 0
         codenarc.reportFormat == "html"
         codenarc.reportsDir == project.file("build/reports/codenarc")
         codenarc.sourceSets == []
@@ -78,9 +83,13 @@ class CodeNarcPluginTest extends Specification {
             assert description == "Run CodeNarc analysis for ${sourceSet.name} classes"
             assert source as List == sourceSet.allGroovy  as List
             assert codenarcClasspath == project.configurations.codenarc
+            assert config.inputFiles.singleFile == project.file("config/codenarc/codenarc.xml")
             assert configFile == project.file("config/codenarc/codenarc.xml")
-            assert reportFormat == "html"
-            assert reportFile == project.file("build/reports/codenarc/${sourceSet.name}.html")
+            assert maxPriority1Violations == 0
+            assert maxPriority2Violations == 0
+            assert maxPriority3Violations == 0
+            assert reports.enabled*.name == ["html"]
+            assert reports.html.destination == project.file("build/reports/codenarc/${sourceSet.name}.html")
             assert ignoreFailures == false
         }
     }
@@ -94,8 +103,10 @@ class CodeNarcPluginTest extends Specification {
         }
 
         project.codenarc {
-            checkTasks = ["codenarcMain"]
             configFile = project.file("codenarc-config")
+            maxPriority1Violations = 10
+            maxPriority2Violations = 50
+            maxPriority3Violations = 200
             reportFormat = "xml"
             reportsDir = project.file("codenarc-reports")
             ignoreFailures = true
@@ -114,31 +125,42 @@ class CodeNarcPluginTest extends Specification {
             assert description == "Run CodeNarc analysis for ${sourceSet.name} classes"
             assert source as List == sourceSet.allGroovy as List
             assert codenarcClasspath == project.configurations.codenarc
+            assert config.inputFiles.singleFile == project.file("codenarc-config")
             assert configFile == project.file("codenarc-config")
-            assert reportFormat == "xml"
-            assert reportFile == project.file("codenarc-reports/${sourceSet.name}.xml")
+            assert maxPriority1Violations == 10
+            assert maxPriority2Violations == 50
+            assert maxPriority3Violations == 200
+            assert reports.enabled*.name == ["xml"]
+            assert reports.xml.destination == project.file("codenarc-reports/${sourceSet.name}.xml")
             assert ignoreFailures == true
         }
     }
 
     def "configures any additional codenarc tasks"() {
-        def task = project.tasks.add("codenarcCustom", CodeNarc)
+        def task = project.tasks.create("codenarcCustom", CodeNarc)
 
         expect:
         task.description == null
         task.source.isEmpty()
         task.codenarcClasspath == project.configurations.codenarc
+        task.config.inputFiles.singleFile == project.file("config/codenarc/codenarc.xml")
         task.configFile == project.file("config/codenarc/codenarc.xml")
-        task.reportFormat == "html"
-        task.reportFile == project.file("build/reports/codenarc/custom.html")
+        task.maxPriority1Violations == 0
+        task.maxPriority2Violations == 0
+        task.maxPriority3Violations == 0
+        task.reports.enabled*.name == ["html"]
+        task.reports.html.destination == project.file("build/reports/codenarc/custom.html")
         task.ignoreFailures == false
     }
 
     def "can customize additional tasks via extension"() {
-        def task = project.tasks.add("codenarcCustom", CodeNarc)
+        def task = project.tasks.create("codenarcCustom", CodeNarc)
 
         project.codenarc {
-            configFile = project.file("codenarc-config")
+            config = project.resources.text.fromFile("codenarc-config")
+            maxPriority1Violations = 10
+            maxPriority2Violations = 50
+            maxPriority3Violations = 200
             reportFormat = "xml"
             reportsDir = project.file("codenarc-reports")
             ignoreFailures = true
@@ -148,9 +170,13 @@ class CodeNarcPluginTest extends Specification {
         task.description == null
         task.source.isEmpty()
         task.codenarcClasspath == project.configurations.codenarc
+        task.config.inputFiles.singleFile == project.file("codenarc-config")
         task.configFile == project.file("codenarc-config")
-        task.reportFormat == "xml"
-        task.reportFile == project.file("codenarc-reports/custom.xml")
+        task.maxPriority1Violations == 10
+        task.maxPriority2Violations == 50
+        task.maxPriority3Violations == 200
+        task.reports.enabled*.name == ["xml"]
+        task.reports.xml.destination == project.file("codenarc-reports/custom.xml")
         task.ignoreFailures == true
     }
     
@@ -162,7 +188,7 @@ class CodeNarcPluginTest extends Specification {
             other
         }
 
-        project.tasks.add("codenarcCustom", CodeNarc)
+        project.tasks.create("codenarcCustom", CodeNarc)
         
         expect:
         that(project.check, dependsOn(hasItems("codenarcMain", "codenarcTest", "codenarcOther")))
@@ -176,7 +202,7 @@ class CodeNarcPluginTest extends Specification {
             other
         }
 
-        project.tasks.add("codenarcCustom", CodeNarc)
+        project.tasks.create("codenarcCustom", CodeNarc)
 
         project.codenarc {
             sourceSets = [project.sourceSets.main]
@@ -187,7 +213,7 @@ class CodeNarcPluginTest extends Specification {
     }
 
     def "can customize task directly"() {
-        CodeNarc task = project.tasks.add("codenarcCustom", CodeNarc)
+        CodeNarc task = project.tasks.create("codenarcCustom", CodeNarc)
 
         task.reports.xml {
             enabled true
@@ -199,5 +225,18 @@ class CodeNarcPluginTest extends Specification {
             assert enabled == [html, xml] as Set
             assert xml.destination == project.file("build/foo.xml")
         }
+    }
+
+    def "can use legacy configFile extension property"() {
+        project.plugins.apply(GroovyPlugin)
+
+        project.codenarc {
+            configFile = project.file("codenarc-config")
+        }
+
+        expect:
+        project.codenarc.configFile == project.file("codenarc-config") // computed property
+        project.tasks.codenarcMain.configFile == project.file("codenarc-config")
+        project.tasks.codenarcTest.configFile == project.file("codenarc-config")
     }
 }

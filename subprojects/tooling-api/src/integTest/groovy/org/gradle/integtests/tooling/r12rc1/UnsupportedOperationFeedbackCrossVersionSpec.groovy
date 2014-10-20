@@ -16,19 +16,17 @@
 
 package org.gradle.integtests.tooling.r12rc1
 
-import org.gradle.integtests.tooling.fixture.MaxTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
+import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.exceptions.UnsupportedOperationConfigurationException
 import org.gradle.tooling.model.eclipse.EclipseProject
 
-@MinToolingApiVersion("1.2-rc-1")
-@MaxTargetGradleVersion("1.1")
+@TargetGradleVersion(">=1.0-milestone-8 <=1.1")
 class UnsupportedOperationFeedbackCrossVersionSpec extends ToolingApiSpecification {
     def "fails when attempting to run tasks when building a model"() {
         when:
-        maybeFailWithConnection { ProjectConnection connection ->
+        withConnection { ProjectConnection connection ->
             connection.model(EclipseProject.class).forTasks('eclipse').get()
         }
 

@@ -24,7 +24,7 @@ import spock.lang.Issue
 
 class IdeaProjectIntegrationTest extends AbstractIdeIntegrationTest {
     @Rule
-    public final TestResources testResources = new TestResources()
+    public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Issue("GRADLE-1011")
     @Test
@@ -61,6 +61,24 @@ idea.project {
 
         assert ipr.contains('project-jdk-name="1.6"')
         assert ipr.contains('languageLevel="JDK_1_5"')
+    }
+
+    @Test
+    void "allows configuring the VCS"() {
+        //when
+        runTask('idea', '''
+apply plugin: "java"
+apply plugin: "idea"
+
+idea.project {
+    vcs = 'Git'
+}
+''')
+
+        //then
+        def ipr = getFile([:], 'root.ipr').text
+
+        assert ipr.contains('<mapping directory="" vcs="Git"/>')
     }
 
     @Test
@@ -121,6 +139,9 @@ idea {
   </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_1_5" assert-keyword="true" jdk-15="true" project-jdk-type="JavaSDK" assert-jdk-15="true" project-jdk-name="1.5">
     <output url="file://$PROJECT_DIR$/out"/>
+  </component>
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
   </component>
 </project>
 '''

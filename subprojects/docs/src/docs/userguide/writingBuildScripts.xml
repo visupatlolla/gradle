@@ -22,12 +22,17 @@
         <para>Gradle provides a <firstterm>domain specific language</firstterm>, or DSL, for describing builds.
             This build language is based on Groovy, with some additions to make it easier to describe a build.
         </para>
+        <para>
+            A build script can contain any Groovy language element.
+            <footnote><para>Any language element except for statement labels.</para></footnote>
+            Gradle assumes that each build script is encoded using UTF-8.
+        </para>
     </section>
     <section id='sec:project_api'>
         <title>The Project API</title>
         <para>In the tutorial in <xref linkend='tutorial_java_projects'/> we used, for example, the
             <literal>apply()</literal> method. Where does this method come from? We said earlier that the build script
-            defines a project in Gradle. For each project in the build, Gradle creates an instance of type
+            defines a project in Gradle. For each project in the build, Gradle creates an object of type
             <apilink class='org.gradle.api.Project'/> and associates this <classname>Project</classname> object with
             the build script. As the build script executes, it configures this <classname>Project</classname> object:
         </para>
@@ -41,7 +46,7 @@
         </tip>
         <itemizedlist>
             <listitem>
-                <para>Any method you call in your build script, which <emphasis>is not defined</emphasis>
+                <para>Any method you call in your build script which <emphasis>is not defined</emphasis>
                     in the build script, is delegated to the <classname>Project</classname> object.
                 </para>
             </listitem>
@@ -62,7 +67,7 @@
             the <classname>Project</classname> object, for properties not defined in the build script. The other
             statement uses the <literal>project</literal> property available to any build script, which returns the
             associated <classname>Project</classname> object. Only if you define a property or a method which has the
-            same name as a member of the <classname>Project</classname> object, you need to use the <literal>project</literal>
+            same name as a member of the <classname>Project</classname> object, would you need to use the <literal>project</literal>
             property.
         </para>
         <section>
@@ -164,27 +169,22 @@
             </para>
             <para>By requiring special syntax for adding a property, Gradle can fail fast when an attempt is made to set a (predefined or extra) property
                 but the property is misspelled or does not exist.
-                <footnote>
-                    <para>As of Gradle 1.0-milestone-9, using <literal>ext</literal> to add extra properties is strongly encouraged but not yet enforced.
-                        Therefore, Gradle will not fail when an unknown property is set. However, it will print a warning.
-                    </para>
-                </footnote>
                 Extra properties can be accessed from anywhere their owning object can be accessed, giving them a wider scope than local variables.
-                Extra properties on a parent project are visible from subprojects.
+                Extra properties on a project are visible from its subprojects.
             </para>
-            <para>For further details on extra properties and their API, see <apilink class="org.gradle.api.plugins.ExtraPropertiesExtension"/>.</para>
+            <para>For further details on extra properties and their API, see the <apilink class="org.gradle.api.plugins.ExtraPropertiesExtension"/> class in the API documentation.</para>
         </section>
     </section>
     <section>
         <title>Some Groovy basics</title>
         <para>Groovy provides plenty of features for creating DSLs, and the Gradle build language takes advantage of these.
             Understanding how the build language works will help you when you write your build script, and in particular,
-            when you start to write customs plugins and tasks.
+            when you start to write custom plugins and tasks.
         </para>
         <section>
             <title>Groovy JDK</title>
             <para>
-                Groovy adds lots of useful methods to JVM classes. For example, <classname>Iterable</classname> gets
+                Groovy adds lots of useful methods to the standard Java classes. For example, <classname>Iterable</classname> gets
                 an <literal>each</literal> method, which iterates over the elements of the <classname>Iterable</classname>:
             </para>
             <sample id="groovyBasics" dir="userguide/tutorial/groovy" title="Groovy JDK methods">
@@ -214,8 +214,13 @@
             <title>List and map literals</title>
             <para>
                 Groovy provides some shortcuts for defining <classname>List</classname> and <classname>Map</classname>
-                instances.
+                instances.  Both kinds of literals are straightforward, but map literals have some interesting twists.
             </para>
+            <para>For instance, the “<literal>apply</literal>” method (where you typically apply plugins) actually
+            takes a map parameter.  However, when you have a line like “<literal>apply plugin:'java'</literal>”, you
+            aren't actually using a map literal, you're actually using “named parameters”, which have almost exactly
+            the same syntax as a map literal (without the wrapping brackets). That named parameter list gets converted
+            to a map when the method is called, but it doesn't start out as a map.</para>
             <sample id="groovyBasics" dir="userguide/tutorial/groovy" title="List and map literals">
                 <sourcefile file="build.gradle" snippet="listAndMapLiterals"/>
             </sample>

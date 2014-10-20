@@ -19,7 +19,7 @@ package org.gradle.api.tasks.compile;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.ConventionTask;
-import org.gradle.api.internal.tasks.compile.Compiler;
+import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.api.internal.tasks.compile.GroovyJavaJointCompileSpec;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.util.GFileUtils;
@@ -33,12 +33,9 @@ import org.junit.runner.RunWith;
 
 import java.io.File;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.*;
 
-/**
- * @author Hans Dockter
- */
 @RunWith(org.jmock.integration.junit4.JMock.class)
 public class GroovyCompileTest extends AbstractCompileTest {
 
@@ -91,10 +88,15 @@ public class GroovyCompileTest extends AbstractCompileTest {
         assertFalse(testObj.getDidWork());
     }
 
-    @Test(expected = InvalidUserDataException.class)
+    @Test
     public void testMoansIfGroovyClasspathIsEmpty() {
         setUpMocksAndAttributes(testObj, true);
-        testObj.compile();
+        try {
+            testObj.compile();
+            fail();
+        } catch (InvalidUserDataException e) {
+            assertThat(e.getMessage(), containsString("'testTask.groovyClasspath' must not be empty."));
+        }
     }
 
     void setUpMocksAndAttributes(GroovyCompile compile, final boolean groovyClasspathEmpty) {

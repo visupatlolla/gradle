@@ -16,7 +16,10 @@
 package org.gradle.api.artifacts.dsl;
 
 import groovy.lang.Closure;
+import org.gradle.api.Action;
+import org.gradle.api.Incubating;
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.query.ArtifactResolutionQuery;
 
 import java.util.Map;
 
@@ -111,8 +114,10 @@ import java.util.Map;
  *   compile(group: 'org.myorg', name: 'someLib', version:'1.0') {
  *     //explicitly adding the dependency artifact:
  *     artifact {
+ *       //useful when some artifact properties unconventional
  *       name = 'someArtifact' //artifact name different than module name
- *       type = 'jar'
+ *       extension = 'someExt'
+ *       type = 'someType'
  *       classifier = 'someClassifier'
  *     }
  *   }
@@ -132,15 +137,15 @@ import java.util.Map;
  *
  * <h3>External dependencies</h3>
  *
- * <p>There are 2 notations supported for declaring a dependency on an external module.
- * One is a String notation formatted this way: group:name:version</p>
+ * <p>There are two notations supported for declaring a dependency on an external module.
+ * One is a string notation formatted this way:</p>
  *
- * <code><i>configurationName</i> "<i>group</i>:<i>name</i>:<i>version</i>:<i>classifier</i>"</code>
+ * <code><i>configurationName</i> "<i>group</i>:<i>name</i>:<i>version</i>:<i>classifier</i>@<i>extension</i>"</code>
  *
  * <p>The other is a map notation:</p>
  *
  * <code><i>configurationName</i> group: <i>group</i>:, name: <i>name</i>, version: <i>version</i>, classifier:
- * <i>classifier</i></code>
+ * <i>classifier</i>, ext: <i>extension</i></code>
  *
  * <p>In both notations, all properties, except name, are optional.</p>
  *
@@ -213,11 +218,11 @@ import java.util.Map;
  * <pre autoTested=''>
  * //Our Gradle plugin is written in groovy
  * apply plugin: 'groovy'
- * //now we can use 'groovy' and 'compile' configuration for declaring dependencies
+ * //now we can use the 'compile' configuration for declaring dependencies
  *
  * dependencies {
- *   //we will use groovy that ships with Gradle:
- *   groovy localGroovy()
+ *   //we will use the Groovy version that ships with Gradle:
+ *   compile localGroovy()
  *
  *   //our plugin requires Gradle API interfaces and classes to compile:
  *   compile gradleApi()
@@ -236,8 +241,6 @@ import java.util.Map;
  *
  * The module notation is the same as the dependency notations described above, except that the classifier property is
  * not available. Client modules are represented using a {@link org.gradle.api.artifacts.ClientModule}.
- *
- * @author Hans Dockter
  */
 public interface DependencyHandler {
     /**
@@ -318,4 +321,54 @@ public interface DependencyHandler {
      * @return The dependency.
      */
     Dependency localGroovy();
+
+    /**
+     * Returns the component metadata handler for this project. The returned handler can be used for adding rules
+     * that modify the metadata of depended-on software components.
+     *
+     * @return the component metadata handler for this project
+     * @since 1.8
+     */
+    @Incubating
+    ComponentMetadataHandler getComponents();
+
+    /**
+     * Configures component metadata for this project.
+     *
+     * <p>This method executes the given action against the {@link org.gradle.api.artifacts.dsl.ComponentMetadataHandler} for this project.
+     *
+     * @param configureAction the action to use to configure module metadata
+     * @since 1.8
+     */
+    @Incubating
+    void components(Action<? super ComponentMetadataHandler> configureAction);
+
+    /**
+     * Returns the component module metadata handler for this project. The returned handler can be used for adding rules
+     * that modify the metadata of depended-on software components.
+     *
+     * @return the component module metadata handler for this project
+     * @since 2.2
+     */
+    @Incubating
+    ComponentModuleMetadataHandler getModules();
+
+    /**
+     * Configures module metadata for this project.
+     *
+     * <p>This method executes the given action against the {@link org.gradle.api.artifacts.dsl.ComponentModuleMetadataHandler} for this project.
+     *
+     * @param configureAction the action to use to configure module metadata
+     * @since 2.2
+     */
+    @Incubating
+    void modules(Action<? super ComponentModuleMetadataHandler> configureAction);
+
+    /**
+     * Creates an artifact resolution query.
+     *
+     * @since 2.0
+     */
+    @Incubating
+    ArtifactResolutionQuery createArtifactResolutionQuery();
 }

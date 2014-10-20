@@ -20,18 +20,24 @@ import org.gradle.StartParameter
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.internal.artifacts.DependencyResolutionServices
-import org.gradle.api.internal.project.GlobalServicesRegistry
-import org.gradle.api.internal.project.ProjectInternalServiceRegistry
-import org.gradle.api.internal.project.TopLevelBuildServiceRegistry
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
-import org.gradle.util.HelperUtil
+import org.gradle.internal.concurrent.CompositeStoppable
+import org.gradle.internal.nativeintegration.services.NativeServices
+import org.gradle.internal.service.ServiceRegistry
+import org.gradle.internal.service.ServiceRegistryBuilder
+import org.gradle.internal.service.scopes.BuildScopeServices
+import org.gradle.internal.service.scopes.GlobalScopeServices
+import org.gradle.internal.service.scopes.ProjectScopeServices
+import org.gradle.logging.LoggingServiceRegistry
+import org.gradle.util.TestUtil
 
 class ToolingApiDistributionResolver {
     private final DependencyResolutionServices resolutionServices
     private final Map<String, ToolingApiDistribution> distributions = [:]
     private final IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext()
     private boolean useExternalToolingApiDistribution = false;
+    private CompositeStoppable stopLater = new CompositeStoppable()
 
     ToolingApiDistributionResolver() {
         resolutionServices = createResolutionServices()
@@ -44,7 +50,7 @@ class ToolingApiDistributionResolver {
     }
 
     ToolingApiDistributionResolver withDefaultRepository() {
-        withRepository("http://repo.gradle.org/gradle/repo")
+        withRepository("https://repo.gradle.org/gradle/repo")
     }
 
     ToolingApiDistribution resolve(String toolingApiVersion) {
@@ -54,7 +60,7 @@ class ToolingApiDistributionResolver {
             } else {
                 Dependency toolingApiDep = resolutionServices.dependencyHandler.create("org.gradle:gradle-tooling-api:$toolingApiVersion")
                 Configuration toolingApiConfig = resolutionServices.configurationContainer.detachedConfiguration(toolingApiDep)
-                distributions[toolingApiVersion] = new ExternalToolingApiDistribution(toolingApiVersion, toolingApiConfig)
+                distributions[toolingApiVersion] = new ExternalToolingApiDistribution(toolingApiVersion, toolingApiConfig.files)
             }
         }
         distributions[toolingApiVersion]
@@ -67,16 +73,29 @@ class ToolingApiDistributionResolver {
     }
 
     private DependencyResolutionServices createResolutionServices() {
-        GlobalServicesRegistry globalRegistry = new GlobalServicesRegistry()
+        ServiceRegistry globalRegistry = ServiceRegistryBuilder.builder()
+                .parent(LoggingServiceRegistry.newEmbeddableLogging())
+                .parent(NativeServices.getInstance())
+                .provider(new GlobalScopeServices(false))
+                .build()
         StartParameter startParameter = new StartParameter()
         startParameter.gradleUserHomeDir = new IntegrationTestBuildContext().gradleUserHomeDir
-        TopLevelBuildServiceRegistry topLevelRegistry = new TopLevelBuildServiceRegistry(globalRegistry, startParameter)
-        ProjectInternalServiceRegistry projectRegistry = new ProjectInternalServiceRegistry(topLevelRegistry, HelperUtil.createRootProject())
-        projectRegistry.get(DependencyResolutionServices)
+        BuildScopeServices topLevelRegistry = new BuildScopeServices(globalRegistry, startParameter)
+        ProjectScopeServices projectRegistry = new ProjectScopeServices(topLevelRegistry, TestUtil.createRootProject())
+
+        stopLater.add(projectRegistry)
+        stopLater.add(topLevelRegistry)
+        stopLater.add(globalRegistry)
+
+        return projectRegistry.get(DependencyResolutionServices)
     }
 
     ToolingApiDistributionResolver withExternalToolingApiDistribution() {
         this.useExternalToolingApiDistribution = true
         this
+    }
+
+    void stop() {
+        stopLater.stop()
     }
 }

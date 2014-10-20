@@ -15,11 +15,10 @@
  */
 package org.gradle.initialization;
 
+import org.gradle.StartParameter;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.SettingsInternal;
-import org.gradle.StartParameter;
-
-import java.net.URLClassLoader;
+import org.gradle.api.internal.initialization.ClassLoaderScope;
 
 /**
  * Responsible for locating, constructing, and evaluating the {@link SettingsInternal} for a build.
@@ -27,6 +26,6 @@ import java.net.URLClassLoader;
 public interface SettingsProcessor {
     SettingsInternal process(GradleInternal gradle,
                              SettingsLocation settingsLocation,
-                             URLClassLoader buildSourceClassLoader,
+                             ClassLoaderScope baseClassLoaderScope,
                              StartParameter startParameter);
 }

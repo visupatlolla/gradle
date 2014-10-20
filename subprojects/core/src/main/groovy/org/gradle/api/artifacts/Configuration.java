@@ -17,9 +17,9 @@ package org.gradle.api.artifacts;
 
 import groovy.lang.Closure;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.HasInternalProtocol;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.TaskDependency;
+import org.gradle.internal.HasInternalProtocol;
 
 import java.io.File;
 import java.util.Map;
@@ -121,7 +121,7 @@ public interface Configuration extends FileCollection {
      * @param superConfigs The super configuration. Should not be null.
      * @return this configuration
      */
-    Configuration setExtendsFrom(Set<Configuration> superConfigs);
+    Configuration setExtendsFrom(Iterable<Configuration> superConfigs);
 
     /**
      * Adds the given configurations to the set of configuration which this configuration extends from.
@@ -257,7 +257,7 @@ public interface Configuration extends FileCollection {
 
     /**
      * Returns a {@code TaskDependency} object containing all required dependencies to build the internal dependencies
-     * (e.g. project dependencies) belonging to this configuration or to one of its super configurations.
+     * (e.g.<!-- --> project dependencies) belonging to this configuration or to one of its super configurations.
      *
      * @return a TaskDependency object
      */
@@ -334,13 +334,13 @@ public interface Configuration extends FileCollection {
     /**
      * Returns the incoming dependencies of this configuration.
      *
-     * @return The incoming dependencies of this configuration. Never null.
+     * @return The incoming dependencies of this configuration. Never {@code null}.
      */
     ResolvableDependencies getIncoming();
 
     /**
      * Creates a copy of this configuration that only contains the dependencies directly in this configuration
-     * (without contributions from superconfigurations).  The new configuation will be in the
+     * (without contributions from superconfigurations).  The new configuration will be in the
      * UNRESOLVED state, but will retain all other attributes of this configuration except superconfigurations.
      * {@link #getHierarchy()} for the copy will not include any superconfigurations.
      * @return copy of this configuration

@@ -17,16 +17,13 @@
 package org.gradle.api.tasks.diagnostics.internal.graph
 
 import org.gradle.api.Action
-import org.gradle.api.artifacts.ModuleVersionIdentifier
-import org.gradle.api.tasks.diagnostics.internal.GraphRenderer
+import org.gradle.api.artifacts.component.ComponentIdentifier
 import org.gradle.api.tasks.diagnostics.internal.graph.nodes.RenderableDependency
+import org.gradle.internal.graph.GraphRenderer
 import org.gradle.logging.StyledTextOutput
 
 import static org.gradle.logging.StyledTextOutput.Style.Info
 
-/**
- * by Szczepan Faber, created at: 9/20/12
- */
 class DependencyGraphRenderer {
     private final GraphRenderer renderer
     private final NodeRenderer nodeRenderer
@@ -38,22 +35,22 @@ class DependencyGraphRenderer {
     }
 
     void render(RenderableDependency root) {
-        def visited = new HashSet<ModuleVersionIdentifier>()
+        def visited = new HashSet<ComponentIdentifier>()
         visited.add(root.getId())
         renderChildren(root.getChildren(), visited)
     }
 
-    private void renderChildren(Set<? extends RenderableDependency> children, Set<ModuleVersionIdentifier> visited) {
+    private void renderChildren(Set<? extends RenderableDependency> children, Set<ComponentIdentifier> visited) {
         renderer.startChildren()
         def i = 0
         for (RenderableDependency child : children) {
             boolean last = i++ == children.size() - 1
-            render(child, last, visited)
+            doRender(child, last, visited)
         }
         renderer.completeChildren()
     }
 
-    private void render(final RenderableDependency node, boolean last, Set<ModuleVersionIdentifier> visited) {
+    private void doRender(final RenderableDependency node, boolean last, Set<ComponentIdentifier> visited) {
         def children = node.getChildren()
         def alreadyRendered = !visited.add(node.getId())
         if (alreadyRendered) {

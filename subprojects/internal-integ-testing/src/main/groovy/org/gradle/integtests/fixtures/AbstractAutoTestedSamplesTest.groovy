@@ -16,9 +16,6 @@
 
 package org.gradle.integtests.fixtures
 
-/**
- * @author Szczepan Faber, created at: 4/2/11
- */
 class AbstractAutoTestedSamplesTest extends AbstractIntegrationTest {
 
      def util = new AutoTestedSamplesUtil()
@@ -29,7 +26,7 @@ class AbstractAutoTestedSamplesTest extends AbstractIntegrationTest {
             def buildFile = testFile('build.gradle')
             buildFile.text = sample
 
-            usingBuildFile(buildFile).withQuietLogging().withTasks('help').withArguments("-s").run()
+            usingBuildFile(buildFile).withTasks('help').withArguments("-s").run()
         }
     }
 

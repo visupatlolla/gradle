@@ -20,18 +20,16 @@ import org.gradle.api.Action
 import org.gradle.api.UncheckedIOException
 import org.gradle.api.XmlProvider
 import org.gradle.api.internal.DomNode
-import org.gradle.api.internal.ErroringAction
-import org.gradle.api.internal.IoActions
-import org.gradle.api.internal.xml.XmlTransformer
 import org.gradle.api.internal.file.FileResolver
+import org.gradle.internal.xml.XmlTransformer
+import org.gradle.internal.reflect.Instantiator
 import org.gradle.plugins.ear.descriptor.DeploymentDescriptor
 import org.gradle.plugins.ear.descriptor.EarModule
 import org.gradle.plugins.ear.descriptor.EarSecurityRole
 import org.gradle.plugins.ear.descriptor.EarWebModule
 
-/**
- * @author David Gileadi
- */
+import javax.inject.Inject
+
 class DefaultDeploymentDescriptor implements DeploymentDescriptor {
 
     private String fileName = "application.xml"
@@ -46,20 +44,12 @@ class DefaultDeploymentDescriptor implements DeploymentDescriptor {
     Map<String, String> moduleTypeMappings = new HashMap<String, String>()
     private FileResolver fileResolver
     final XmlTransformer transformer = new XmlTransformer()
+    private final Instantiator instantiator
 
-    public DefaultDeploymentDescriptor(FileResolver fileResolver) {
-        this(new File("META-INF", "application.xml"), fileResolver)
-    }
-
-    public DefaultDeploymentDescriptor(Object descriptorPath, FileResolver fileResolver) {
+    @Inject
+    public DefaultDeploymentDescriptor(FileResolver fileResolver, Instantiator instantiator) {
+        this.instantiator = instantiator
         this.fileResolver = fileResolver
-        if (fileResolver) {
-            File descriptorFile = fileResolver.resolve(descriptorPath)
-            if (descriptorFile) {
-                fileName = descriptorFile.name
-                readFrom descriptorFile
-            }
-        }
     }
 
     public String getFileName() {
@@ -96,6 +86,13 @@ class DefaultDeploymentDescriptor implements DeploymentDescriptor {
         return this
     }
 
+    public DeploymentDescriptor securityRole(Action<? extends EarSecurityRole> action) {
+        EarSecurityRole role = instantiator.newInstance(DefaultEarSecurityRole)
+        action.execute(role)
+        securityRoles.add(role)
+        return this
+    }
+
     public DeploymentDescriptor withXml(Closure closure) {
         transformer.addAction(closure)
         return this
@@ -126,7 +123,7 @@ class DefaultDeploymentDescriptor implements DeploymentDescriptor {
 
     DeploymentDescriptor readFrom(Reader reader) {
         try {
-            def appNode = new XmlParser().parse(reader)
+            def appNode = new XmlParser(false, true, true).parse(reader)
             version = appNode.@version
 
             appNode.children().each { child ->
@@ -180,17 +177,12 @@ class DefaultDeploymentDescriptor implements DeploymentDescriptor {
         return this
     }
 
-    private String localNameOf(Node node) {
+    protected String localNameOf(Node node) {
         node.name() instanceof QName ? node.name().localPart : node.name() as String
     }
 
     public DefaultDeploymentDescriptor writeTo(Object path) {
-        IoActions.writeFile(fileResolver.resolve(path), new ErroringAction<Writer>() {
-            @Override
-            void doExecute(Writer writer) {
-                writeTo(writer);
-            }
-        })
+        transformer.transform(toXmlNode(), fileResolver.resolve(path))
         return this;
     }
 

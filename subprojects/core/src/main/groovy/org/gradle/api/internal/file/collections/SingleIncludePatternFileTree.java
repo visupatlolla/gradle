@@ -22,10 +22,12 @@ import org.gradle.api.file.FileVisitor;
 import org.gradle.api.file.RelativePath;
 import org.gradle.api.internal.file.DefaultFileVisitDetails;
 import org.gradle.api.internal.file.pattern.PatternStep;
-import org.gradle.api.internal.file.pattern.RegExpPatternStep;
+import org.gradle.api.internal.file.pattern.PatternStepFactory;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.util.PatternSet;
+import org.gradle.internal.nativeintegration.filesystem.FileSystem;
+import org.gradle.internal.nativeintegration.services.FileSystems;
 
 import java.io.File;
 import java.util.Arrays;
@@ -44,6 +46,7 @@ public class SingleIncludePatternFileTree implements MinimalFileTree {
     private final String includePattern;
     private final List<String> patternSegments;
     private final Spec<FileTreeElement> excludeSpec;
+    private final FileSystem fileSystem = FileSystems.getDefault();
 
     public SingleIncludePatternFileTree(File baseDir, String includePattern) {
         this(baseDir, includePattern, Specs.<FileTreeElement>satisfyNone());
@@ -59,7 +62,6 @@ public class SingleIncludePatternFileTree implements MinimalFileTree {
         this.excludeSpec = excludeSpec;
     }
 
-    // TODO: important to visit files in prefix order? (contract says breadth-wise but probably means prefix.)
     public void visit(FileVisitor visitor) {
         doVisit(visitor, baseDir, new LinkedList<String>(), 0, new AtomicBoolean());
     }
@@ -78,7 +80,7 @@ public class SingleIncludePatternFileTree implements MinimalFileTree {
             DirectoryFileTree fileTree = new DirectoryFileTree(baseDir, patternSet);
             fileTree.visitFrom(visitor, file, new RelativePath(file.isFile(), relativePath.toArray(new String[relativePath.size()])));
         } else if (segment.contains("*") || segment.contains("?")) {
-            PatternStep step = new RegExpPatternStep(segment, false);
+            PatternStep step = PatternStepFactory.getStep(segment, false);
             File[] children = file.listFiles();
             if (children == null) {
                 if (!file.canRead()) {
@@ -89,7 +91,7 @@ public class SingleIncludePatternFileTree implements MinimalFileTree {
             }
             for (File child : children) {
                 if (stopFlag.get()) { break; }
-                if (step.matches(child.getName(), child.isFile())) {
+                if (step.matches(child.getName())) {
                     relativePath.addLast(child.getName());
                     doVisitDirOrFile(visitor, child, relativePath, segmentIndex + 1, stopFlag);
                     relativePath.removeLast();
@@ -106,14 +108,14 @@ public class SingleIncludePatternFileTree implements MinimalFileTree {
         if (file.isFile()) {
             if (segmentIndex == patternSegments.size()) {
                 RelativePath path = new RelativePath(true, relativePath.toArray(new String[relativePath.size()]));
-                FileVisitDetails details = new DefaultFileVisitDetails(file, path, stopFlag);
+                FileVisitDetails details = new DefaultFileVisitDetails(file, path, stopFlag, fileSystem, fileSystem);
                 if (!excludeSpec.isSatisfiedBy(details)) {
                     visitor.visitFile(details);
                 }
             }
         } else if (file.isDirectory()) {
             RelativePath path = new RelativePath(false, relativePath.toArray(new String[relativePath.size()]));
-            FileVisitDetails details = new DefaultFileVisitDetails(file, path, stopFlag);
+            FileVisitDetails details = new DefaultFileVisitDetails(file, path, stopFlag, fileSystem, fileSystem);
             if (!excludeSpec.isSatisfiedBy(details)) {
                 visitor.visitDir(details);
             }

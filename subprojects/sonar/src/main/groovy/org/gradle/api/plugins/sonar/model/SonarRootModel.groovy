@@ -16,6 +16,7 @@
 package org.gradle.api.plugins.sonar.model
 
 import org.gradle.util.ConfigureUtil
+import org.gradle.api.file.FileCollection
 
 /**
  * Base interface for Sonar models on analysis roots and their subprojects.
@@ -53,15 +54,8 @@ class SonarRootModel implements SonarModel {
     SonarDatabase database
 
     /**
-     * Configuration options for debugging Sonar analysis.
-     */
-    @IncludeProperties
-    SonarDebugSettings debug
-
-    /**
      * Per-project configuration options.
      */
-    @IncludeProperties
     SonarProject project
 
     /**
@@ -124,16 +118,6 @@ class SonarRootModel implements SonarModel {
     }
 
     /**
-     * Configures debug configuration options. The specified closure
-     * delegates to an instance of {@link SonarDebugSettings}.
-     *
-     * @param debug configuration options
-     */
-    void debug(Closure config) {
-        ConfigureUtil.configure(config, debug)
-    }
-
-    /**
      * Configures per-project configuration options. The specified closure
      * delegates to an instance of {@link SonarProject}.
      *
@@ -182,7 +166,6 @@ class SonarProjectModel implements SonarModel {
     /**
      * Per-project configuration options.
      */
-    @IncludeProperties
     SonarProject project
 
     /**
@@ -219,23 +202,21 @@ class SonarServer {
  */
 class SonarDatabase {
     /**
-     * The JDBC URL for the Sonar database. Default value is determined by Sonar.
+     * The JDBC URL for the Sonar database. Defaults to <tt>jdbc:derby://localhost:1527/sonar</tt>.
      */
     @SonarProperty("sonar.jdbc.url")
     String url
 
     /**
-     * The name of the JDBC driver class. Default value is determined by Sonar.
+     * The name of the JDBC driver class. Defaults to <tt>org.apache.derby.jdbc.ClientDriver</tt>.
      */
     @SonarProperty("sonar.jdbc.driverClassName")
     String driverClassName
-
     /**
      * The JDBC username for the Sonar database. Defaults to <tt>sonar</tt>.
      */
     @SonarProperty("sonar.jdbc.username")
     String username
-
     /**
      * The JDBC password for the Sonar database. Defaults to <tt>sonar</tt>.
      */
@@ -250,25 +231,21 @@ class SonarProject {
     /**
      * The identifier for the project. Defaults to <tt>$project.group:$project.name</tt>.
      */
-    @SonarProperty("sonar.projectKey")
     String key
 
     /**
      * The name for the project. Defaults to <tt>$project.name</tt>.
      */
-    @SonarProperty("sonar.projectName")
     String name
 
     /**
      * A description for the project. Defaults to <tt>$project.description</tt>.
      */
-    @SonarProperty("sonar.projectDescription")
     String description
 
     /**
      * The version of the project. Defaults to <tt>$project.version</tt>.
      */
-    @SonarProperty("sonar.projectVersion")
     String version
 
     /**
@@ -287,42 +264,36 @@ class SonarProject {
     /**
      * The base directory for the analysis. Defaults to <tt>$project.projectDir</tt>.
      */
-    @SonarProperty("sonar.projectBaseDir")
     File baseDir
 
     /**
      * The working directory for the analysis. Defaults to <tt>$project.buildDir/sonar<tt>.
      */
-    @SonarProperty("sonar.working.directory")
     File workDir
 
     /**
      * The directories containing the project's production source code to be analyzed.
      * Defaults to <tt>project.sourceSets.main.allSource.srcDirs</tt>.
      */
-    @SonarProperty("sonar.sources")
-    Collection<File> sourceDirs = []
+    List<File> sourceDirs = []
 
     /**
      * The directories containing the project's test source code to be analyzed.
      * Defaults to <tt>project.sourceSets.test.allSource.srcDirs</tt>.
      */
-    @SonarProperty("sonar.tests")
-    Collection<File> testDirs = []
+    List<File> testDirs = []
 
     /**
      * The directories containing the project's compiled code to be analyzed.
      * Defaults to <tt>main.output.classesDir</tt>.
      */
-    @SonarProperty("sonar.binaries")
-    Collection<File> binaryDirs = []
+    List<File> binaryDirs = []
 
     /**
      * A class path containing the libraries used by this project.
      * Defaults to <tt>project.sourceSets.main.compileClasspath + Jvm.current().runtimeJar</tt>.
      */
-    @SonarProperty("sonar.libraries")
-    Collection<File> libraries = []
+    FileCollection libraries// = new SimpleFileCollection()
 
     /**
      * Tells whether to the project's source code should be stored and made available
@@ -374,18 +345,6 @@ class SonarProject {
      */
     @SonarProperty("sonar.clover.reportPath")
     File cloverReportPath
-
-    /**
-     * The JaCoCo report file. Defaults to <tt>null</tt>.
-     */
-    @SonarProperty("sonar.jacoco.reportPath")
-    File jacocoReportPath
-
-    /**
-     * The JaCoCo report file for integration tests. Defaults to <tt>null</tt>.
-     */
-    @SonarProperty("sonar.jacoco.itReportPath")
-    File jacocoIntegTestReportPath
 
     /**
      * The programming language to be analyzed. Only one language per project
@@ -490,27 +449,4 @@ class SonarJavaSettings {
      */
     @SonarProperty("sonar.java.target")
     String targetCompatibility
-}
-
-/**
- * Settings for debugging Sonar analysis.
- */
-class SonarDebugSettings {
-    /**
-     * Whether to display SQL statements executed during analysis. Defaults to <tt>false</tt>.
-     */
-    @SonarProperty("sonar.showSql")
-    boolean showSql = false
-
-    /**
-     * Whether to display results of SQL statements executed during analysis. Defaults to <tt>false</tt>.
-     */
-    @SonarProperty("sonar.showSqlResults")
-    boolean showSqlResults = false
-
-    /**
-     * Whether to activate debug logging. Defaults to <tt>false</tt>.
-     */
-    @SonarProperty("sonar.verbose")
-    boolean verbose = false
 }

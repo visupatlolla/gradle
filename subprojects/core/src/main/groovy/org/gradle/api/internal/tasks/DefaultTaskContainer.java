@@ -17,34 +17,33 @@ package org.gradle.api.internal.tasks;
 
 import groovy.lang.Closure;
 import org.apache.commons.lang.StringUtils;
-import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.Project;
-import org.gradle.api.Task;
-import org.gradle.api.UnknownTaskException;
-import org.gradle.api.internal.CachingDirectedGraphWalker;
-import org.gradle.api.internal.DirectedGraph;
+import org.gradle.api.*;
 import org.gradle.api.internal.DynamicObject;
 import org.gradle.api.internal.NamedDomainObjectContainerConfigureDelegate;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
+import org.gradle.initialization.ProjectAccessListener;
+import org.gradle.internal.Transformers;
+import org.gradle.internal.graph.CachingDirectedGraphWalker;
+import org.gradle.internal.graph.DirectedGraph;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.util.ConfigureUtil;
-import org.gradle.util.DeprecationLogger;
 import org.gradle.util.GUtil;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements TaskContainerInternal {
     private final ITaskFactory taskFactory;
+    private final ProjectAccessListener projectAccessListener;
+    private Map<String, Runnable> placeholders = new HashMap<String, Runnable>();
 
-    public DefaultTaskContainer(ProjectInternal project, Instantiator instantiator, ITaskFactory taskFactory) {
+    public DefaultTaskContainer(ProjectInternal project, Instantiator instantiator, ITaskFactory taskFactory, ProjectAccessListener projectAccessListener) {
         super(Task.class, instantiator, project);
         this.taskFactory = taskFactory;
+        this.projectAccessListener = projectAccessListener;
     }
 
-    public Task add(Map<String, ?> options) {
+    public Task create(Map<String, ?> options) {
         Map<String, Object> mutableOptions = new HashMap<String, Object>(options);
 
         Object replaceStr = mutableOptions.remove(Task.TASK_OVERWRITE);
@@ -68,36 +67,56 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         return task;
     }
 
-    public Task add(Map<String, ?> options, Closure configureClosure) throws InvalidUserDataException {
-        return add(options).configure(configureClosure);
+    public <U extends Task> U maybeCreate(String name, Class<U> type) throws InvalidUserDataException {
+        Task existing = findByName(name);
+        if (existing != null) {
+            return Transformers.cast(type).transform(existing);
+        }
+        return create(name, type);
     }
 
-    public <T extends Task> T add(String name, Class<T> type) {
-        return type.cast(add(GUtil.map(Task.TASK_NAME, name, Task.TASK_TYPE, type)));
+    public Task create(Map<String, ?> options, Closure configureClosure) throws InvalidUserDataException {
+        return create(options).configure(configureClosure);
+    }
+
+    public <T extends Task> T create(String name, Class<T> type) {
+        return type.cast(create(GUtil.map(Task.TASK_NAME, name, Task.TASK_TYPE, type)));
     }
 
     public Task create(String name) {
-        return add(name);
+        return create(GUtil.map(Task.TASK_NAME, name));
     }
 
-    public Task add(String name) {
-        return add(GUtil.map(Task.TASK_NAME, name));
+    public Task create(String name, Action<? super Task> configureAction) throws InvalidUserDataException {
+        Task task = create(name);
+        configureAction.execute(task);
+        return task;
+    }
+
+    public Task maybeCreate(String name) {
+        Task task = findByName(name);
+        if (task != null) {
+            return task;
+        }
+        return create(name);
     }
 
     public Task replace(String name) {
-        return add(GUtil.map(Task.TASK_NAME, name, Task.TASK_OVERWRITE, true));
+        return create(GUtil.map(Task.TASK_NAME, name, Task.TASK_OVERWRITE, true));
     }
 
     public Task create(String name, Closure configureClosure) {
-        return add(name, configureClosure);
+        return create(name).configure(configureClosure);
     }
 
-    public Task add(String name, Closure configureClosure) {
-        return add(GUtil.map(Task.TASK_NAME, name)).configure(configureClosure);
+    public <T extends Task> T create(String name, Class<T> type, Action<? super T> configuration) throws InvalidUserDataException {
+        T task = create(name, type);
+        configuration.execute(task);
+        return task;
     }
 
     public <T extends Task> T replace(String name, Class<T> type) {
-        return type.cast(add(GUtil.map(Task.TASK_NAME, name, Task.TASK_TYPE, type, Task.TASK_OVERWRITE, true)));
+        return type.cast(create(GUtil.map(Task.TASK_NAME, name, Task.TASK_TYPE, type, Task.TASK_OVERWRITE, true)));
     }
 
     public Task findByPath(String path) {
@@ -113,21 +132,16 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         if (project == null) {
             return null;
         }
-        project.ensureEvaluated();
+        projectAccessListener.beforeRequestingTaskByPath(project);
+
         return project.getTasks().findByName(StringUtils.substringAfterLast(path, Project.PATH_SEPARATOR));
     }
 
-    public Task resolveTask(Object path) {
+    public Task resolveTask(String path) {
         if (!GUtil.isTrue(path)) {
             throw new InvalidUserDataException("A path must be specified!");
         }
-        if(!(path instanceof CharSequence)) {
-            DeprecationLogger.nagUserOfDeprecated(
-                    String.format("Converting class %s to a task dependency using toString()", path.getClass().getName()),
-                    "Please use org.gradle.api.Task, java.lang.String, org.gradle.api.Buildable, org.gradle.tasks.TaskDependency or a Closure to declare your task dependencies"
-            );
-        }
-        return getByPath(path.toString());
+        return getByPath(path);
     }
 
     public Task getByPath(String path) throws UnknownTaskException {
@@ -138,12 +152,8 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         return task;
     }
 
-    protected Object createConfigureDelegate(Closure configureClosure) {
-        return new NamedDomainObjectContainerConfigureDelegate(configureClosure.getOwner(), this);
-    }
-
     public TaskContainerInternal configure(Closure configureClosure) {
-        ConfigureUtil.configure(configureClosure, createConfigureDelegate(configureClosure));
+        ConfigureUtil.configure(configureClosure, new NamedDomainObjectContainerConfigureDelegate(configureClosure.getOwner(), this));
         return this;
     }
 
@@ -151,11 +161,63 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         return getElementsAsDynamicObject();
     }
 
+    public SortedSet<String> getNames() {
+        SortedSet<String> set = new TreeSet<String>();
+        for (Task o : getStore()) {
+            set.add(o.getName());
+        }
+        for (String placeHolderName : placeholders.keySet()) {
+            set.add(placeHolderName);
+        }
+        return set;
+    }
+
     public void actualize() {
         new CachingDirectedGraphWalker<Task, Void>(new DirectedGraph<Task, Void>() {
-            public void getNodeValues(Task node, Collection<Void> values, Collection<Task> connectedNodes) {
+            public void getNodeValues(Task node, Collection<? super Void> values, Collection<? super Task> connectedNodes) {
                 connectedNodes.addAll(node.getTaskDependencies().getDependencies(node));
             }
         }).add(this).findValues();
+
+
+        final HashSet<String> placeholderNames = new HashSet<String>(placeholders.keySet());
+        for (String placeholder : placeholderNames) {
+            maybeMaterializePlaceholder(placeholder);
+        }
+
+    }
+
+    public Map<String, Runnable> getPlaceholderActions() {
+        return placeholders;
+    }
+
+    public Task findByName(String name) {
+        Task task = super.findByName(name);
+        if (task != null) {
+            return task;
+        }
+        maybeMaterializePlaceholder(name);
+        return super.findByName(name);
+    }
+
+    private void maybeMaterializePlaceholder(String name) {
+        if (placeholders.containsKey(name)) {
+            if (super.findByName(name) == null) {
+                final Runnable placeholderAction = placeholders.remove(name);
+                placeholderAction.run();
+            }
+        }
+    }
+
+    public void addPlaceholderAction(String placeholderName, Runnable runnable) {
+        placeholders.put(placeholderName, runnable);
+    }
+
+    public <U extends Task> NamedDomainObjectContainer<U> containerWithType(Class<U> type) {
+        throw new UnsupportedOperationException();
+    }
+
+    public Set<? extends Class<? extends Task>> getCreateableTypes() {
+        return Collections.singleton(getType());
     }
 }

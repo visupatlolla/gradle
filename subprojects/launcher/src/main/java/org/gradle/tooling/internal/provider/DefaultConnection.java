@@ -15,167 +15,178 @@
  */
 package org.gradle.tooling.internal.provider;
 
-import org.gradle.StartParameter;
-import org.gradle.api.logging.LogLevel;
-import org.gradle.initialization.GradleLauncherAction;
-import org.gradle.internal.Factory;
-import org.gradle.launcher.daemon.client.DaemonClient;
-import org.gradle.launcher.daemon.client.DaemonClientServices;
-import org.gradle.launcher.daemon.configuration.DaemonParameters;
-import org.gradle.launcher.exec.BuildActionParameters;
-import org.gradle.launcher.exec.GradleLauncherActionExecuter;
-import org.gradle.logging.LoggingManagerInternal;
+import org.gradle.api.JavaVersion;
+import org.gradle.initialization.BuildCancellationToken;
+import org.gradle.initialization.FixedBuildCancellationToken;
+import org.gradle.internal.concurrent.CompositeStoppable;
+import org.gradle.internal.jvm.UnsupportedJavaRuntimeException;
+import org.gradle.internal.nativeintegration.services.NativeServices;
+import org.gradle.internal.service.ServiceRegistry;
+import org.gradle.internal.service.ServiceRegistryBuilder;
 import org.gradle.logging.LoggingServiceRegistry;
-import org.gradle.logging.internal.OutputEventRenderer;
-import org.gradle.process.internal.streams.SafeStreams;
-import org.gradle.tooling.internal.build.DefaultBuildEnvironment;
-import org.gradle.tooling.internal.consumer.protocoladapter.ProtocolToModelAdapter;
+import org.gradle.tooling.UnsupportedVersionException;
+import org.gradle.tooling.internal.adapter.ProtocolToModelAdapter;
+import org.gradle.tooling.internal.consumer.versioning.ModelMapping;
 import org.gradle.tooling.internal.protocol.*;
-import org.gradle.tooling.internal.provider.connection.*;
-import org.gradle.util.GUtil;
+import org.gradle.tooling.internal.protocol.exceptions.InternalUnsupportedBuildArgumentException;
+import org.gradle.tooling.internal.provider.connection.ProviderBuildResult;
+import org.gradle.tooling.internal.provider.connection.ProviderConnectionParameters;
+import org.gradle.tooling.internal.provider.connection.ProviderOperationParameters;
+import org.gradle.tooling.internal.provider.connection.ProviderOperationParametersMixIn;
 import org.gradle.util.GradleVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.util.List;
-
-public class DefaultConnection implements InternalConnection, BuildActionRunner, ConfigurableConnection {
+public class DefaultConnection implements InternalConnection, BuildActionRunner,
+        ConfigurableConnection, ModelBuilder, InternalBuildActionExecutor, InternalCancellableConnection, StoppableConnection {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultConnection.class);
-    private final EmbeddedExecuterSupport embeddedExecuterSupport;
-    private final ProtocolToModelAdapter adapter = new ProtocolToModelAdapter();
+    private final ProtocolToModelAdapter adapter;
+    private final ServiceRegistry services;
+    private final ProviderConnection connection;
 
+    /**
+     * This is used by consumers 1.0-milestone-3 and later
+     */
     public DefaultConnection() {
-        LOGGER.debug("Provider implementation created.");
-        //embedded use of the tooling api is not supported publicly so we don't care about its thread safety
-        //we can still keep this state:
-        embeddedExecuterSupport = new EmbeddedExecuterSupport();
-        LOGGER.debug("Embedded executer support created.");
+        LOGGER.debug("Tooling API provider {} created.", GradleVersion.current().getVersion());
+        LoggingServiceRegistry loggingServices = LoggingServiceRegistry.newEmbeddableLogging();
+        services = ServiceRegistryBuilder.builder()
+                .displayName("Connection services")
+                .parent(loggingServices)
+                .parent(NativeServices.getInstance())
+                .provider(new ConnectionScopeServices(loggingServices)).build();
+        adapter = services.get(ProtocolToModelAdapter.class);
+        connection = services.get(ProviderConnection.class);
     }
 
+    /**
+     * This is used by consumers 1.2-rc-1 and later.
+     */
     public void configure(ConnectionParameters parameters) {
-        ProviderConnectionParameters providerConnectionParameters = new ProtocolToModelAdapter().adapt(ProviderConnectionParameters.class, parameters);
-        configureLogging(providerConnectionParameters.getVerboseLogging());
+        ProviderConnectionParameters providerConnectionParameters = adapter.adapt(ProviderConnectionParameters.class, parameters);
+        connection.configure(providerConnectionParameters);
     }
 
-    public void configureLogging(boolean verboseLogging) {
-        LogLevel providerLogLevel = verboseLogging? LogLevel.DEBUG : LogLevel.INFO;
-        LOGGER.debug("Configuring logging to level: {}", providerLogLevel);
-        LoggingManagerInternal loggingManager = embeddedExecuterSupport.getLoggingServices().newInstance(LoggingManagerInternal.class);
-        loggingManager.setLevel(providerLogLevel);
-        loggingManager.start();
+    /**
+     * This method was used by consumers 1.0-rc-1 through to 1.1. Later consumers use {@link #configure(ConnectionParameters)} instead.
+     */
+    public void configureLogging(final boolean verboseLogging) {
+        // Ignore - we don't support these consumer versions any more
     }
 
+    /**
+     * This is used by consumers 1.0-milestone-3 and later
+     */
     public ConnectionMetaDataVersion1 getMetaData() {
-        return new ConnectionMetaDataVersion1() {
-            public String getVersion() {
-                return GradleVersion.current().getVersion();
-            }
-
-            public String getDisplayName() {
-                return String.format("Gradle %s", getVersion());
-            }
-        };
+        return new DefaultConnectionMetaData();
     }
 
+    /**
+     * This is used by consumers 1.0-milestone-3 and later
+     */
+    @Deprecated
     public void stop() {
+        // We don't do anything here, as older consumers call this method when the project connection is closed but then later attempt to reuse the connection
     }
 
+    /**
+     * This is used by consumers 2.2-rc-1 and later
+     */
+    public void shutdown(ShutdownParameters parameters) {
+        CompositeStoppable.stoppable(services).stop();
+    }
+
+    /**
+     * This is used by consumers 1.0-milestone-3 to 1.1.
+     */
     @Deprecated
     public void executeBuild(BuildParametersVersion1 buildParameters, BuildOperationParametersVersion1 operationParameters) {
-        logTargetVersion();
-        run(Void.class, new AdaptedOperationParameters(operationParameters, buildParameters.getTasks()));
+        throw unsupportedConnectionException();
     }
 
+    /**
+     * This is used by consumers 1.0-milestone-3 to 1.0-milestone-7
+     */
     @Deprecated
     public ProjectVersion3 getModel(Class<? extends ProjectVersion3> type, BuildOperationParametersVersion1 parameters) {
-        logTargetVersion();
-        return run(type, new AdaptedOperationParameters(parameters));
+        throw unsupportedConnectionException();
     }
 
+    /**
+     * This is used by consumers 1.0-milestone-8 to 1.1
+     */
     @Deprecated
     public <T> T getTheModel(Class<T> type, BuildOperationParametersVersion1 parameters) {
-        logTargetVersion();
-        return run(type, new AdaptedOperationParameters(parameters));
+        throw unsupportedConnectionException();
     }
 
+    /**
+     * This is used by consumers 1.2-rc-1 to 1.5
+     */
+    @Deprecated
     public <T> BuildResult<T> run(Class<T> type, BuildParameters buildParameters) throws UnsupportedOperationException, IllegalStateException {
-        logTargetVersion();
-        ProviderOperationParameters providerParameters = adapter.adapt(ProviderOperationParameters.class, buildParameters, BuildLogLevelMixIn.class);
-        T result = run(type, providerParameters);
+        validateCanRun();
+        ProviderOperationParameters providerParameters = toProviderParameters(buildParameters);
+        String modelName = new ModelMapping().getModelNameFromProtocolType(type);
+        T result = (T) connection.run(modelName, new FixedBuildCancellationToken(), providerParameters);
         return new ProviderBuildResult<T>(result);
     }
 
-    private <T> T run(Class<T> type, ProviderOperationParameters providerParameters) {
-        List<String> tasks = providerParameters.getTasks();
-        if (type.equals(Void.class) && tasks == null) {
-            throw new IllegalArgumentException("No model type or tasks specified.");
+    /**
+     * This is used by consumers 1.6-rc-1 and later
+     */
+    public BuildResult<?> getModel(ModelIdentifier modelIdentifier, BuildParameters operationParameters) throws UnsupportedOperationException, IllegalStateException {
+        validateCanRun();
+        ProviderOperationParameters providerParameters = toProviderParameters(operationParameters);
+        Object result = connection.run(modelIdentifier.getName(), new FixedBuildCancellationToken(), providerParameters);
+        return new ProviderBuildResult<Object>(result);
+    }
+
+    /**
+     * This is used by consumers 2.1-rc-1 and later
+     */
+    public BuildResult<?> getModel(ModelIdentifier modelIdentifier, InternalCancellationToken cancellationToken, BuildParameters operationParameters) throws BuildExceptionVersion1, InternalUnsupportedModelException, InternalUnsupportedBuildArgumentException, IllegalStateException {
+        validateCanRun();
+        ProviderOperationParameters providerParameters = toProviderParameters(operationParameters);
+        BuildCancellationToken buildCancellationToken = new InternalCancellationTokenAdapter(cancellationToken);
+        Object result = connection.run(modelIdentifier.getName(), buildCancellationToken, providerParameters);
+        return new ProviderBuildResult<Object>(result);
+    }
+
+    /**
+     * This is used by consumers 1.8-rc-1 and later.
+     */
+    public <T> BuildResult<T> run(InternalBuildAction<T> action, BuildParameters operationParameters) throws BuildExceptionVersion1, InternalUnsupportedBuildArgumentException, IllegalStateException {
+        validateCanRun();
+        ProviderOperationParameters providerParameters = toProviderParameters(operationParameters);
+        Object results = connection.run(action, new FixedBuildCancellationToken(), providerParameters);
+        return new ProviderBuildResult<T>((T) results);
+    }
+
+    /**
+     * This is used by consumers 2.1-rc-1 and later.
+     */
+    public <T> BuildResult<T> run(InternalBuildAction<T> action, InternalCancellationToken cancellationToken, BuildParameters operationParameters)
+            throws BuildExceptionVersion1, InternalUnsupportedBuildArgumentException, IllegalStateException {
+        validateCanRun();
+        ProviderOperationParameters providerParameters = toProviderParameters(operationParameters);
+        BuildCancellationToken buildCancellationToken = new InternalCancellationTokenAdapter(cancellationToken);
+        Object results = connection.run(action, buildCancellationToken, providerParameters);
+        return new ProviderBuildResult<T>((T) results);
+    }
+
+    private void validateCanRun() {
+        LOGGER.info("Tooling API is using target Gradle version: {}.", GradleVersion.current().getVersion());
+        if (!JavaVersion.current().isJava6Compatible()) {
+            throw UnsupportedJavaRuntimeException.usingUnsupportedVersion("Gradle", JavaVersion.VERSION_1_6);
         }
-        if (type == InternalBuildEnvironment.class) {
-            //we don't really need to launch the daemon to acquire information needed for BuildEnvironment
-            if (tasks != null) {
-                throw new IllegalArgumentException("Cannot run tasks and fetch the build environment model.");
-            }
-            DaemonParameters daemonParameters = init(providerParameters);
-            DefaultBuildEnvironment out = new DefaultBuildEnvironment(
-                    GradleVersion.current().getVersion(),
-                    daemonParameters.getEffectiveJavaHome(),
-                    daemonParameters.getEffectiveJvmArgs());
-
-            return type.cast(out);
-        }
-
-        DelegatingBuildModelAction<T> action = new DelegatingBuildModelAction<T>(type, tasks != null);
-        return run(action, providerParameters);
     }
 
-    private void logTargetVersion() {
-        LOGGER.info("Tooling API uses target gradle version:" + " {}.", GradleVersion.current().getVersion());
+    private UnsupportedVersionException unsupportedConnectionException() {
+        return new UnsupportedVersionException("Support for clients using a tooling API version older than 1.2 was removed in Gradle 2.0. You should upgrade your tooling API client to version 1.2 or later.");
     }
 
-    private <T> T run(GradleLauncherAction<T> action, ProviderOperationParameters operationParameters) {
-        GradleLauncherActionExecuter<ProviderOperationParameters> executer = createExecuter(operationParameters);
-        ConfiguringBuildAction<T> configuringAction = new ConfiguringBuildAction<T>(operationParameters, action);
-        return executer.execute(configuringAction, operationParameters);
+    private ProviderOperationParameters toProviderParameters(BuildParameters buildParameters) {
+        return adapter.adapt(ProviderOperationParameters.class, buildParameters, ProviderOperationParametersMixIn.class);
     }
-
-    private GradleLauncherActionExecuter<ProviderOperationParameters> createExecuter(ProviderOperationParameters operationParameters) {
-        LoggingServiceRegistry loggingServices;
-        DaemonParameters daemonParams = init(operationParameters);
-        GradleLauncherActionExecuter<BuildActionParameters> executer;
-        if (Boolean.TRUE.equals(operationParameters.isEmbedded())) {
-            loggingServices = embeddedExecuterSupport.getLoggingServices();
-            executer = embeddedExecuterSupport.getExecuter();
-        } else {
-            loggingServices = embeddedExecuterSupport.getLoggingServices().newLogging();
-            loggingServices.get(OutputEventRenderer.class).configure(operationParameters.getBuildLogLevel());
-            DaemonClientServices clientServices = new DaemonClientServices(loggingServices, daemonParams, operationParameters.getStandardInput(SafeStreams.emptyInput()));
-            executer = clientServices.get(DaemonClient.class);
-        }
-        Factory<LoggingManagerInternal> loggingManagerFactory = loggingServices.getFactory(LoggingManagerInternal.class);
-        return new LoggingBridgingGradleLauncherActionExecuter(new DaemonGradleLauncherActionExecuter(executer, daemonParams), loggingManagerFactory);
-    }
-
-    private DaemonParameters init(ProviderOperationParameters operationParameters) {
-        File gradleUserHomeDir = GUtil.elvis(operationParameters.getGradleUserHomeDir(), StartParameter.DEFAULT_GRADLE_USER_HOME);
-        DaemonParameters daemonParams = new DaemonParameters();
-
-        boolean searchUpwards = operationParameters.isSearchUpwards() != null ? operationParameters.isSearchUpwards() : true;
-        daemonParams.configureFromBuildDir(operationParameters.getProjectDir(), searchUpwards);
-        daemonParams.configureFromGradleUserHome(gradleUserHomeDir);
-        daemonParams.configureFromSystemProperties(System.getProperties());
-
-        //override the params with the explicit settings provided by the tooling api
-        List<String> defaultJvmArgs = daemonParams.getAllJvmArgs();
-        daemonParams.setJvmArgs(operationParameters.getJvmArguments(defaultJvmArgs));
-        File defaultJavaHome = daemonParams.getEffectiveJavaHome();
-        daemonParams.setJavaHome(operationParameters.getJavaHome(defaultJavaHome));
-
-        if (operationParameters.getDaemonMaxIdleTimeValue() != null && operationParameters.getDaemonMaxIdleTimeUnits() != null) {
-            int idleTimeout = (int) operationParameters.getDaemonMaxIdleTimeUnits().toMillis(operationParameters.getDaemonMaxIdleTimeValue());
-            daemonParams.setIdleTimeout(idleTimeout);
-        }
-        return daemonParams;
-    }
-
 }

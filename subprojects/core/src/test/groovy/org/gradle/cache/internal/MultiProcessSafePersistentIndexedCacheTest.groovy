@@ -22,7 +22,7 @@ import spock.lang.Specification
 class MultiProcessSafePersistentIndexedCacheTest extends Specification {
     final FileAccess fileAccess = Mock()
     final Factory<BTreePersistentIndexedCache<String, String>> factory = Mock()
-    final MultiProcessSafePersistentIndexedCache<String, String> cache = new MultiProcessSafePersistentIndexedCache<String, String>(factory, fileAccess)
+    final cache = new DefaultMultiProcessSafePersistentIndexedCache<String, String>(factory, fileAccess)
     final BTreePersistentIndexedCache<String, String> backingCache = Mock()
     
     def "opens cache on first access"() {
@@ -89,24 +89,16 @@ class MultiProcessSafePersistentIndexedCacheTest extends Specification {
         0 * _._
     }
 
-    def "closes cache at end of unit of work"() {
+    def "closes cache when closed"() {
         given:
         cacheOpened()
 
         when:
-        cache.onEndWork()
+        cache.close()
 
         then:
         1 * fileAccess.writeFile(!null) >> { Runnable action -> action.run() }
         1 * backingCache.close()
-        0 * _._
-    }
-
-    def "does nothing at end of unit of work when cache is not open"() {
-        when:
-        cache.onEndWork()
-
-        then:
         0 * _._
     }
 

@@ -15,17 +15,12 @@
  */
 package org.gradle.integtests.tooling.m5
 
-import org.gradle.integtests.tooling.fixture.MinTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.tooling.BuildException
-import org.gradle.tooling.ProgressListener
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.eclipse.EclipseProject
 
-@MinToolingApiVersion('1.0-milestone-5')
-@MinTargetGradleVersion('1.0-milestone-5')
 class ToolingApiBuildExecutionCrossVersionSpec extends ToolingApiSpecification {
     def "can build the set of tasks for a project"() {
         file('build.gradle') << '''
@@ -40,6 +35,7 @@ task c
         GradleProject project = withConnection { connection -> connection.getModel(GradleProject.class) }
 
         then:
+        project.tasks.count { it.name != 'setupBuild' } == 3
         def taskA = project.tasks.find { it.name == 'a' }
         taskA != null
         taskA.path == ':a'
@@ -82,19 +78,13 @@ apply plugin: 'java'
 System.out.println 'this is stdout'
 System.err.println 'this is stderr'
 '''
-        def progressMessages = []
-
         when:
-        withConnection { connection ->
-            def build = connection.newBuild()
-            build.addProgressListener({ event -> progressMessages << event.description } as ProgressListener)
-            build.run()
-        }
+        def progress = withBuild().progressMessages
 
         then:
-        progressMessages.size() >= 2
-        progressMessages.pop() == ''
-        progressMessages.every { it }
+        progress.size() >= 2
+        progress.pop() == ''
+        progress.every { it }
     }
 
     def "tooling api reports build failure"() {

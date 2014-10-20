@@ -3,8 +3,6 @@ configurations {
 }
 
 dependencies {
-    groovy libraries.groovy
-
     compile project(':baseServices')
     compile project(':core')
     compile project(':cli')
@@ -14,20 +12,24 @@ dependencies {
 
     compile libraries.slf4j_api
 
+    testCompile libraries.groovy
+
     startScriptGenerator project(':plugins')
 }
 
 useTestFixtures()
+
+integTestTasks.all {
+    if (isCiServer) {
+        maxParallelForks = Math.min(3, rootProject.maxParallelForks)
+    }
+}
 
 jar {
     manifest.mainAttributes('Main-Class': "org.gradle.launcher.GradleMain")
     doFirst {
         jar.manifest.mainAttributes('Class-Path': "${project(':core').jar.archivePath.name} ${project(':baseServices').jar.archivePath.name}")
     }
-}
-
-test {
-    forkEvery = 10
 }
 
 task startScripts(type: StartScriptGenerator) {

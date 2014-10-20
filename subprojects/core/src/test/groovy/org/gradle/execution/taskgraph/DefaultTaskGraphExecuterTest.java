@@ -22,18 +22,16 @@ import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionGraphListener;
 import org.gradle.api.execution.TaskExecutionListener;
 import org.gradle.api.internal.TaskInternal;
-import org.gradle.api.internal.changedetection.TaskArtifactStateCacheAccess;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.internal.tasks.DefaultTaskDependency;
 import org.gradle.api.internal.tasks.TaskStateInternal;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.TaskDependency;
 import org.gradle.api.tasks.TaskState;
-import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.execution.TaskFailureHandler;
-import org.gradle.internal.Factory;
+import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.listener.ListenerBroadcast;
 import org.gradle.listener.ListenerManager;
-import org.gradle.messaging.serialize.Serializer;
 import org.gradle.util.JUnit4GroovyMockery;
 import org.gradle.util.TestClosure;
 import org.hamcrest.Description;
@@ -48,21 +46,18 @@ import org.junit.runner.RunWith;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.gradle.util.HelperUtil.createRootProject;
-import static org.gradle.util.HelperUtil.toClosure;
+import static org.gradle.util.TestUtil.createRootProject;
+import static org.gradle.util.TestUtil.toClosure;
 import static org.gradle.util.WrapUtil.toList;
 import static org.gradle.util.WrapUtil.toSet;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
-/**
- * @author Hans Dockter
- */
 @RunWith(JMock.class)
 public class DefaultTaskGraphExecuterTest {
-
-    JUnit4Mockery context = new JUnit4GroovyMockery();
-    private final ListenerManager listenerManager = context.mock(ListenerManager.class);
+    final JUnit4Mockery context = new JUnit4GroovyMockery();
+    final ListenerManager listenerManager = context.mock(ListenerManager.class);
+    final BuildCancellationToken cancellationToken = context.mock(BuildCancellationToken.class);
     DefaultTaskGraphExecuter taskExecuter;
     ProjectInternal root;
     List<Task> executedTasks = new ArrayList<Task>();
@@ -75,8 +70,9 @@ public class DefaultTaskGraphExecuterTest {
             will(returnValue(new ListenerBroadcast<TaskExecutionGraphListener>(TaskExecutionGraphListener.class)));
             one(listenerManager).createAnonymousBroadcaster(TaskExecutionListener.class);
             will(returnValue(new ListenerBroadcast<TaskExecutionListener>(TaskExecutionListener.class)));
+            allowing(cancellationToken).isCancellationRequested();
         }});
-        taskExecuter = new org.gradle.execution.taskgraph.DefaultTaskGraphExecuter(listenerManager, new DefaultTaskPlanExecutor());
+        taskExecuter = new DefaultTaskGraphExecuter(listenerManager, new DefaultTaskPlanExecutor(), cancellationToken);
     }
 
     @Test
@@ -244,8 +240,9 @@ public class DefaultTaskGraphExecuterTest {
         Task c = task("c", b);
         dependsOn(a, c);
 
+        taskExecuter.addTasks(toList(c));
         try {
-            taskExecuter.addTasks(toList(c));
+            taskExecuter.execute();
             fail();
         } catch (CircularReferenceException e) {
             // Expected
@@ -486,36 +483,44 @@ public class DefaultTaskGraphExecuterTest {
     }
     
     private Task brokenTask(String name, final RuntimeException failure, final Task... dependsOn) {
-        final TaskInternal task = createTask(name);
+        final TaskInternal task = context.mock(TaskInternal.class);
+        final TaskStateInternal state = context.mock(TaskStateInternal.class);
+        setExpectations(name, task, state);
         dependsOn(task, dependsOn);
         context.checking(new Expectations() {{
             atMost(1).of(task).executeWithoutThrowingTaskFailure();
             will(new ExecuteTaskAction(task));
-            allowing(task.getState()).getFailure();
+            allowing(state).getFailure();
             will(returnValue(failure));
-            allowing(task.getState()).rethrowFailure();
+            allowing(state).rethrowFailure();
             will(throwException(failure));
         }});
         return task;
     }
     
     private Task task(final String name, final Task... dependsOn) {
-        final TaskInternal task = createTask(name);
+        final TaskInternal task = context.mock(TaskInternal.class);
+        final TaskStateInternal state = context.mock(TaskStateInternal.class);
+        setExpectations(name, task, state);
         dependsOn(task, dependsOn);
         context.checking(new Expectations() {{
             atMost(1).of(task).executeWithoutThrowingTaskFailure();
             will(new ExecuteTaskAction(task));
-            allowing(task.getState()).getFailure();
+            allowing(state).getFailure();
             will(returnValue(null));
         }});
         return task;
     }
     
     private TaskInternal createTask(final String name) {
-        final TaskInternal task = context.mock(TaskInternal.class);
-        context.checking(new Expectations() {{
-            TaskStateInternal state = context.mock(TaskStateInternal.class);
+        TaskInternal task = context.mock(TaskInternal.class);
+        TaskStateInternal state = context.mock(TaskStateInternal.class);
+        setExpectations(name, task, state);
+        return task;
+    }
 
+    private void setExpectations(final String name, final TaskInternal task, final TaskStateInternal state) {
+        context.checking(new Expectations() {{
             allowing(task).getProject();
             will(returnValue(root));
             allowing(task).getName();
@@ -524,6 +529,16 @@ public class DefaultTaskGraphExecuterTest {
             will(returnValue(":" + name));
             allowing(task).getState();
             will(returnValue(state));
+            allowing((Task) task).getState();
+            will(returnValue(state));
+            allowing(task).getMustRunAfter();
+            will(returnValue(new DefaultTaskDependency()));
+            allowing(task).getFinalizedBy();
+            will(returnValue(new DefaultTaskDependency()));
+            allowing(task).getShouldRunAfter();
+            will(returnValue(new DefaultTaskDependency()));
+            allowing(task).getDidWork();
+            will(returnValue(true));
             allowing(task).compareTo(with(notNullValue(TaskInternal.class)));
             will(new org.jmock.api.Action() {
                 public Object invoke(Invocation invocation) throws Throwable {
@@ -535,8 +550,6 @@ public class DefaultTaskGraphExecuterTest {
                 }
             });
         }});
-
-        return task;
     }
 
     private class ExecuteTaskAction implements org.jmock.api.Action {
@@ -556,25 +569,4 @@ public class DefaultTaskGraphExecuterTest {
         }
     }
 
-    private static class DirectCacheAccess implements TaskArtifactStateCacheAccess {
-        public void useCache(String operationDisplayName, Runnable action) {
-            action.run();
-        }
-
-        public void longRunningOperation(String operationDisplayName, Runnable action) {
-            action.run();
-        }
-
-        public <K, V> PersistentIndexedCache createCache(String cacheName, Class<K> keyType, Class<V> valueType) {
-            throw new UnsupportedOperationException();
-        }
-
-        public <T> T useCache(String operationDisplayName, Factory<? extends T> action) {
-            throw new UnsupportedOperationException();
-        }
-
-        public <K, V> PersistentIndexedCache<K, V> createCache(String cacheName, Class<K> keyType, Class<V> valueType, Serializer<V> valueSerializer) {
-            throw new UnsupportedOperationException();
-        }
-    }
 }

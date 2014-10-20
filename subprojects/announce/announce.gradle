@@ -14,15 +14,10 @@
  * limitations under the License.
  */
 dependencies {
-    groovy libraries.groovy
-
+    compile libraries.groovy
     compile libraries.slf4j_api
     compile project(':core')
     integTestRuntime project(':plugins')
-}
-
-if (!javaVersion.java6Compatible) {
-    sourceSets.main.groovy.exclude '**/jdk6/**'
 }
 
 useTestFixtures()

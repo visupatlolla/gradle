@@ -15,428 +15,541 @@
  */
 package org.gradle.cache.internal
 
+import org.gradle.cache.PersistentIndexedCacheParameters
 import org.gradle.cache.internal.btree.BTreePersistentIndexedCache
 import org.gradle.internal.Factory
 import org.gradle.messaging.serialize.Serializer
+import org.gradle.test.fixtures.concurrent.ConcurrentSpec
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
-import spock.lang.Specification
+import spock.lang.Unroll
 
 import static org.gradle.cache.internal.FileLockManager.LockMode.*
+import static org.gradle.cache.internal.filelock.LockOptionsBuilder.mode
 
-class DefaultCacheAccessTest extends Specification {
+class DefaultCacheAccessTest extends ConcurrentSpec {
     @Rule final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     final FileLockManager lockManager = Mock()
+    final CacheInitializationAction initializationAction = Mock()
     final File lockFile = tmpDir.file('lock.bin')
-    final File targetFile = tmpDir.file('cache.bin')
+    final File cacheDir = tmpDir.file('caches')
     final FileLock lock = Mock()
     final BTreePersistentIndexedCache<String, Integer> backingCache = Mock()
-    final DefaultCacheAccess manager = new DefaultCacheAccess("<display-name>", lockFile, lockManager) {
-        @Override
-        def <K, V> BTreePersistentIndexedCache<K, V> doCreateCache(File cacheFile, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
-            return backingCache
+    DefaultCacheAccess access = newAccess()
+
+    private DefaultCacheAccess newAccess() {
+        new DefaultCacheAccess("<display-name>", lockFile, cacheDir, lockManager, initializationAction) {
+            @Override
+            def <K, V> BTreePersistentIndexedCache<K, V> doCreateCache(File cacheFile, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+                return backingCache
+            }
         }
     }
 
-    def "acquires lock on open and releases on close when initial lock mode is not none"() {
+    def "acquires lock on open and releases on close when lock mode is shared"() {
         when:
-        manager.open(Shared)
+        access.open(mode(Shared))
 
         then:
-        1 * lockManager.lock(lockFile, Shared, "<display-name>") >> lock
+        1 * lockManager.lock(lockFile, mode(Shared), "<display-name>") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> false
+        _ * lock.state
+        0 * _._
+
+        and:
+        access.owner == Thread.currentThread()
+
+        when:
+        access.close()
+
+        then:
+        _ * lock.state
+        1 * lock.close()
+        0 * _._
+
+        and:
+        !access.owner
+    }
+
+    def "acquires lock on open and releases on close when lock mode is exclusive"() {
+        when:
+        access.open(mode(Exclusive))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> false
+        _ * lock.state
+        0 * _._
+
+        and:
+        access.owner == Thread.currentThread()
+
+        when:
+        access.close()
+
+        then:
+        _ * lock.state
+        1 * lock.close()
+        0 * _._
+
+        and:
+        !access.owner
+    }
+
+    def "initializes cache on open when lock mode is shared by upgrading lock"() {
+        def exclusiveLock = Mock(FileLock)
+        def sharedLock = Mock(FileLock)
+
+        when:
+        access.open(mode(Shared))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Shared), "<display-name>") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> true
+        1 * lock.close()
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", _) >> exclusiveLock
+        1 * initializationAction.requiresInitialization(exclusiveLock) >> true
+        1 * exclusiveLock.writeFile(_) >> { Runnable r -> r.run() }
+        1 * initializationAction.initialize(exclusiveLock)
+        1 * exclusiveLock.close()
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Shared), "<display-name>") >> sharedLock
+        1 * initializationAction.requiresInitialization(sharedLock) >> false
+        _ * sharedLock.state
+        0 * _._
+
+        and:
+        access.owner == Thread.currentThread()
+    }
+
+    def "initializes cache on open when lock mode is exclusive"() {
+        when:
+        access.open(mode(Exclusive))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> true
+        1 * lock.writeFile(_) >> { Runnable r -> r.run() }
+        1 * initializationAction.initialize(lock)
+        _ * lock.state
+        0 * _._
+
+        and:
+        access.owner == Thread.currentThread()
+    }
+
+    def "cleans up when cache validation fails"() {
+        def failure = new RuntimeException()
+
+        when:
+        access.open(mode(Exclusive))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> { throw failure }
+        1 * lock.close()
+        0 * _._
+
+        and:
+        RuntimeException e = thrown()
+        e == failure
+    }
+
+    def "cleans up when initialization fails"() {
+        def failure = new RuntimeException()
+        def exclusiveLock = Mock(FileLock)
+
+        when:
+        access.open(mode(Shared))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Shared), "<display-name>") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> true
+        1 * lock.close()
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", _) >> exclusiveLock
+        1 * initializationAction.requiresInitialization(exclusiveLock) >> true
+        1 * exclusiveLock.writeFile(_) >> { Runnable r -> r.run() }
+        1 * initializationAction.initialize(exclusiveLock) >> { throw failure }
+        1 * exclusiveLock.close()
+        0 * _._
+
+        and:
+        RuntimeException e = thrown()
+        e == failure
+    }
+
+    def "initializes cache on open when lock mode is none"() {
+        def action = Mock(Runnable)
+        def contentionAction
+
+        when:
+        access.open(mode(None))
+
+        then:
         0 * _._
 
         when:
-        manager.close()
+        access.useCache("some action", action)
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "some action") >> lock
+        1 * lockManager.allowContention(lock, _ as Runnable) >> { FileLock l, Runnable r -> contentionAction = r }
+        1 * initializationAction.requiresInitialization(lock) >> true
+        1 * lock.writeFile(_) >> { Runnable r -> r.run() }
+        1 * initializationAction.initialize(lock)
+        1 * action.run()
+        _ * lock.mode >> Exclusive
+        _ * lock.state
+        0 * _._
+
+        when:
+        contentionAction.run()
 
         then:
         1 * lock.close()
+
+        when:
+        access.useCache("some action", action)
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "some action") >> lock
+        1 * lockManager.allowContention(lock, _ as Runnable) >> { FileLock l, Runnable r -> contentionAction = r }
+        1 * initializationAction.requiresInitialization(lock) >> true
+        1 * lock.writeFile(_) >> { Runnable r -> r.run() }
+        1 * initializationAction.initialize(lock)
+        1 * action.run()
+        _ * lock.mode >> Exclusive
+        _ * lock.state
         0 * _._
     }
 
-    def "does not acquires lock on open when initial lock mode is none"() {
+    def "does not acquire lock on open when initial lock mode is none"() {
         when:
-        manager.open(None)
+        access.open(mode(None))
 
         then:
         0 * _._
 
         when:
-        manager.close()
+        access.close()
 
         then:
         0 * _._
-    }
-
-    def "acquires lock at the start of the cache action and releases lock at the end of the cache action when initial lock mode is none"() {
-        Factory<String> action = Mock()
-
-        given:
-        manager.open(None)
-
-        when:
-        manager.useCache("some operation", action)
-
-        then:
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
 
         and:
+        !access.owner
+    }
+
+    @Unroll
+    def "cannot be opened more than once for mode #lockMode"() {
+        lockManager.lock(lockFile, lockMode, "<display-name>") >> lock
+
+        when:
+        access.open(lockMode)
+        access.open(lockMode)
+
+        then:
+        thrown(IllegalStateException)
+
+        where:
+        lockMode << [mode(Shared), mode(Exclusive), mode(None)]
+    }
+
+    def "using cache pushes an operation and acquires lock but does not release it at the end of the operation"() {
+        Factory<String> action = Mock()
+
+        when:
+        access.open(mode(None))
+        access.useCache("some operation", action)
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "some operation") >> lock
+        1 * initializationAction.requiresInitialization(lock) >> false
+        _ * lock.state
+        1 * lockManager.allowContention(lock, _ as Runnable)
+
+        then:
+        1 * action.create() >> {
+            assert access.owner == Thread.currentThread()
+        }
+
+        then:
+        1 * lock.getMode() >> Exclusive
+        0 * _._
+
+        and:
+        !access.owner
+    }
+
+    def "nested use cache operation does not release the lock"() {
+        Factory<String> action = Mock()
+
+        when:
+        access.open(mode(None))
+        access.useCache("some operation", action)
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", _) >> lock
+        1 * action.create() >> {
+            access.useCache("nested operation") {
+                assert access.owner == Thread.currentThread()
+            }
+        }
+
+        then:
+        !access.owner
+    }
+
+    def "use cache operation reuses existing file lock"() {
+        Factory<String> action = Mock()
+
+        when:
+        access.open(mode(None))
+        access.useCache("some operation", action)
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "some operation") >> lock
+        1 * action.create() >> { assert access.owner == Thread.currentThread() }
+
+        when:
+        access.useCache("some other operation", action)
+
+        then:
+        0 * lockManager._
+        1 * action.create() >> { assert access.owner == Thread.currentThread() }
+        0 * _._
+
+        and:
+        !access.owner
+    }
+
+    def "use cache operation does not allow shared locks"() {
+        given:
+        1 * lockManager.lock(lockFile, mode(Shared), "<display-name>") >> lock
+        access.open(mode(Shared))
+
+        when:
+        access.useCache("some operation", Mock(Factory))
+
+        then:
+        thrown(UnsupportedOperationException)
+    }
+
+    def "long running operation pushes an operation and releases ownership but not lock"() {
+        Factory<String> action = Mock()
+
+        when:
+        access.open(mode(Exclusive))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+        access.owner == Thread.currentThread()
+
+        when:
+        access.longRunningOperation("some operation", action)
+
+        then:
+        _ * lock.mode >> Exclusive
+        0 * lock._
+
+        then:
+        1 * action.create() >> {
+            assert !access.owner
+        }
+
+        then:
+        0 * _._
+
+        then:
+        access.owner == Thread.currentThread()
+    }
+
+    def "long running operation closes the lock if contended during action"() {
+        Factory<String> action = Mock()
+
+        when:
+        access.open(mode(Exclusive))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+
+        when:
+        access.longRunningOperation("some operation", action)
+
+        then:
+        1 * action.create() >> {
+            access.whenContended().run()
+        }
+        1 * lock.close()
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", _) >> lock
+    }
+
+    def "long running operation closes the lock if contended before action"() {
+        Factory<String> action = Mock()
+
+        when:
+        access.open(mode(Exclusive))
+
+        then:
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+
+        when:
+        access.whenContended().run()
+        access.longRunningOperation("some operation", action)
+
+        then:
         1 * action.create()
-
-        and:
         1 * lock.close()
-        0 * _._
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", _) >> lock
     }
 
-    def "does not acquire lock at start of cache action when initial lock mode is exclusive"() {
+    def "top-level long running operation does not lock file"() {
         Factory<String> action = Mock()
 
-        given:
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>") >> lock
-        manager.open(Exclusive)
-        def cache = manager.newCache(targetFile, String, Integer)
-
         when:
-        manager.useCache("some operation", action)
+        access.open(mode(None))
+        access.longRunningOperation("some operation", action)
 
         then:
         1 * action.create() >> {
-            canAccess cache
+            assert !access.owner
         }
-        _ * lock.readFile(_)
-        _ * lock.writeFile(_)
 
-        and:
-        0 * _._
+        then:
+        0 * lock._
+        0 * lockManager._
     }
 
-    def "can create cache instance outside of cache action"() {
-        given:
-        manager.open(None)
+    def "re-entrant long running operation does not lock file"() {
+        Factory<String> action = Mock()
 
         when:
-        def cache = manager.newCache(tmpDir.file('cache.bin'), String.class, Integer.class)
+        access.open(mode(None))
+        access.longRunningOperation("some operation", action)
+
+        then:
+        1 * action.create() >> {
+            access.longRunningOperation("other operation") {
+                assert !access.owner
+            }
+        }
+
+        then:
+        0 * lock._
+        0 * lockManager._
+    }
+
+    def "can create new cache"() {
+        when:
+        def cache = access.newCache(new PersistentIndexedCacheParameters('cache', String.class, Integer.class))
 
         then:
         cache instanceof MultiProcessSafePersistentIndexedCache
         0 * _._
     }
 
-    def "can create cache instance inside of cache action"() {
-        def cache
-
-        given:
-        manager.open(None)
-
+    def "contended action does nothing when no lock"() {
         when:
-        manager.useCache("init", {
-            cache = manager.newCache(tmpDir.file('cache.bin'), String.class, Integer.class)
-        } as Factory)
+        access.whenContended().run()
 
         then:
-        cache instanceof MultiProcessSafePersistentIndexedCache
-
-        and:
-        1 * lockManager.lock(lockFile, Exclusive, _, _) >> lock
+        0 * _._
     }
 
-    def "can use cache instance during cache action"() {
+    def "contended action safely closes the lock when cache is not busy"() {
         Factory<String> action = Mock()
 
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
-
         when:
-        manager.useCache("some operation", action)
+        access.open(mode(None))
+        access.useCache("some operation", action)
 
         then:
-        1 * action.create() >> {
-            canAccess cache
-        }
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", _) >> lock
 
-        and:
-        _ * lock.writeFile(_)
+        when:
+        access.whenContended().run()
+
+        then:
         1 * lock.close()
-        0 * _._
     }
 
-    def "releases lock before long running operation and reacquires after"() {
-        Factory<String> action = Mock()
-        Factory<String> longRunningAction = Mock()
-
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
+    def "file access requires acquired lock"() {
+        def runnable = Mock(Runnable)
 
         when:
-        manager.useCache("some operation", action)
+        access.open(mode(None))
+        access.fileAccess.updateFile(runnable)
 
         then:
-        1 * action.create() >> {
-            canAccess cache
-            manager.longRunningOperation("nested", longRunningAction)
-            canAccess cache
-        }
-        1 * longRunningAction.create()
-        2 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
-        _ * lock.writeFile(_)
-        2 * lock.close()
-        0 * _._
+        thrown(IllegalStateException)
     }
 
-    def "releases lock before nested long running operation and reacquires after"() {
-        Factory<String> action = Mock()
-        Factory<String> lockInsideLongRunningOperation = Mock()
-        Factory<String> nestedLongRunningAction = Mock()
-        Factory<String> deeplyNestedAction = Mock()
-
-        FileLock anotherLock = Mock()
-
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
+    def "file access is available when lock is acquired"() {
+        def runnable = Mock(Runnable)
 
         when:
-        manager.useCache("some operation", action)
+        access.open(mode(Exclusive))
+        access.fileAccess.updateFile(runnable)
 
         then:
-        1 * action.create() >> {
-            canAccess cache
-            manager.longRunningOperation("nested", lockInsideLongRunningOperation)
-            canAccess cache
-        }
-        1 * lockInsideLongRunningOperation.create() >> {
-            cannotAccess cache
-            manager.useCache("nested operation", nestedLongRunningAction)
-            cannotAccess cache
-        }
-        1 * nestedLongRunningAction.create() >> {
-            canAccess cache
-            manager.longRunningOperation("nested-2", deeplyNestedAction)
-            canAccess cache
-        }
-        1 * deeplyNestedAction.create() >> {
-            cannotAccess cache
-        }
-
-        2 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
-        _ * lock.writeFile(_)
-        2 * lock.close()
-
-        2 * lockManager.lock(lockFile, Exclusive, "<display-name>", "nested operation") >> anotherLock
-        _ * anotherLock.readFile(_)
-        _ * anotherLock.writeFile(_)
-        2 * anotherLock.close()
-        0 * _._
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>") >> lock
+        1 * lock.updateFile(runnable)
     }
 
-    def "cannot run long running operation from outside cache action"() {
-        given:
-        manager.open(None)
+    def "file access is available when there is an owner"() {
+        def runnable = Mock(Runnable)
 
         when:
-        manager.longRunningOperation("operation", Mock(Factory))
+        access.open(mode(None))
+        access.useCache("use cache", { access.fileAccess.updateFile(runnable)})
 
         then:
-        IllegalStateException e = thrown()
-        e.message == 'Cannot start long running operation, as the <display-name> has not been locked.'
+        1 * lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "use cache") >> lock
+        1 * lock.updateFile(runnable)
     }
 
-    def "cannot use cache from within long running operation"() {
-        Factory<String> action = Mock()
-        Factory<String> longRunningAction = Mock()
+    def "file access can not be accessed when there is no owner"() {
+        def runnable = Mock(Runnable)
 
         given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
+        lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "use cache") >> lock
+        access.open(mode(None))
+        access.useCache("use cache", runnable)
 
         when:
-        manager.useCache("some operation", action)
+        access.fileAccess.updateFile(runnable)
 
         then:
-        _ * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        1 * action.create() >> {
-            manager.longRunningOperation("nested", longRunningAction)
-        }
-        1 * longRunningAction.create() >> {
-            cannotAccess cache
-        }
+        thrown(IllegalStateException)
     }
 
-    def "can execute cache action from within long running operation"() {
-        Factory<String> action = Mock()
-        Factory<String> longRunningAction = Mock()
-        Factory<String> nestedAction = Mock()
-
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
-
+    def "can close cache when the cache has not been used"() {
         when:
-        manager.useCache("some operation", action)
+        access.open(mode(None))
+        access.close()
 
         then:
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
+        0 * _
+    }
 
-        and:
-        1 * action.create() >> {
-            canAccess cache
-            manager.longRunningOperation("nested", longRunningAction)
-            canAccess cache
-        }
+    def "can close cache when there is no owner"() {
+        given:
+        lockManager.lock(lockFile, mode(Exclusive), "<display-name>", "use cache") >> lock
+        lock.writeFile(_) >> { Runnable r -> r.run() }
+        access.open(mode(None))
+        def cache = access.newCache(new PersistentIndexedCacheParameters('cache', String.class, Integer.class))
+        access.useCache("use cache", { cache.get("key") })
 
-        and:
+        when:
+        access.close()
+
+        then:
         1 * lock.close()
-
-        and:
-        1 * longRunningAction.create() >> {
-            cannotAccess cache
-            manager.useCache("nested 2", nestedAction)
-            cannotAccess cache
-        }
-
-        and:
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "nested 2") >> lock
-
-        and:
-        1 * nestedAction.create() >> {
-            canAccess cache
-        }
-
-        and:
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
-        _ * lock.writeFile(_)
-        2 * lock.close()
-        0 * _._
-    }
-
-    def "can execute long running operation from within long running operation"() {
-        Factory<String> action = Mock()
-        Factory<String> longRunningAction = Mock()
-        Factory<String> nestedAction = Mock()
-
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
-
-        when:
-        manager.useCache("some operation", action)
-
-        then:
-        1 * action.create() >> {
-            canAccess cache
-            manager.longRunningOperation("nested", longRunningAction)
-            canAccess cache
-        }
-        1 * longRunningAction.create() >> {
-            cannotAccess cache
-            manager.longRunningOperation("nested 2", nestedAction)
-            cannotAccess cache
-        }
-        1 * nestedAction.create() >> {
-            cannotAccess cache
-        }
-        2 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
-        _ * lock.writeFile(_)
-        2 * lock.close()
-        0 * _._
-    }
-
-    def "can execute cache action from within cache action"() {
-        Factory<String> action = Mock()
-        Factory<String> nestedAction = Mock()
-
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
-
-        when:
-        manager.useCache("some operation", action)
-
-        then:
-        1 * action.create() >> {
-            canAccess cache
-            manager.useCache("nested", nestedAction)
-            canAccess cache
-        }
-        1 * nestedAction.create() >> {
-            canAccess cache
-        }
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
-        _ * lock.writeFile(_)
-        1 * lock.close()
-        0 * _._
-    }
-
-    def "closes caches at the end of the cache action when initial lock mode is none"() {
-        Factory<String> action = Mock()
-
-        given:
-        manager.open(None)
-        def cache = manager.newCache(targetFile, String, Integer)
-
-        when:
-        manager.useCache("some operation", action)
-
-        then:
-        1 * action.create() >> {
-            canAccess cache
-        }
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>", "some operation") >> lock
-        _ * lock.readFile(_)
-
-        and:
-        _ * lock.writeFile(_) >> {Runnable runnable -> runnable.run()}
-        1 * backingCache.close()
-        1 * lock.close()
-        0 * _._
-    }
-
-    def "closes caches on close when initial lock mode is not none"() {
-        given:
-        1 * lockManager.lock(lockFile, Exclusive, "<display-name>") >> lock
-        _ * lock.readFile(_) >> {Factory factory -> factory.create()}
-        _ * lock.writeFile(_) >> {Runnable runnable -> runnable.run()}
-
-        and:
-        manager.open(Exclusive)
-        def cache = manager.newCache(targetFile, String, Integer)
-        cache.get("key")
-
-        when:
-        manager.close()
-
-        then:
-        _ * lock.readFile(_) >> {Factory factory -> factory.create()}
-        _ * lock.writeFile(_) >> {Runnable runnable -> runnable.run()}
-        1 * backingCache.close()
-        1 * lock.close()
-        0 * _._
-    }
-
-    def canAccess(def cache) {
-        try {
-            cache.get("key")
-        } catch (IllegalStateException e) {
-            assert false: "Should be able to access cache here"
-        }
-    }
-
-    def cannotAccess(def cache) {
-        try {
-            cache.get("key")
-            assert false: "Should not be able to access cache here"
-        } catch (IllegalStateException e) {
-            assert e.message == 'The <display-name> has not been locked.'
-        }
     }
 
 }

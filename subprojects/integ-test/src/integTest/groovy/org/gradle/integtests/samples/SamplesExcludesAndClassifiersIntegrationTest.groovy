@@ -25,12 +25,9 @@ import static org.hamcrest.Matchers.containsString
 import static org.hamcrest.Matchers.not
 import static org.junit.Assert.assertThat
 
-/**
- * @author Hans Dockter
- */
 class SamplesExcludesAndClassifiersIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('userguide/artifacts/excludesAndClassifiers')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'userguide/artifacts/excludesAndClassifiers')
 
     @Test
     public void checkExcludeAndClassifier() {

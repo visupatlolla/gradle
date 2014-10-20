@@ -61,7 +61,7 @@ class LoggingCommandLineConverterTest extends Specification {
     }
 
     def convertsShowStacktrace() {
-        expectedConfig.showStacktrace = ShowStacktrace.ALWAYS;
+        expectedConfig.showStacktrace = ShowStacktrace.ALWAYS
 
         expect:
         checkConversion(['-s'])
@@ -69,21 +69,29 @@ class LoggingCommandLineConverterTest extends Specification {
     }
 
     def convertsShowFullStacktrace() {
-        expectedConfig.showStacktrace = ShowStacktrace.ALWAYS_FULL;
+        expectedConfig.showStacktrace = ShowStacktrace.ALWAYS_FULL
 
         expect:
         checkConversion(['-S'])
         checkConversion(['--full-stacktrace'])
     }
 
+    def usesLastLogLevelAndStacktraceOption() {
+        expectedConfig.showStacktrace = ShowStacktrace.ALWAYS_FULL
+        expectedConfig.logLevel = LogLevel.QUIET
+
+        expect:
+        checkConversion(['-s', '--debug', '-q', '--full-stacktrace'])
+    }
+
     def providesLogLevelOptions() {
         expect:
-        converter.logLevelOptions.containsAll(["d", "q", "i"])
-        converter.logLevelOptions.size() == 3
+        converter.logLevelOptions == ["d", "q", "i"] as Set
+        converter.logLevels == [LogLevel.DEBUG, LogLevel.INFO, LogLevel.LIFECYCLE, LogLevel.QUIET] as Set
     }
 
     void checkConversion(List<String> args) {
-        def actual = converter.convert(args)
+        def actual = converter.convert(args, new LoggingConfiguration())
         assert actual.logLevel == expectedConfig.logLevel
         assert actual.colorOutput == expectedConfig.colorOutput
         assert actual.showStacktrace == expectedConfig.showStacktrace

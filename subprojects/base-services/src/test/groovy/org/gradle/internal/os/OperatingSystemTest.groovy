@@ -61,6 +61,9 @@ class OperatingSystemTest extends Specification {
         os.getScriptName("a.bat") == "a.bat"
         os.getScriptName("a.BAT") == "a.BAT"
         os.getScriptName("a") == "a.bat"
+        os.getScriptName("a.exe") == "a.bat"
+        os.getScriptName("a.b/c") == "a.b/c.bat"
+        os.getScriptName("a.b\\c") == "a.b\\c.bat"
     }
 
     def "windows transforms executable names"() {
@@ -70,6 +73,9 @@ class OperatingSystemTest extends Specification {
         os.getExecutableName("a.exe") == "a.exe"
         os.getExecutableName("a.EXE") == "a.EXE"
         os.getExecutableName("a") == "a.exe"
+        os.getExecutableName("a.bat") == "a.exe"
+        os.getExecutableName("a.b/c") == "a.b/c.exe"
+        os.getExecutableName("a.b\\c") == "a.b\\c.exe"
     }
 
     def "windows transforms shared library names"() {
@@ -79,6 +85,21 @@ class OperatingSystemTest extends Specification {
         os.getSharedLibraryName("a.dll") == "a.dll"
         os.getSharedLibraryName("a.DLL") == "a.DLL"
         os.getSharedLibraryName("a") == "a.dll"
+        os.getSharedLibraryName("a.lib") == "a.dll"
+        os.getSharedLibraryName("a.b/c") == "a.b/c.dll"
+        os.getSharedLibraryName("a.b\\c") == "a.b\\c.dll"
+    }
+
+    def "windows transforms static library names"() {
+        def os = new OperatingSystem.Windows()
+
+        expect:
+        os.getStaticLibraryName("a.lib") == "a.lib"
+        os.getStaticLibraryName("a.LIB") == "a.LIB"
+        os.getStaticLibraryName("a") == "a.lib"
+        os.getStaticLibraryName("a.dll") == "a.lib"
+        os.getStaticLibraryName("a.b/c") == "a.b/c.lib"
+        os.getStaticLibraryName("a.b\\c") == "a.b\\c.lib"
     }
 
     def "windows searches for executable in path"() {
@@ -134,6 +155,13 @@ class OperatingSystemTest extends Specification {
         OperatingSystem.current() instanceof OperatingSystem.Linux
     }
 
+    def "uses os.name property to determine if freebsd"() {
+        System.properties['os.name'] = 'FreeBSD'
+
+        expect:
+        OperatingSystem.current() instanceof OperatingSystem.FreeBSD
+    }
+
     def "uses default implementation for other os"() {
         System.properties['os.name'] = 'unknown'
 
@@ -176,6 +204,18 @@ class OperatingSystemTest extends Specification {
         os.getSharedLibraryName("lib1") == "liblib1.so"
         os.getSharedLibraryName("path/liba.so") == "path/liba.so"
         os.getSharedLibraryName("path/a") == "path/liba.so"
+    }
+
+    def "UNIX transforms static library names"() {
+        def os = new OperatingSystem.Unix()
+
+        expect:
+        os.getStaticLibraryName("a.a") == "a.a"
+        os.getStaticLibraryName("liba.a") == "liba.a"
+        os.getStaticLibraryName("a") == "liba.a"
+        os.getStaticLibraryName("lib1") == "liblib1.a"
+        os.getStaticLibraryName("path/liba.a") == "path/liba.a"
+        os.getStaticLibraryName("path/a") == "path/liba.a"
     }
 
     def "UNIX searches for executable in path"() {

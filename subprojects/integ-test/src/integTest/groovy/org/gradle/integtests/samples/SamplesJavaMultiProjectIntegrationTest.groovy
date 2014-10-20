@@ -28,9 +28,6 @@ import org.junit.Test
 
 import static org.hamcrest.Matchers.containsString
 
-/**
- * @author Hans Dockter
- */
 class SamplesJavaMultiProjectIntegrationTest extends AbstractIntegrationTest {
 
     static final String JAVA_PROJECT_NAME = 'java/multiproject'
@@ -43,7 +40,7 @@ class SamplesJavaMultiProjectIntegrationTest extends AbstractIntegrationTest {
     private TestFile javaprojectDir
     private List projects;
 
-    @Rule public final Sample sample = new Sample('java/multiproject')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'java/multiproject')
 
     @Before
     void setUp() {
@@ -64,7 +61,7 @@ class SamplesJavaMultiProjectIntegrationTest extends AbstractIntegrationTest {
         TestFile buildSrcDir = javaprojectDir.file('buildSrc')
 
         buildSrcDir.file('build/libs/buildSrc.jar').assertIsFile()
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(buildSrcDir)
+        def result = new DefaultTestExecutionResult(buildSrcDir)
         result.assertTestClassesExecuted('org.gradle.buildsrc.BuildSrcClassTest')
     }
 
@@ -85,7 +82,7 @@ class SamplesJavaMultiProjectIntegrationTest extends AbstractIntegrationTest {
         assertExists(javaprojectDir, WEBAPP_PATH, packagePrefix, WEBAPP_NAME, 'TestTest.class')
 
         // Check test results and report
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(javaprojectDir.file(SHARED_NAME))
+        def result = new DefaultTestExecutionResult(javaprojectDir.file(SHARED_NAME))
         result.assertTestClassesExecuted('org.gradle.shared.PersonTest')
 
         result = new DefaultTestExecutionResult(javaprojectDir.file(WEBAPP_PATH))

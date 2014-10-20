@@ -27,7 +27,7 @@ import static org.hamcrest.Matchers.containsString
 
 class SamplesMixedJavaAndGroovyIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('groovy/mixedJavaAndGroovy')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'groovy/mixedJavaAndGroovy')
 
     @Test
     public void canBuildJar() {
@@ -35,7 +35,7 @@ class SamplesMixedJavaAndGroovyIntegrationTest extends AbstractIntegrationTest {
         executer.inDirectory(projectDir).withTasks('clean', 'build').run()
 
         // Check tests have run
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(projectDir)
+        def result = new DefaultTestExecutionResult(projectDir)
         result.assertTestClassesExecuted('org.gradle.PersonTest')
 
         // Check contents of jar

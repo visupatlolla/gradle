@@ -18,20 +18,19 @@ package org.gradle.listener;
 
 import org.gradle.api.Action;
 import org.gradle.internal.UncheckedException;
-import org.gradle.messaging.dispatch.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.gradle.messaging.dispatch.Dispatch;
+import org.gradle.messaging.dispatch.MethodInvocation;
+import org.gradle.messaging.dispatch.ReflectionDispatch;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class BroadcastDispatch<T> implements Dispatch<MethodInvocation> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(BroadcastDispatch.class);
     private final Class<T> type;
-    private final Map<Object, Dispatch<MethodInvocation>> handlers
-            = new LinkedHashMap<Object, Dispatch<MethodInvocation>>();
+    private final Map<Object, Dispatch<MethodInvocation>> handlers = new LinkedHashMap<Object, Dispatch<MethodInvocation>>();
 
     public BroadcastDispatch(Class<T> type) {
         this.type = type;
@@ -68,26 +67,31 @@ public class BroadcastDispatch<T> implements Dispatch<MethodInvocation> {
         handlers.remove(listener);
     }
 
+    public void removeAll() {
+        handlers.clear();
+    }
+
     private String getErrorMessage() {
         String typeDescription = type.getSimpleName().replaceAll("(\\p{Upper})", " $1").trim().toLowerCase();
         return String.format("Failed to notify %s.", typeDescription);
     }
 
     public void dispatch(MethodInvocation invocation) {
-        try {
-            ExceptionTrackingFailureHandler tracker = new ExceptionTrackingFailureHandler(LOGGER);
-            for (Dispatch<MethodInvocation> handler : new ArrayList<Dispatch<MethodInvocation>>(handlers.values())) {
-                try {
-                    handler.dispatch(invocation);
-                } catch (UncheckedException e) {
-                    tracker.dispatchFailed(invocation, e.getCause());
-                } catch (Throwable t) {
-                    tracker.dispatchFailed(invocation, t);
-                }
+        List<Throwable> failures = new ArrayList<Throwable>();
+        for (Dispatch<MethodInvocation> handler : new ArrayList<Dispatch<MethodInvocation>>(handlers.values())) {
+            try {
+                handler.dispatch(invocation);
+            } catch (UncheckedException e) {
+                failures.add(e.getCause());
+            } catch (Throwable t) {
+                failures.add(t);
             }
-            tracker.stop();
-        } catch (DispatchException t) {
-            throw new ListenerNotificationException(getErrorMessage(), t.getCause());
+        }
+        if (failures.size() == 1 && failures.get(0) instanceof RuntimeException) {
+            throw (RuntimeException) failures.get(0);
+        }
+        if (!failures.isEmpty()) {
+            throw new ListenerNotificationException(getErrorMessage(), failures);
         }
     }
 

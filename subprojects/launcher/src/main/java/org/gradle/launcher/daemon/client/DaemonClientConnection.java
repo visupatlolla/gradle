@@ -15,24 +15,34 @@
  */
 package org.gradle.launcher.daemon.client;
 
-import org.gradle.api.GradleException;
+import org.gradle.api.Nullable;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.launcher.daemon.context.DaemonInstanceDetails;
 import org.gradle.messaging.remote.internal.Connection;
+import org.gradle.messaging.remote.internal.MessageIOException;
+import org.gradle.messaging.remote.internal.RemoteConnection;
+
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * A simple wrapper for the connection to a daemon plus its password.
+ * A simple wrapper for the connection to a daemon.
+ *
+ * <p>Currently, dispatch is thread safe, and receive is not.
  */
 public class DaemonClientConnection implements Connection<Object> {
-    final Connection<Object> connection;
-    private final String uid;
-    final Runnable onFailure;
     private final static Logger LOG = Logging.getLogger(DaemonClientConnection.class);
+    private final RemoteConnection<Object> connection;
+    private final DaemonInstanceDetails daemon;
+    private final StaleAddressDetector staleAddressDetector;
+    private boolean hasReceived;
+    private final Lock dispatchLock = new ReentrantLock();
 
-    public DaemonClientConnection(Connection<Object> connection, String uid, Runnable onFailure) {
+    public DaemonClientConnection(RemoteConnection<Object> connection, DaemonInstanceDetails daemon, StaleAddressDetector staleAddressDetector) {
         this.connection = connection;
-        this.uid = uid;
-        this.onFailure = onFailure;
+        this.daemon = daemon;
+        this.staleAddressDetector = staleAddressDetector;
     }
 
     public void requestStop() {
@@ -40,35 +50,52 @@ public class DaemonClientConnection implements Connection<Object> {
         connection.requestStop();
     }
 
-    public String getUid() {
-        return uid;
+    public DaemonInstanceDetails getDaemon() {
+        return daemon;
     }
 
-    public void dispatch(Object message) {
+    public void dispatch(Object message) throws DaemonConnectionException {
         LOG.debug("thread {}: dispatching {}", Thread.currentThread().getId(), message.getClass());
         try {
-            connection.dispatch(message);
-        } catch (Exception e) {
+            dispatchLock.lock();
+            try {
+                connection.dispatch(message);
+            } finally {
+                dispatchLock.unlock();
+            }
+        } catch (MessageIOException e) {
             LOG.debug("Problem dispatching message to the daemon. Performing 'on failure' operation...");
-            onFailure.run();
-            throw new GradleException("Unable to dispatch the message to the daemon.", e);
+            if (!hasReceived && staleAddressDetector.maybeStaleAddress(e)) {
+                throw new StaleDaemonAddressException("Could not dispatch a message to the daemon.", e);
+            }
+            throw new DaemonConnectionException("Could not dispatch a message to the daemon.", e);
         }
     }
 
-    public Object receive() {
+    @Nullable
+    public Object receive() throws DaemonConnectionException {
         try {
-            Object result = connection.receive();
-            LOG.debug("thread {}: received {}", Thread.currentThread().getId(), result == null ? "null" : result.getClass());
-            return result;
-        } catch (Exception e) {
+            return connection.receive();
+        } catch (MessageIOException e) {
             LOG.debug("Problem receiving message to the daemon. Performing 'on failure' operation...");
-            onFailure.run();
-            throw new GradleException("Unable to receive a message from the daemon.", e);
+            if (!hasReceived && staleAddressDetector.maybeStaleAddress(e)) {
+                throw new StaleDaemonAddressException("Could not receive a message from the daemon.", e);
+            }
+            throw new DaemonConnectionException("Could not receive a message from the daemon.", e);
+        } finally {
+            hasReceived = true;
         }
     }
 
     public void stop() {
         LOG.debug("thread {}: connection stop", Thread.currentThread().getId());
         connection.stop();
+    }
+
+    interface StaleAddressDetector {
+        /**
+         * @return true if the failure should be considered due to a stale address.
+         */
+        boolean maybeStaleAddress(Exception failure);
     }
 }

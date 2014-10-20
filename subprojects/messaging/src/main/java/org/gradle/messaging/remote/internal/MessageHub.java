@@ -15,7 +15,7 @@
  */
 package org.gradle.messaging.remote.internal;
 
-import org.gradle.internal.CompositeStoppable;
+import org.gradle.internal.concurrent.CompositeStoppable;
 import org.gradle.internal.id.IdGenerator;
 import org.gradle.internal.concurrent.AsyncStoppable;
 import org.gradle.internal.concurrent.ExecutorFactory;
@@ -76,28 +76,6 @@ public class MessageHub implements AsyncStoppable {
             AsyncConnection<Message> incomingEndpoint = router.createRemoteConnection();
             incomingEndpoint.dispatchTo(new MethodInvocationMarshallingDispatch(asyncConnection));
             asyncConnection.dispatchTo(new MethodInvocationUnmarshallingDispatch(incomingEndpoint, messagingClassLoader));
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public Dispatch<Object> addUnicastOutgoing(String channel) {
-        lock.lock();
-        try {
-            ProtocolStack<Message> outgoing = outgoingUnicasts.get(channel);
-            if (outgoing == null) {
-                Protocol<Message> unicastSendProtocol = new UnicastSendProtocol();
-                Protocol<Message> sendProtocol = new SendProtocol(idGenerator.generateId(), nodeName, channel);
-                StoppableExecutor executor = executorFactory.create(displayName + " outgoing " + channel);
-                executors.add(executor);
-                outgoing = new ProtocolStack<Message>(executor, failureHandler, failureHandler, unicastSendProtocol, sendProtocol);
-                outgoingUnicasts.put(channel, outgoing);
-
-                AsyncConnection<Message> outgoingEndpoint = router.createLocalConnection();
-                outgoing.getBottom().dispatchTo(outgoingEndpoint);
-                outgoingEndpoint.dispatchTo(outgoing.getBottom());
-            }
-            return new OutgoingMultiplex(channel, outgoing.getTop());
         } finally {
             lock.unlock();
         }

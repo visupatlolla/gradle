@@ -27,10 +27,10 @@ import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
 import org.gradle.api.artifacts.maven.MavenPom;
 import org.gradle.api.internal.ClosureBackedAction;
-import org.gradle.api.internal.ErroringAction;
-import org.gradle.api.internal.IoActions;
-import org.gradle.api.internal.xml.XmlTransformer;
+import org.gradle.internal.ErroringAction;
+import org.gradle.internal.IoActions;
 import org.gradle.api.internal.file.FileResolver;
+import org.gradle.internal.xml.XmlTransformer;
 import org.gradle.listener.ActionBroadcast;
 
 import java.io.BufferedWriter;
@@ -39,9 +39,6 @@ import java.io.Writer;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * @author Hans Dockter
- */
 public class DefaultMavenPom implements MavenPom {
 
     private PomDependenciesConverter pomDependenciesConverter;
@@ -197,7 +194,7 @@ public class DefaultMavenPom implements MavenPom {
     }
 
     public DefaultMavenPom writeTo(Object path) {
-        IoActions.writeFile(fileResolver.resolve(path), POM_FILE_ENCODING, new Action<BufferedWriter>() {
+        IoActions.writeTextFile(fileResolver.resolve(path), POM_FILE_ENCODING, new Action<BufferedWriter>() {
             public void execute(BufferedWriter writer) {
                 writeTo(writer);
             }

@@ -16,11 +16,47 @@
 package org.gradle.api.internal.file.pattern;
 
 public class PatternStepFactory {
-    public static PatternStep getStep(String source, boolean isLast, boolean caseSensitive) {
-        if (source.equals("**")) {
-            return new GreedyPatternStep();
-        } else {
-            return new RegExpPatternStep(source, caseSensitive);
+    private static final AnyWildcardPatternStep ANY_WILDCARD_PATTERN_STEP = new AnyWildcardPatternStep();
+
+    public static PatternStep getStep(String source, boolean caseSensitive) {
+        if (source.length() == 0) {
+            return new FixedPatternStep(source, caseSensitive);
         }
+
+        // Here, we try to avoid using the reg exp backed pattern step, as it is expensive in terms of performance and heap usage.
+        // There are 3 special cases we handle here:
+        // 1. '*'
+        // 2. '*' <literal>
+        // 3. <literal>
+        // Everything else uses a reg exp.
+
+        // Handle '**' and '*some-pattern' special cases
+        char ch = source.charAt(0);
+        if (ch == '*') {
+            int pos = 1;
+            while (pos < source.length() && source.charAt(pos) == '*') {
+                pos++;
+            }
+            if (pos == source.length()) {
+                return ANY_WILDCARD_PATTERN_STEP;
+            }
+            for (int i = pos; i < source.length(); i++) {
+                ch = source.charAt(i);
+                if (ch == '?' || ch == '*') {
+                    // Too complicated - fall back to regexp
+                    return new RegExpPatternStep(source, caseSensitive);
+                }
+            }
+            return new WildcardPrefixPatternStep(source.substring(pos), caseSensitive);
+        }
+
+        for (int i = 0; i < source.length(); i++) {
+            ch = source.charAt(i);
+            if (ch == '?' || ch == '*') {
+                // Too complicated - fall back to regexp
+                return new RegExpPatternStep(source, caseSensitive);
+            }
+        }
+        return new FixedPatternStep(source, caseSensitive);
     }
 }

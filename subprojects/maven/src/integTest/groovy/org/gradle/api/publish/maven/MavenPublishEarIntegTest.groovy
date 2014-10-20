@@ -15,9 +15,7 @@
  */
 package org.gradle.api.publish.maven
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-
-class MavenPublishEarIntegTest extends AbstractIntegrationSpec {
+class MavenPublishEarIntegTest extends AbstractMavenPublishIntegTest {
     public void "can publish ear module"() {
         def earModule = mavenRepo.module("org.gradle.test", "publishEar", "1.9")
 
@@ -65,9 +63,10 @@ publishing {
         run "publish"
 
         then:
-        earModule.assertPublished()
-        earModule.assertArtifactsPublished("publishEar-1.9.ear", "publishEar-1.9.pom")
-        earModule.parsedPom.packaging == 'ear'
+        earModule.assertPublishedAsEarModule()
         earModule.parsedPom.scopes.isEmpty()
+
+        and:
+        resolveArtifacts(earModule) == ["publishEar-1.9.ear"]
     }
 }

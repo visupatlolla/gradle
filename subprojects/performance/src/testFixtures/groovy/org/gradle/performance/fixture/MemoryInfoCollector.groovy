@@ -16,12 +16,15 @@
 
 package org.gradle.performance.fixture
 
-/**
- * by Szczepan Faber, created at: 8/14/12
- */
-public class MemoryInfoCollector implements DataCollector {
+import org.gradle.integtests.fixtures.executer.GradleExecuter
+import org.gradle.performance.measure.DataAmount
+import org.gradle.performance.measure.MeasuredOperation
 
+public class MemoryInfoCollector implements DataCollector {
     String outputFileName
+
+    public void beforeExecute(File testProjectDir, GradleExecuter executer) {
+    }
 
     public void collect(File testProjectDir, MeasuredOperation operation) {
         def file = new File(testProjectDir, outputFileName).canonicalFile

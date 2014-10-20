@@ -20,7 +20,7 @@ import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 import org.gradle.integtests.fixtures.TargetVersions
 
-@Requires(TestPrecondition.JDK7)
+@Requires(TestPrecondition.JDK7_OR_LATER)
 @TargetVersions(['2.0.5:indy'])
 class InvokeDynamicGroovyCompilerSpec extends ApiGroovyCompilerIntegrationSpec {
     def canEnableAndDisableInvokeDynamicOptimization() {
@@ -34,7 +34,6 @@ class InvokeDynamicGroovyCompilerSpec extends ApiGroovyCompilerIntegrationSpec {
     String compilerConfiguration() {
         '''
 tasks.withType(GroovyCompile) {
-    groovyOptions.useAnt = false
     groovyOptions.fork = false
 }
         '''

@@ -22,6 +22,7 @@ import org.gradle.api.GradleException;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.util.Clock;
+import org.gradle.internal.FileUtils;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -37,17 +38,17 @@ public class Binary2JUnitXmlReportGenerator {
     JUnitXmlResultWriter saxWriter;
     private final static Logger LOG = Logging.getLogger(Binary2JUnitXmlReportGenerator.class);
 
-    public Binary2JUnitXmlReportGenerator(File testResultsDir, TestResultsProvider testResultsProvider) {
+    public Binary2JUnitXmlReportGenerator(File testResultsDir, TestResultsProvider testResultsProvider, TestOutputAssociation outputAssociation) {
         this.testResultsDir = testResultsDir;
         this.testResultsProvider = testResultsProvider;
-        this.saxWriter = new JUnitXmlResultWriter(getHostname(), testResultsProvider);
+        this.saxWriter = new JUnitXmlResultWriter(getHostname(), testResultsProvider, outputAssociation);
     }
 
     public void generate() {
         Clock clock = new Clock();
         testResultsProvider.visitClasses(new Action<TestClassResult>() {
             public void execute(TestClassResult result) {
-                File file = new File(testResultsDir, "TEST-" + result.getClassName() + ".xml");
+                File file = new File(testResultsDir, getReportFileName(result));
                 OutputStream output = null;
                 try {
                     output = new BufferedOutputStream(new FileOutputStream(file));
@@ -60,7 +61,11 @@ public class Binary2JUnitXmlReportGenerator {
                 }
             }
         });
-        LOG.info("Finished generating test XML results (" + clock.getTime() + ")");
+        LOG.info("Finished generating test XML results ({}) into: {}", clock.getTime(), testResultsDir);
+    }
+
+    private String getReportFileName(TestClassResult result) {
+        return "TEST-" + FileUtils.toSafeFileName(result.getClassName()) + ".xml";
     }
 
     private static String getHostname() {

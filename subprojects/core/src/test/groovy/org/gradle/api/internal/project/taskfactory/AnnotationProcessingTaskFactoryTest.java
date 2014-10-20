@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 the original author or authors.
+ * Copyright 2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,33 @@
 
 package org.gradle.api.internal.project.taskfactory;
 
+import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.Task;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.AbstractTask;
+import org.gradle.api.internal.ClassGenerator;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.project.DefaultProject;
-import org.gradle.api.tasks.*;
+import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputDirectory;
+import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.OutputDirectories;
+import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.OutputFiles;
+import org.gradle.api.tasks.SkipWhenEmpty;
+import org.gradle.api.tasks.TaskAction;
+import org.gradle.api.tasks.TaskValidationException;
+import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
+import org.gradle.internal.UncheckedException;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.util.GFileUtils;
-import org.gradle.util.HelperUtil;
-import org.gradle.util.ReflectionUtil;
+import org.gradle.util.TestUtil;
 import org.jmock.Expectations;
 import org.jmock.integration.junit4.JMock;
 import org.jmock.integration.junit4.JUnit4Mockery;
@@ -36,9 +50,16 @@ import org.jmock.lib.legacy.ClassImposteriser;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import spock.lang.Issue;
 
 import java.io.File;
-import java.util.*;
+import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static org.gradle.util.Matchers.isEmpty;
@@ -77,13 +98,14 @@ public class AnnotationProcessingTaskFactoryTest {
     }
 
     private <T extends Task> T expectTaskCreated(final Class<T> type, final Object... params) {
-        DefaultProject project = HelperUtil.createRootProject();
+        DefaultProject project = TestUtil.createRootProject();
+        final Class<? extends T> decorated = project.getServices().get(ClassGenerator.class).generate(type);
         T task = AbstractTask.injectIntoNewInstance(project, "task", new Callable<T>() {
             public T call() throws Exception {
                 if (params.length > 0) {
-                    return type.cast(type.getConstructors()[0].newInstance(params));
+                    return type.cast(decorated.getConstructors()[0].newInstance(params));
                 } else {
-                    return type.newInstance();
+                    return decorated.newInstance();
                 }
             }
         });
@@ -139,11 +161,29 @@ public class AnnotationProcessingTaskFactoryTest {
     }
 
     @Test
+    public void createsContextualActionFoIncrementalTaskAction() {
+        final Action<IncrementalTaskInputs> action = context.mock(Action.class);
+        TaskWithIncrementalAction task = expectTaskCreated(TaskWithIncrementalAction.class, action);
+
+        context.checking(new Expectations() {{
+            one(action).execute(with(notNullValue(IncrementalTaskInputs.class)));
+        }});
+
+        task.execute();
+    }
+
+    @Test
+    public void failsWhenMultipleActionsAreIncremental() {
+        assertTaskCreationFails(TaskWithMultipleIncrementalActions.class,
+                "Cannot have multiple @TaskAction methods accepting an IncrementalTaskInputs parameter.");
+    }
+
+    @Test
     public void cachesClassMetaInfo() {
         TaskWithInputFile task = expectTaskCreated(TaskWithInputFile.class, existingFile);
         TaskWithInputFile task2 = expectTaskCreated(TaskWithInputFile.class, missingFile);
 
-        assertThat(ReflectionUtil.getProperty(task.getActions().get(0), "action"), sameInstance(ReflectionUtil.getProperty(task2.getActions().get(0), "action")));
+        assertThat(readField(task.getActions().get(0), Action.class, "action"), sameInstance(readField(task2.getActions().get(0), Action.class, "action")));
     }
     
     @Test
@@ -154,8 +194,14 @@ public class AnnotationProcessingTaskFactoryTest {
 
     @Test
     public void failsWhenMethodWithParametersHasTaskActionAnnotation() {
-        assertTaskCreationFails(TaskWithParamMethod.class,
-                "Cannot use @TaskAction annotation on method TaskWithParamMethod.doStuff() as this method takes parameters.");
+        assertTaskCreationFails(TaskWithMultiParamAction.class,
+                "Cannot use @TaskAction annotation on method TaskWithMultiParamAction.doStuff() as this method takes multiple parameters.");
+    }
+
+    @Test
+    public void failsWhenMethodWithInvalidParameterHasTaskActionAnnotation() {
+        assertTaskCreationFails(TaskWithSingleParamAction.class,
+                "Cannot use @TaskAction annotation on method TaskWithSingleParamAction.doStuff() because int is not a valid parameter to an action method.");
     }
 
     private void assertTaskCreationFails(Class<? extends Task> type, String message) {
@@ -565,6 +611,13 @@ public class AnnotationProcessingTaskFactoryTest {
     }
 
     @Test
+    @Issue("https://issues.gradle.org/browse/GRADLE-2815")
+    public void registersSpecifiedBooleanInputValue() {
+        TaskWithBooleanInput task = expectTaskCreated(TaskWithBooleanInput.class, true);
+        assertThat(task.getInputs().getProperties().get("inputValue"), equalTo((Object) true));
+    }
+
+    @Test
     public void validationActionSucceedsWhenPropertyMarkedWithOptionalAnnotationNotSpecified() {
         TaskWithOptionalInputFile task = expectTaskCreated(TaskWithOptionalInputFile.class);
         task.execute();
@@ -664,6 +717,26 @@ public class AnnotationProcessingTaskFactoryTest {
         }
     }
 
+    public static <T> T readField(Object target, Class<T> type, String name) {
+        Class<?> objectType = target.getClass();
+        while (objectType != null) {
+            try {
+                Field field = objectType.getDeclaredField(name);
+                field.setAccessible(true);
+                return (T) field.get(target);
+            } catch (NoSuchFieldException ignore) {
+                // ignore
+            } catch (Exception e) {
+                throw UncheckedException.throwAsUncheckedException(e);
+            }
+
+            objectType = objectType.getSuperclass();
+        }
+
+        throw new RuntimeException("Could not find field '" + name + "' with type '" + type.getClass() + "' on class '" + target.getClass() + "'");
+    }
+
+
     public static class TestTask extends DefaultTask {
         final Runnable action;
 
@@ -732,9 +805,39 @@ public class AnnotationProcessingTaskFactoryTest {
         }
     }
 
-    public static class TaskWithParamMethod extends DefaultTask {
+    public static class TaskWithIncrementalAction extends DefaultTask {
+        private final Action<IncrementalTaskInputs> action;
+
+        public TaskWithIncrementalAction(Action<IncrementalTaskInputs> action) {
+            this.action = action;
+        }
+
         @TaskAction
-        public void doStuff(int value) {
+        public void doStuff(IncrementalTaskInputs changes) {
+            action.execute(changes);
+        }
+    }
+
+    public static class TaskWithMultipleIncrementalActions extends DefaultTask {
+
+        @TaskAction
+        public void doStuff(IncrementalTaskInputs changes) {
+        }
+
+        @TaskAction
+        public void doStuff2(IncrementalTaskInputs changes) {
+        }
+    }
+
+    public static class TaskWithSingleParamAction extends DefaultTask {
+        @TaskAction
+        public void doStuff(int value1) {
+        }
+    }
+
+    public static class TaskWithMultiParamAction extends DefaultTask {
+        @TaskAction
+        public void doStuff(int value1, int value2) {
         }
     }
 
@@ -773,6 +876,19 @@ public class AnnotationProcessingTaskFactoryTest {
 
         @Input
         public String getInputValue() {
+            return inputValue;
+        }
+    }
+
+    public static class TaskWithBooleanInput extends DefaultTask {
+        boolean inputValue;
+
+        public TaskWithBooleanInput(boolean inputValue) {
+            this.inputValue = inputValue;
+        }
+
+        @Input
+        public boolean isInputValue() {
             return inputValue;
         }
     }
@@ -821,14 +937,15 @@ public class AnnotationProcessingTaskFactoryTest {
     }
     
     public static class TaskWithOptionalOutputFile extends DefaultTask {
-        @OutputFile @Optional
+        @OutputFile @org.gradle.api.tasks.Optional
         public File getOutputFile() {
             return null;
         }
     }
 
     public static class TaskWithOptionalOutputFiles extends DefaultTask {
-        @OutputFiles @Optional
+        @OutputFiles
+        @org.gradle.api.tasks.Optional
         public List<File> getOutputFiles() {
             return null;
         }
@@ -861,14 +978,14 @@ public class AnnotationProcessingTaskFactoryTest {
     }
     
     public static class TaskWithOptionalOutputDir extends DefaultTask {
-        @OutputDirectory @Optional
+        @OutputDirectory @org.gradle.api.tasks.Optional
         public File getOutputDir() {
             return null;
         }
     }
 
     public static class TaskWithOptionalOutputDirs extends DefaultTask {
-        @OutputDirectories @Optional
+        @OutputDirectories @org.gradle.api.tasks.Optional
         public File getOutputDirs() {
             return null;
         }
@@ -904,7 +1021,7 @@ public class AnnotationProcessingTaskFactoryTest {
     }
 
     public static class TaskWithOptionalInputFile extends DefaultTask {
-        @InputFile @Optional
+        @InputFile @org.gradle.api.tasks.Optional
         public File getInputFile() {
             return null;
         }
@@ -950,7 +1067,7 @@ public class AnnotationProcessingTaskFactoryTest {
     }
 
     public static class TaskWithOptionalNestedBean extends DefaultTask {
-        @Nested @Optional
+        @Nested @org.gradle.api.tasks.Optional
         public Bean getBean() {
             return null;
         }
@@ -959,7 +1076,7 @@ public class AnnotationProcessingTaskFactoryTest {
     public static class TaskWithOptionalNestedBeanWithPrivateType extends DefaultTask {
         Bean2 bean = new Bean2();
 
-        @Nested @Optional
+        @Nested @org.gradle.api.tasks.Optional
         public Bean getBean() {
             return null;
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011 the original author or authors.
+ * Copyright 2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,39 @@
  * limitations under the License.
  */
 
+apply from: "$rootDir/gradle/providedConfiguration.gradle"
+
+repositories {
+    maven { url "http://repo.gradle.org/gradle/integ-tests" }
+}
+
 dependencies {
+    // TODO - Cleanup and remove old SonarPlugin
+
     compile project(":core")
     compile project(":plugins")
+    compile project(":jacoco")
     compile libraries.groovy
-    compile "org.codehaus.sonar-plugins:sonar-runner:2.0"
 
+    // version number is part of module name, to allow for multiple versions on same class path
+    integTestRuntime "org.gradle.sonar:sonar-server-3.2:3.2@war"
+    integTestRuntime "org.gradle.sonar:sonar-test-server-home-dir-3.2:3.2@zip"
     integTestRuntime "org.gradle.sonar:sonar-test-server:3.4@war"
     integTestRuntime "org.gradle.sonar:sonar-test-server-home-dir:3.4.0.1@zip"
+
+    // Sonar plugin
+    compile libraries.guava
+    compile libraries.slf4j_api
+    compile libraries.inject
+    compile "org.codehaus.sonar:sonar-batch-bootstrapper:2.9@jar"
+    // minimal dependencies to make our code compile
+    // we don't ship these dependencies because sonar-batch-bootstrapper will download them (and many more) at runtime
+    provided "org.codehaus.sonar:sonar-batch:2.9@jar"
+    provided "org.codehaus.sonar:sonar-plugin-api:2.9@jar"
+    provided "commons-configuration:commons-configuration:1.6@jar"
+
+    integTestRuntime "org.sonarqube:sonarqube:4.3.2@zip"
 }
 
 useTestFixtures()
+useClassycle()

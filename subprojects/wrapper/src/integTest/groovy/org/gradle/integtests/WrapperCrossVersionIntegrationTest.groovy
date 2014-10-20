@@ -17,8 +17,14 @@ package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.CrossVersionIntegrationSpec
 import org.gradle.integtests.fixtures.executer.GradleDistribution
+import org.gradle.integtests.fixtures.executer.GradleExecuter
+import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 
 class WrapperCrossVersionIntegrationTest extends CrossVersionIntegrationSpec {
+    def setup() {
+        requireOwnGradleUserHomeDir()
+    }
+
     public void canUseWrapperFromPreviousVersionToRunCurrentVersion() {
         expect:
         checkWrapperWorksWith(previous, current)
@@ -43,8 +49,6 @@ task wrapper(type: Wrapper) {
     gradleVersion = '$executionVersion.version.version'
 }
 
-//(SF) not sure if we want to keep coverage for old 'urlRoot' that was already removed
-//I'm keeping it so that old versions are tested via the urlRoot.
 if (wrapper.hasProperty('urlRoot')) {
     println "configuring the wrapper using the old way: 'urlRoot'..."
     wrapper.urlRoot = '${executionVersion.binDistribution.parentFile.toURI()}'
@@ -60,8 +64,25 @@ task hello {
 }
 """
         version(wrapperGenVersion).withTasks('wrapper').run()
-        def result = version(wrapperGenVersion).usingExecutable('gradlew').withDeprecationChecksDisabled().withTasks('hello').run()
+        def result = version(wrapperGenVersion).usingExecutable('gradlew').withTasks('hello').run()
         assert result.output.contains("hello from $executionVersion.version.version")
+    }
+
+    GradleExecuter version(GradleDistribution dist) {
+        def executer = super.version(dist)
+        /**
+         * We additionally pass the gradle user home as a system property.
+         * Early gradle wrapper (< 1.7 don't honor --gradle-user-home command line option correctly
+         * and leaking gradle dist under test into ~/.gradle/wrapper.
+         */
+        if (!dist.wrapperSupportsGradleUserHomeCommandLineOption) {
+            if (!dist.supportsSpacesInGradleAndJavaOpts) {
+                // Don't use the test-specific location as this contains spaces
+                executer.withGradleUserHomeDir(new IntegrationTestBuildContext().gradleUserHomeDir)
+            }
+            executer.withGradleOpts("-Dgradle.user.home=${executer.gradleUserHomeDir}")
+        }
+        return executer
     }
 }
 

@@ -15,30 +15,75 @@
  */
 package org.gradle.api.internal.initialization;
 
+import groovy.lang.Closure;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
+import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.groovy.scripts.ScriptSource;
-import org.gradle.util.MutableURLClassLoader;
+import org.gradle.internal.Factory;
+import org.gradle.util.ConfigureUtil;
 
 import java.io.File;
-import java.net.MalformedURLException;
+import java.net.URI;
 
-public class DefaultScriptHandler extends AbstractScriptHandler {
+public class DefaultScriptHandler implements ScriptHandler {
 
-    public DefaultScriptHandler(ScriptSource scriptSource, RepositoryHandler repositoryHandler,
-                                DependencyHandler dependencyHandler, ConfigurationContainer configContainer,
-                                MutableURLClassLoader classLoader) {
-        super(classLoader, repositoryHandler, dependencyHandler, scriptSource, configContainer);
+    private final ScriptSource scriptSource;
+    private final RepositoryHandler repositoryHandler;
+    private final DependencyHandler dependencyHandler;
+    private final ConfigurationContainer configContainer;
+    private final Factory<ClassLoader> classLoaderFactory;
+    private final Configuration classpathConfiguration;
+
+    public DefaultScriptHandler(
+            ScriptSource scriptSource, RepositoryHandler repositoryHandler,
+            DependencyHandler dependencyHandler, ConfigurationContainer configContainer,
+            Factory<ClassLoader> classLoaderFactory
+    ) {
+        this.repositoryHandler = repositoryHandler;
+        this.dependencyHandler = dependencyHandler;
+        this.scriptSource = scriptSource;
+        this.configContainer = configContainer;
+        this.classLoaderFactory = classLoaderFactory;
+        classpathConfiguration = configContainer.create(CLASSPATH_CONFIGURATION);
     }
 
-    public void updateClassPath() {
-        for (File file : getClasspathConfiguration().getFiles()) {
-            try {
-                getClassLoader().addURL(file.toURI().toURL());
-            } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-            }
-        }
+    public void dependencies(Closure configureClosure) {
+        ConfigureUtil.configure(configureClosure, dependencyHandler);
     }
+
+    protected Configuration getClasspathConfiguration() {
+        return classpathConfiguration;
+    }
+
+    public DependencyHandler getDependencies() {
+        return dependencyHandler;
+    }
+
+    public RepositoryHandler getRepositories() {
+        return repositoryHandler;
+    }
+
+    public void repositories(Closure configureClosure) {
+        ConfigureUtil.configure(configureClosure, repositoryHandler);
+    }
+
+    public ConfigurationContainer getConfigurations() {
+        return configContainer;
+    }
+
+    public File getSourceFile() {
+        return scriptSource.getResource().getFile();
+    }
+
+    public URI getSourceURI() {
+        return scriptSource.getResource().getURI();
+    }
+
+    public ClassLoader getClassLoader() {
+        return classLoaderFactory.create();
+    }
+
 }

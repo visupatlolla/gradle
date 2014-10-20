@@ -24,8 +24,8 @@ import org.gradle.api.java.archives.internal.DefaultManifest
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
-import org.gradle.util.HelperUtil
 import org.gradle.util.JUnit4GroovyMockery
+import org.gradle.util.TestUtil
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -34,12 +34,9 @@ import static org.hamcrest.Matchers.*
 import static org.junit.Assert.assertEquals
 import static org.junit.Assert.assertThat
 
-/**
- * @author Hans Dockter
- */
 class JavaPluginConventionTest {
     private final JUnit4GroovyMockery context = new JUnit4GroovyMockery()
-    private DefaultProject project = HelperUtil.createRootProject()
+    private DefaultProject project = TestUtil.createRootProject()
     private Instantiator instantiator = project.services.get(Instantiator)
     private JavaPluginConvention convention
 
@@ -53,7 +50,6 @@ class JavaPluginConventionTest {
 
     @Test public void defaultValues() {
         assertThat(convention.sourceSets, instanceOf(DefaultSourceSetContainer))
-        assertThat(convention.manifest, notNullValue())
         assertEquals('dependency-cache', convention.dependencyCacheDirName)
         assertEquals('docs', convention.docsDirName)
         assertEquals('test-results', convention.testResultsDirName)
@@ -95,10 +91,10 @@ class JavaPluginConventionTest {
     @Test public void testTestReportDirIsCalculatedRelativeToReportsDir() {
         assertEquals(new File(project.buildDir, 'reports/tests'), convention.testReportDir)
 
-        project.reportsDirName = 'other-reports-dir'
+        project.reporting.baseDir = 'other-reports-dir'
         convention.testReportDirName = 'other-test-dir'
 
-        assertEquals(new File(project.buildDir, 'other-reports-dir/other-test-dir'), convention.testReportDir)
+        assertEquals(new File(project.projectDir, 'other-reports-dir/other-test-dir'), convention.testReportDir)
     }
 
     @Test public void testTargetCompatibilityDefaultsToSourceCompatibilityWhenNotSet() {

@@ -22,9 +22,6 @@ import org.objectweb.asm.Opcodes;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * @author Tom Eyckmans
- */
 class TestNGTestMethodDetecter extends MethodVisitor {
     private final TestNGTestClassDetecter testClassDetecter;
     private final Set<String> testMethodAnnotations = new HashSet<String>();
@@ -39,6 +36,7 @@ class TestNGTestMethodDetecter extends MethodVisitor {
         testMethodAnnotations.add("Lorg/testng/annotations/AfterTest;");
         testMethodAnnotations.add("Lorg/testng/annotations/BeforeGroups;");
         testMethodAnnotations.add("Lorg/testng/annotations/AfterGroups;");
+        testMethodAnnotations.add("Lorg/testng/annotations/Factory;");
     }
 
     public AnnotationVisitor visitAnnotation(String desc, boolean visible) {

@@ -45,8 +45,6 @@ import org.gradle.util.ConfigureUtil
  * }
  *
  * </pre>
- *
- * @author: Szczepan Faber, created at: 4/19/11
  */
 class EclipseWtp {
 
@@ -85,12 +83,6 @@ class EclipseWtp {
     void facet(Closure action) {
         ConfigureUtil.configure(action, facet)
     }
-
-    /**
-     * Deprecated. EclipseWtp needs access to EclipseClasspath. Please use the other constructor.
-     */
-    @Deprecated
-    public EclipseWtp() {}
 
     /**
      * @param eclipseClasspath - wtp needs access to classpath

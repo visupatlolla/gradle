@@ -18,10 +18,12 @@ package org.gradle.api.tasks.testing;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Incubating;
+import org.gradle.api.Transformer;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.file.UnionFileCollection;
 import org.gradle.api.internal.tasks.testing.junit.report.DefaultTestReport;
 import org.gradle.api.internal.tasks.testing.junit.result.AggregateTestResultsProvider;
+import org.gradle.api.internal.tasks.testing.junit.result.BinaryResultBackedTestResultsProvider;
 import org.gradle.api.internal.tasks.testing.junit.result.TestResultsProvider;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.OutputDirectory;
@@ -30,7 +32,11 @@ import org.gradle.api.tasks.TaskAction;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
+
+import static org.gradle.internal.concurrent.CompositeStoppable.stoppable;
+import static org.gradle.util.CollectionUtils.collect;
 
 /**
  * Generates an HTML test report from the results of one or more {@link Test} tasks.
@@ -117,8 +123,36 @@ public class TestReport extends DefaultTask {
 
     @TaskAction
     void generateReport() {
-        TestResultsProvider resultsProvider = new AggregateTestResultsProvider(getTestResultDirs().getFiles());
-        DefaultTestReport testReport = new DefaultTestReport();
-        testReport.generateReport(resultsProvider, getDestinationDir());
+        TestResultsProvider resultsProvider = createAggregateProvider();
+        try {
+            if (resultsProvider.isHasResults()) {
+                DefaultTestReport testReport = new DefaultTestReport();
+                testReport.generateReport(resultsProvider, getDestinationDir());
+            } else {
+                getLogger().info("{} - no binary test results found in dirs: {}.", getPath(), getTestResultDirs().getFiles());
+                setDidWork(false);
+            }
+        } finally {
+            stoppable(resultsProvider).stop();
+        }
+    }
+
+    private TestResultsProvider createAggregateProvider() {
+        List<TestResultsProvider> resultsProviders = new LinkedList<TestResultsProvider>();
+        try {
+            FileCollection resultDirs = getTestResultDirs();
+            if (resultDirs.getFiles().size() == 1) {
+                return new BinaryResultBackedTestResultsProvider(resultDirs.getSingleFile());
+            } else {
+                return new AggregateTestResultsProvider(collect(resultDirs, resultsProviders, new Transformer<TestResultsProvider, File>() {
+                    public TestResultsProvider transform(File dir) {
+                        return new BinaryResultBackedTestResultsProvider(dir);
+                    }
+                }));
+            }
+        } catch (RuntimeException e) {
+            stoppable(resultsProviders).stop();
+            throw e;
+        }
     }
 }

@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-
 package org.gradle.test.fixtures.maven
 
 import org.gradle.test.fixtures.file.TestFile
 
 /**
- * A fixture for dealing with local Maven repositories.
+ * A fixture for dealing with file Maven repositories.
  */
 class MavenFileRepository implements MavenRepository {
     final TestFile rootDir

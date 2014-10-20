@@ -23,7 +23,7 @@ import org.junit.Rule
 
 class SamplesApplicationIntegrationTest extends AbstractIntegrationSpec {
 
-    @Rule Sample sample = new Sample('application')
+    @Rule Sample sample = new Sample(temporaryFolder, 'application')
 
     def canRunTheApplicationUsingRunTask() {
         when:
@@ -35,7 +35,7 @@ class SamplesApplicationIntegrationTest extends AbstractIntegrationSpec {
 
     def canBuildAndRunTheInstalledApplication() {
         when:
-        executer.inDirectory(sample.dir).withTasks('installApp').run()
+        executer.inDirectory(sample.dir).withTasks('installDist').run()
 
         then:
         def installDir = sample.dir.file('build/install/application')

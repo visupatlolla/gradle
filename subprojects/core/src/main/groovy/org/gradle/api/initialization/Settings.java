@@ -19,6 +19,7 @@ package org.gradle.api.initialization;
 import org.gradle.StartParameter;
 import org.gradle.api.UnknownProjectException;
 import org.gradle.api.invocation.Gradle;
+import org.gradle.api.plugins.PluginAware;
 
 import java.io.File;
 
@@ -59,10 +60,8 @@ import java.io.File;
  * <li>Provided on the command-line using the -P option.</li>
  *
  * </ul>
- *
- * @author Hans Dockter
  */
-public interface Settings {
+public interface Settings extends PluginAware {
     /**
      * <p>The default name for the settings file.</p>
      */
@@ -71,7 +70,7 @@ public interface Settings {
     /**
      * <p>Adds the given projects to the build. Each path in the supplied list is treated as the path of a project to
      * add to the build. Note that these path are not file paths, but instead specify the location of the new project in
-     * the project heirarchy. As such, the supplied paths must use the ':' character as separator.</p>
+     * the project hierarchy. As such, the supplied paths must use the ':' character as separator.</p>
      *
      * <p>The last element of the supplied path is used as the project name. The supplied path is converted to a project
      * directory relative to the root project directory.</p>

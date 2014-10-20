@@ -16,6 +16,8 @@
 
 package org.gradle.tooling;
 
+import org.gradle.api.Incubating;
+
 import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -29,9 +31,10 @@ import java.io.OutputStream;
  * <p>
  * Allows providing standard input that can be consumed by the gradle operation (useful for interactive builds).
  * <p>
- * Enables configuring the build run / model request with options like the Java home or jvm arguments.
+ * Enables configuring the build run / model request with options like the Java home or JVM arguments.
  * Those settings might not be supported by the target Gradle version. Refer to Javadoc for those methods
  * to understand what kind of exception throw and when is it thrown.
+ *
  * @since 1.0-milestone-7
  */
 public interface LongRunningOperation {
@@ -40,7 +43,7 @@ public interface LongRunningOperation {
      * Sets the {@link java.io.OutputStream} which should receive standard output logging generated while running the operation.
      * The default is to discard the output.
      *
-     * @param outputStream The output stream.
+     * @param outputStream The output stream. The system default character encoding will be used to encode characters written to this stream.
      * @return this
      * @since 1.0-milestone-7
      */
@@ -50,31 +53,37 @@ public interface LongRunningOperation {
      * Sets the {@link OutputStream} which should receive standard error logging generated while running the operation.
      * The default is to discard the output.
      *
-     * @param outputStream The output stream.
+     * @param outputStream The output stream. The system default character encoding will be used to encode characters written to this stream.
      * @return this
      * @since 1.0-milestone-7
      */
     LongRunningOperation setStandardError(OutputStream outputStream);
 
     /**
-     * If the target Gradle version supports it you can use this setting
-     * to set the standard {@link java.io.InputStream} that will be used by builds.
-     * Useful when the tooling api drives interactive builds.
+     * Specifies whether to use colored (ansi encoded) output for logging
+     *
+     * @param colorOutput {@code true} to request color output (using ANSI encoding).
+     * @return this
+     * @since 2.3
+     */
+    @Incubating
+    LongRunningOperation setColorOutput(boolean colorOutput);
+
+    /**
+     * Sets the {@link java.io.InputStream} that will be used as standard input for this operation.
+     * Defaults to an empty input stream.
      * <p>
-     * If the target Gradle version does not support it the long running operation will fail eagerly with
+     * If the target Gradle version does not support it the long running operation will fail with
      * {@link org.gradle.tooling.exceptions.UnsupportedOperationConfigurationException} when the operation is started.
-     * <p>
-     * If not configured or null passed the dummy input stream with zero bytes is used to avoid the build hanging problems.
      *
      * @param inputStream The input stream
      * @return this
-     * @since 1.0-milestone-7
+     * @since 1.0-milestone-8
      */
     LongRunningOperation setStandardInput(InputStream inputStream);
 
     /**
-     * If the target Gradle version supports it you can use this setting
-     * to specify the Java home directory to use for the long running operation.
+     * Specifies the Java home directory to use for this operation.
      * <p>
      * If the target Gradle version does not support it the long running operation will fail eagerly with
      * {@link org.gradle.tooling.exceptions.UnsupportedOperationConfigurationException} when the operation is started.
@@ -92,8 +101,7 @@ public interface LongRunningOperation {
     LongRunningOperation setJavaHome(File javaHome) throws IllegalArgumentException;
 
     /**
-     * If the target Gradle version supports it you can use this setting
-     * to specify the Java vm arguments to use for the long running operation.
+     * Specifies the Java VM arguments to use for this operation.
      * <p>
      * If the target Gradle version does not support it the long running operation will fail eagerly with
      * {@link org.gradle.tooling.exceptions.UnsupportedOperationConfigurationException} when the operation is started.
@@ -123,8 +131,8 @@ public interface LongRunningOperation {
      * will be thrown at the time the operation is executed via {@link BuildLauncher#run()} or {@link ModelBuilder#get()}.
      * <p>
      * For the list of all Gradle command line options please refer to the user guide
-     * or take a look at the output of the 'gradle -?' command. Supported arguments are those modeled by
-     * {@link org.gradle.StartParameter}.
+     * or take a look at the output of the 'gradle -?' command. Majority of arguments modeled by
+     * {@link org.gradle.StartParameter} are supported.
      * <p>
      * The arguments can potentially override some other settings you have configured.
      * For example, the project directory or Gradle user home directory that are configured
@@ -136,7 +144,7 @@ public interface LongRunningOperation {
      *
      * @param arguments Gradle command line arguments
      * @return this
-     * @since 1.0-rc-1
+     * @since 1.0
      */
     LongRunningOperation withArguments(String ... arguments);
 
@@ -149,4 +157,11 @@ public interface LongRunningOperation {
      */
     LongRunningOperation addProgressListener(ProgressListener listener);
 
+    /**
+     * Sets the cancellation token to use to cancel the operation if required.
+     *
+     * @since 2.1
+     */
+    @Incubating
+    LongRunningOperation withCancellationToken(CancellationToken cancellationToken);
 }

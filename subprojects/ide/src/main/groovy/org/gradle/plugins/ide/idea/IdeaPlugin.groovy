@@ -13,28 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.gradle.plugins.ide.idea;
-
+package org.gradle.plugins.ide.idea
 
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.plugins.JavaPlugin
+import org.gradle.api.plugins.scala.ScalaBasePlugin
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.plugins.ide.api.XmlFileContentMerger
 import org.gradle.plugins.ide.idea.internal.IdeaNameDeduper
+import org.gradle.plugins.ide.idea.internal.IdeaScalaConfigurer
+import org.gradle.plugins.ide.idea.model.IdeaLanguageLevel
+import org.gradle.plugins.ide.idea.model.IdeaModel
+import org.gradle.plugins.ide.idea.model.IdeaModule
+import org.gradle.plugins.ide.idea.model.IdeaModuleIml
+import org.gradle.plugins.ide.idea.model.IdeaProject
+import org.gradle.plugins.ide.idea.model.IdeaWorkspace
+import org.gradle.plugins.ide.idea.model.PathFactory
 import org.gradle.plugins.ide.internal.IdePlugin
-import org.gradle.plugins.ide.idea.model.*
 
 import javax.inject.Inject
 
 /**
  * Adds a GenerateIdeaModule task. When applied to a root project, also adds a GenerateIdeaProject task.
  * For projects that have the Java plugin applied, the tasks receive additional Java-specific configuration.
- *
- *  @author Hans Dockter
  */
 class IdeaPlugin extends IdePlugin {
-
     private final Instantiator instantiator
     IdeaModel model
 
@@ -57,6 +61,7 @@ class IdeaPlugin extends IdePlugin {
         configureIdeaProject(project)
         configureIdeaModule(project)
         configureForJavaPlugin(project)
+        configureForScalaPlugin()
 
         hookDeduplicationToTheRoot(project)
     }
@@ -153,12 +158,13 @@ class IdeaPlugin extends IdePlugin {
         project.ideaModule {
             module.conventionMapping.sourceDirs = { project.sourceSets.main.allSource.srcDirs as LinkedHashSet }
             module.conventionMapping.testSourceDirs = { project.sourceSets.test.allSource.srcDirs as LinkedHashSet }
+            module.scopes = [:]
             def configurations = project.configurations
             module.scopes = [
                     PROVIDED: [plus: [], minus: []],
-                    COMPILE: [plus: [configurations.compile], minus: []],
-                    RUNTIME: [plus: [configurations.runtime], minus: [configurations.compile]],
-                    TEST: [plus: [configurations.testRuntime], minus: [configurations.runtime]]
+                    COMPILE: [plus: [], minus: []],
+                    RUNTIME: [plus: [], minus: []],
+                    TEST: [plus: [], minus: []]
             ]
             module.conventionMapping.singleEntryLibraries = {
                 [
@@ -169,6 +175,16 @@ class IdeaPlugin extends IdePlugin {
             dependsOn {
                 project.sourceSets.main.output.dirs + project.sourceSets.test.output.dirs
             }
+        }
+    }
+
+    private void configureForScalaPlugin() {
+        project.plugins.withType(ScalaBasePlugin) {
+            //see IdeaScalaConfigurer
+            project.tasks.ideaModule.dependsOn(project.rootProject.tasks.ideaProject)
+        }
+        if (isRoot(project)) {
+            new IdeaScalaConfigurer(project).configure()
         }
     }
 

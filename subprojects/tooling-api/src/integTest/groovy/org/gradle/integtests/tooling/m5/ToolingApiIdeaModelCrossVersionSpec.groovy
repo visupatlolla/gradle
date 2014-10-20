@@ -15,14 +15,10 @@
  */
 package org.gradle.integtests.tooling.m5
 
-import org.gradle.integtests.tooling.fixture.MinTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.test.fixtures.maven.MavenFileRepository
 import org.gradle.tooling.model.idea.*
 
-@MinToolingApiVersion('1.0-milestone-5')
-@MinTargetGradleVersion('1.0-milestone-5')
 class ToolingApiIdeaModelCrossVersionSpec extends ToolingApiSpecification {
 
     def "builds the model even if idea plugin not applied"() {

@@ -16,14 +16,11 @@
 package org.gradle.plugins.ide.eclipse.model;
 
 
-import org.gradle.api.internal.xml.XmlTransformer
+import org.gradle.internal.xml.XmlTransformer
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
-/**
- * @author Hans Dockter
- */
 public class ProjectTest extends Specification {
     def static final CUSTOM_REFERENCED_PROJECTS = ['refProject'] as LinkedHashSet
     def static final CUSTOM_BUILD_COMMANDS = [new BuildCommand('org.eclipse.jdt.core.scalabuilder', [climate: 'cold'])]

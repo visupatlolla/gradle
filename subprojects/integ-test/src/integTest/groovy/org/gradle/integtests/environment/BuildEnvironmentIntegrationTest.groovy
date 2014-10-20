@@ -25,9 +25,6 @@ import org.gradle.util.TextUtil
 import spock.lang.IgnoreIf
 import spock.lang.Issue
 
-/**
- * @author: Szczepan Faber, created at: 8/11/11
- */
 class BuildEnvironmentIntegrationTest extends AbstractIntegrationSpec {
     def "canonicalizes working directory"() {
         given:
@@ -130,9 +127,9 @@ assert classesDir.directory
         noExceptionThrown()
     }
 
-    @IgnoreIf({ AvailableJavaHomes.bestAlternative == null})
+    @IgnoreIf({ AvailableJavaHomes.differentJdk == null})
     def "java home from environment should be used to run build"() {
-        def alternateJavaHome = AvailableJavaHomes.bestAlternative
+        def alternateJavaHome = AvailableJavaHomes.differentJdk.javaHome
 
         file('build.gradle') << "println 'javaHome=' + org.gradle.internal.jvm.Jvm.current().javaHome.canonicalPath"
 
@@ -149,9 +146,9 @@ assert classesDir.directory
         out.contains("javaHome=" + alternateJavaHome.canonicalPath)
     }
 
-    @IgnoreIf({ AvailableJavaHomes.bestAlternative == null})
+    @IgnoreIf({ AvailableJavaHomes.differentJdk == null})
     def "java home from gradle properties should be used to run build"() {
-        def alternateJavaHome = AvailableJavaHomes.bestAlternative
+        def alternateJavaHome = AvailableJavaHomes.differentJdk.javaHome
 
         file('gradle.properties') << "org.gradle.java.home=${TextUtil.escapeString(alternateJavaHome.canonicalPath)}"
 
@@ -159,7 +156,7 @@ assert classesDir.directory
 
         when:
         // Need the forking executer for this to work. Embedded executer will not fork a new process if jvm doesn't match.
-        def out = executer.requireGradleHome(true).run().output
+        def out = executer.requireGradleHome().run().output
 
         then:
         out.contains("javaHome=" + alternateJavaHome.canonicalPath)
@@ -174,7 +171,7 @@ assert System.getProperty('some-prop') == 'some-value'
 """
 
         when:
-        executer.requireGradleHome(true).withNoDefaultJvmArgs().run()
+        executer.requireGradleHome().withNoDefaultJvmArgs().run()
 
         then:
         noExceptionThrown()

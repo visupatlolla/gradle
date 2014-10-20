@@ -18,17 +18,16 @@ package org.gradle.api.tasks.diagnostics.internal.dsl
 
 import org.gradle.api.artifacts.result.DependencyResult
 import org.gradle.api.internal.artifacts.result.ResolutionResultDataBuilder
-import org.gradle.api.internal.notations.api.NotationParser
 import org.gradle.api.specs.Spec
+import org.gradle.internal.typeconversion.NotationParser
+import org.gradle.internal.typeconversion.UnsupportedNotationException
 import spock.lang.Specification
-import org.gradle.api.InvalidUserDataException
 
-/**
- * by Szczepan Faber, created at: 10/9/12
- */
+import static org.gradle.util.TextUtil.toPlatformLineSeparators
+
 class DependencyResultSpecNotationParserSpec extends Specification {
 
-    NotationParser<Spec<DependencyResult>> parser = DependencyResultSpecNotationParser.create()
+    NotationParser<Object, Spec<DependencyResult>> parser = DependencyResultSpecNotationParser.create()
 
     def "accepts closures"() {
         given:
@@ -36,7 +35,7 @@ class DependencyResultSpecNotationParserSpec extends Specification {
         def other = ResolutionResultDataBuilder.newDependency('org.mockito', 'other')
 
         when:
-        def spec = parser.parseNotation( { it.requested.name == 'mockito-core' } )
+        def spec = parser.parseNotation( { it.requested.module == 'mockito-core' } )
 
         then:
         spec.isSatisfiedBy(mockito)
@@ -64,7 +63,7 @@ class DependencyResultSpecNotationParserSpec extends Specification {
         when:
         def spec = parser.parseNotation(new Spec<DependencyResult>() {
             boolean isSatisfiedBy(DependencyResult element) {
-                return element.getRequested().getName().equals('mockito-core')
+                return element.requested.module == 'mockito-core'
             }
         })
 
@@ -78,20 +77,25 @@ class DependencyResultSpecNotationParserSpec extends Specification {
         parser.parseNotation(['not supported'])
 
         then:
-        def ex = thrown(InvalidUserDataException)
-        ex.message.contains 'not supported'
-        ex.message.contains 'DependencyInsight.dependency'
+        def ex = thrown(UnsupportedNotationException)
+        ex.message == toPlatformLineSeparators("""Cannot convert the provided notation to an object of type Spec: [not supported].
+The following types/formats are supported:
+  - Instances of Spec.
+  - Closure that returns boolean and takes a single DependencyResult as a parameter.
+  - Non-empty String or CharSequence value, e.g. 'some-lib' or 'org.libs:some-lib'.
+
+Please check the input for the DependencyInsight.dependency element.""")
     }
 
     def "does not accept empty Strings"() {
         when:
         parser.parseNotation('')
         then:
-        thrown(InvalidUserDataException)
+        thrown(UnsupportedNotationException)
 
         when:
         parser.parseNotation(' ')
         then:
-        thrown(InvalidUserDataException)
+        thrown(UnsupportedNotationException)
     }
 }

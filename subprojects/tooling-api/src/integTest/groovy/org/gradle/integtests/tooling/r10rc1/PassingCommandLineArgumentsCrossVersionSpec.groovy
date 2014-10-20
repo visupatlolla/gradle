@@ -18,16 +18,13 @@
 
 package org.gradle.integtests.tooling.r10rc1
 
-import org.gradle.integtests.tooling.fixture.ConfigurableOperation
-import org.gradle.integtests.tooling.fixture.MinTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
+import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.exceptions.UnsupportedBuildArgumentException
 import org.gradle.tooling.model.GradleProject
 
-@MinToolingApiVersion("1.0-rc-1")
-@MinTargetGradleVersion("1.0-rc-2")
+@TargetGradleVersion(">=1.0")
 class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecification {
 
 //    We don't want to validate *all* command line options here, just enough to make sure passing through works.
@@ -83,7 +80,7 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
 
     def "can use custom log level"() {
         //logging infrastructure is not installed when running in-process to avoid issues
-        toolingApi.isEmbedded = false
+        toolingApi.requireDaemons()
 
         given:
         file("build.gradle") << """
@@ -92,20 +89,10 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
 """
 
         when:
-        def debug = withConnection {
-            def build = it.newBuild().withArguments('-d')
-            def op = new ConfigurableOperation(build)
-            build.run()
-            op.standardOutput
-        }
+        String debug = withBuild { it.withArguments('-d') }.standardOutput
 
         and:
-        def info = withConnection {
-            def build = it.newBuild().withArguments('-i')
-            def op = new ConfigurableOperation(build)
-            build.run()
-            op.standardOutput
-        }
+        String info = withBuild { it.withArguments('-i') }.standardOutput
 
         then:
         debug.count("debugging stuff") == 1
@@ -118,7 +105,7 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
 
     def "gives decent feedback for invalid option"() {
         when:
-        maybeFailWithConnection { ProjectConnection it ->
+        withConnection { ProjectConnection it ->
             it.newBuild().withArguments('--foreground').run()
         }
 
@@ -155,12 +142,11 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
         noExceptionThrown()
     }
 
-    def "can overwrite searchUpwards via build arguments"() {
+    def "can configure searchUpwards via build arguments"() {
         given:
         file('build.gradle') << "assert !gradle.startParameter.searchUpwards"
 
         when:
-        toolingApi.withConnector { it.searchUpwards(true) }
         withConnection {
             it.newBuild().withArguments('-u').run()
         }

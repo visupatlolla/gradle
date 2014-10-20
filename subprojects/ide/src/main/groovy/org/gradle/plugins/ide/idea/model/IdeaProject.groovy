@@ -16,6 +16,7 @@
 
 package org.gradle.plugins.ide.idea.model
 
+import org.gradle.api.Incubating
 import org.gradle.plugins.ide.api.XmlFileContentMerger
 import org.gradle.util.ConfigureUtil
 
@@ -26,6 +27,8 @@ import org.gradle.util.ConfigureUtil
  * Typically you don't have configure IDEA module directly because Gradle configures it for you.
  *
  * <pre autoTested=''>
+ * import org.gradle.plugins.ide.idea.model.*
+ *
  * apply plugin: 'java'
  * apply plugin: 'idea'
  *
@@ -38,16 +41,22 @@ import org.gradle.util.ConfigureUtil
  *     //you can update the source wildcards
  *     wildcards += '!?*.ruby'
  *
- *     //you can change the modules of the the *.ipr
+ *     //you can configure the VCS used by the project
+ *     vcs = 'Git'
+ *
+ *     //you can change the modules of the *.ipr
  *     //modules = project(':someProject').idea.module
  *
  *     //you can change the output file
  *     outputFile = new File(outputFile.parentFile, 'someBetterName.ipr')
+ *
+ *     //you can add project-level libraries
+ *     projectLibraries &lt;&lt; new ProjectLibrary(name: "my-library", classes: [new File("path/to/library")])
  *   }
  * }
  * </pre>
  *
- * For tackling edge cases users can perform advanced configuration on resulting xml file.
+ * For tackling edge cases users can perform advanced configuration on resulting XML file.
  * It is also possible to affect the way IDEA plugin merges the existing configuration
  * via beforeMerged and whenMerged closures.
  * <p>
@@ -83,8 +92,6 @@ import org.gradle.util.ConfigureUtil
  *   }
  * }
  * </pre>
- *
- * @author Szczepan Faber, created at: 4/4/11
  */
 class IdeaProject {
 
@@ -115,6 +122,16 @@ class IdeaProject {
     }
 
     /**
+     * The vcs for the project.
+     * <p>
+     * Values are the same as used in IDEA's “Version Control” preference window (e.g. 'Git', 'Subversion').
+     * <p>
+     * See the examples in the docs for {@link IdeaProject}.
+     */
+    @Incubating
+    String vcs
+
+    /**
      * The wildcard resource patterns.
      * <p>
      * See the examples in the docs for {@link IdeaProject}.
@@ -129,6 +146,12 @@ class IdeaProject {
     File outputFile
 
     /**
+     * The project-level libraries to be added to the IDEA project.
+     */
+    @Incubating
+    Set<ProjectLibrary> projectLibraries = [] as LinkedHashSet
+
+    /**
      * The name of the IDEA project. It is a convenience property that returns the name of the output file (without the file extension).
      * In IDEA, the project name is driven by the name of the 'ipr' file.
      */
@@ -137,7 +160,7 @@ class IdeaProject {
     }
 
     /**
-     * Enables advanced configuration like tinkering with the output xml
+     * Enables advanced configuration like tinkering with the output XML
      * or affecting the way existing *.ipr content is merged with Gradle build information.
      * <p>
      * See the examples in the docs for {@link IdeaProject}
@@ -162,7 +185,7 @@ class IdeaProject {
         def modulePaths = getModules().collect {
             getPathFactory().relativePath('PROJECT_DIR', it.outputFile)
         }
-        xmlProject.configure(modulePaths, getJdkName(), getLanguageLevel(), getWildcards())
+        xmlProject.configure(modulePaths, getJdkName(), getLanguageLevel(), getWildcards(), getProjectLibraries(), getVcs())
         ipr.whenMerged.execute(xmlProject)
     }
 }

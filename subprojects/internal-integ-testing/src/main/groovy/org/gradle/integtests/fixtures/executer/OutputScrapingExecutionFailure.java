@@ -15,32 +15,113 @@
  */
 package org.gradle.integtests.fixtures.executer;
 
+import org.gradle.util.TextUtil;
 import org.hamcrest.Matcher;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
-import static org.hamcrest.Matchers.not;
-import static org.gradle.util.Matchers.containsLine;
-import static org.gradle.util.Matchers.matchesRegexp;
-import static org.hamcrest.Matchers.containsString;
+import static org.gradle.util.Matchers.isEmpty;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 public class OutputScrapingExecutionFailure extends OutputScrapingExecutionResult implements ExecutionFailure {
-    private final Pattern causePattern = Pattern.compile("(?m)\\s*> ");
+    private static final Pattern FAILURE_PATTERN = Pattern.compile("(?m)FAILURE: .+$");
+    private static final Pattern CAUSE_PATTERN = Pattern.compile("(?m)(^\\s*> )");
+    private static final Pattern DESCRIPTION_PATTERN = Pattern.compile("(?ms)^\\* What went wrong:$(.+?)^\\* Try:$");
+    private static final Pattern LOCATION_PATTERN = Pattern.compile("(?ms)^\\* Where:((.+)'.+') line: (\\d+)$");
+    private static final Pattern RESOLUTION_PATTERN = Pattern.compile("(?ms)^\\* Try:$(.+?)^\\* Exception is:$");
+    private final String description;
+    private final String lineNumber;
+    private final String fileName;
+    private final String resolution;
+    private final List<String> causes = new ArrayList<String>();
 
     public OutputScrapingExecutionFailure(String output, String error) {
         super(output, error);
+
+        java.util.regex.Matcher matcher = FAILURE_PATTERN.matcher(error);
+        if (matcher.find()) {
+            if (matcher.find()) {
+                throw new AssertionError("Found multiple failure sections in build error output.");
+            }
+        }
+
+        matcher = LOCATION_PATTERN.matcher(error);
+        if (matcher.find()) {
+            fileName = matcher.group(1).trim();
+            lineNumber = matcher.group(3);
+        } else {
+            fileName = "";
+            lineNumber = "";
+        }
+
+        matcher = DESCRIPTION_PATTERN.matcher(error);
+        if (matcher.find()) {
+            String problemStr = matcher.group(1);
+            Problem problem = extract(problemStr);
+            description = problem.description;
+            causes.addAll(problem.causes);
+            while (matcher.find()) {
+                problemStr = matcher.group(1);
+                problem = extract(problemStr);
+                causes.addAll(problem.causes);
+            }
+        } else {
+            description = "";
+        }
+
+        matcher = RESOLUTION_PATTERN.matcher(error);
+        if (!matcher.find()) {
+            resolution = "";
+        } else {
+            resolution = matcher.group(1).trim();
+        }
+    }
+
+    private Problem extract(String problem) {
+        java.util.regex.Matcher matcher = CAUSE_PATTERN.matcher(problem);
+        String description;
+        List<String> causes = new ArrayList<String>();
+        if (!matcher.find()) {
+            description = TextUtil.normaliseLineSeparators(problem.trim());
+        } else {
+            description = TextUtil.normaliseLineSeparators(problem.substring(0, matcher.start()).trim());
+            while (true) {
+                int pos = matcher.end();
+                int prefix = matcher.group(1).length();
+                String prefixPattern = toPrefixPattern(prefix);
+                if (matcher.find(pos)) {
+                    String cause = TextUtil.normaliseLineSeparators(problem.substring(pos, matcher.start()).trim().replaceAll(prefixPattern, ""));
+                    causes.add(cause);
+                } else {
+                    String cause = TextUtil.normaliseLineSeparators(problem.substring(pos).trim().replaceAll(prefixPattern, ""));
+                    causes.add(cause);
+                    break;
+                }
+            }
+        }
+        return new Problem(description, causes);
+    }
+
+    private String toPrefixPattern(int prefix) {
+        StringBuilder builder = new StringBuilder("(?m)^");
+        for (int i = 0; i < prefix; i++) {
+            builder.append(' ');
+        }
+        return builder.toString();
     }
 
     public ExecutionFailure assertHasLineNumber(int lineNumber) {
-        assertThat(getError(), containsString(String.format(" line: %d", lineNumber)));
+        assertThat(this.lineNumber, equalTo(String.valueOf(lineNumber)));
         return this;
     }
 
     public ExecutionFailure assertHasFileName(String filename) {
-        assertThat(getError(), containsLine(startsWith(filename)));
+        assertThat(this.fileName, equalTo(filename));
         return this;
     }
 
@@ -50,42 +131,32 @@ public class OutputScrapingExecutionFailure extends OutputScrapingExecutionResul
     }
 
     public ExecutionFailure assertThatCause(Matcher<String> matcher) {
-        String error = getError();
-        java.util.regex.Matcher regExpMatcher = causePattern.matcher(error);
-        int pos = 0;
-        while (pos < error.length()) {
-            if (!regExpMatcher.find(pos)) {
-                break;
-            }
-            int start = regExpMatcher.end();
-            String cause;
-            if (regExpMatcher.find(start)) {
-                cause = error.substring(start, regExpMatcher.start());
-                pos = regExpMatcher.start();
-            } else {
-                cause = error.substring(start);
-                pos = error.length();
-            }
+        for (String cause : causes) {
             if (matcher.matches(cause)) {
                 return this;
             }
         }
-        fail(String.format("No matching cause found in '%s'", error));
+        fail(String.format("No matching cause found in %s", causes));
+        return this;
+    }
+
+    public ExecutionFailure assertHasResolution(String resolution) {
+        assertThat(this.resolution, equalTo(resolution));
         return this;
     }
 
     public ExecutionFailure assertHasNoCause() {
-        assertThat(getError(), not(matchesRegexp(causePattern)));
+        assertThat(causes, isEmpty());
         return this;
     }
 
     public ExecutionFailure assertHasDescription(String context) {
-        assertThatDescription(startsWith(context));
+        assertThatDescription(equalTo(context));
         return this;
     }
 
     public ExecutionFailure assertThatDescription(Matcher<String> matcher) {
-        assertThat(getError(), containsLine(matcher));
+        assertThat(description, matcher);
         return this;
     }
 
@@ -94,7 +165,17 @@ public class OutputScrapingExecutionFailure extends OutputScrapingExecutionResul
         return this;
     }
 
-    public DependencyResolutionFailure getDependencyResolutionFailure() {
-        return new DependencyResolutionFailure(this);
+    public DependencyResolutionFailure assertResolutionFailure(String configurationPath) {
+        return new DependencyResolutionFailure(this, configurationPath);
+    }
+
+    private static class Problem {
+        final String description;
+        final List<String> causes;
+
+        private Problem(String description, List<String> causes) {
+            this.description = description;
+            this.causes = causes;
+        }
     }
 }

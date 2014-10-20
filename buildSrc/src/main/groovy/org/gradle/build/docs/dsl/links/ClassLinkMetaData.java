@@ -16,6 +16,7 @@
 package org.gradle.build.docs.dsl.links;
 
 import org.gradle.build.docs.dsl.source.model.ClassMetaData;
+import org.gradle.build.docs.dsl.source.model.EnumConstantMetaData;
 import org.gradle.build.docs.dsl.source.model.MethodMetaData;
 import org.gradle.build.docs.model.Attachable;
 import org.gradle.build.docs.model.ClassMetaDataRepository;
@@ -42,6 +43,9 @@ public class ClassLinkMetaData implements Serializable, Attachable<ClassLinkMeta
         for (MethodMetaData method : classMetaData.getDeclaredMethods()) {
             addMethod(method, style);
         }
+        for (EnumConstantMetaData enumConstant : classMetaData.getEnumConstants()) {
+            addEnumConstant(enumConstant, style);
+        }
     }
 
     public LinkMetaData getClassLink() {
@@ -61,6 +65,11 @@ public class ClassLinkMetaData implements Serializable, Attachable<ClassLinkMeta
     }
 
     private MethodLinkMetaData findMethod(String method) {
+        if (method.endsWith("...)")) {
+            // Should reuse the link parsing stuff from JavadocLinkConverter instead
+            method = method.substring(0, method.length() - 4) + "[])";
+        }
+
         MethodLinkMetaData metaData = methods.get(method);
         if (metaData != null) {
             return metaData;
@@ -75,15 +84,15 @@ public class ClassLinkMetaData implements Serializable, Attachable<ClassLinkMeta
         if (candidates.isEmpty()) {
             String message = String.format("No method '%s' found for class '%s'.", method, className);
             message += "\nThis problem may happen when some apilink from docbook template xmls refers to unknown method."
-                    +  "\nExample: <apilink class=\"org.gradle.api.Project\" method=\"someMethodThatDoesNotExist\"/>";
+                    + "\nExample: <apilink class=\"org.gradle.api.Project\" method=\"someMethodThatDoesNotExist\"/>";
             throw new RuntimeException(message);
         }
         if (candidates.size() != 1) {
             String message = String.format("Found multiple methods called '%s' in class '%s'. Candidates: %s",
                     method, className, CollectionUtils.join(", ", candidates));
             message += "\nThis problem may happen when some apilink from docbook template xmls is incorrect. Example:"
-                    +  "\nIncorrect: <apilink class=\"org.gradle.api.Project\" method=\"tarTree\"/>"
-                    +  "\nCorrect:   <apilink class=\"org.gradle.api.Project\" method=\"tarTree(Object)\"/>";
+                    + "\nIncorrect: <apilink class=\"org.gradle.api.Project\" method=\"tarTree\"/>"
+                    + "\nCorrect:   <apilink class=\"org.gradle.api.Project\" method=\"tarTree(Object)\"/>";
             throw new RuntimeException(message);
         }
         return candidates.get(0);
@@ -99,6 +108,11 @@ public class ClassLinkMetaData implements Serializable, Attachable<ClassLinkMeta
 
     public void addMethod(MethodMetaData method, LinkMetaData.Style style) {
         methods.put(method.getOverrideSignature(), new MethodLinkMetaData(method.getName(), method.getOverrideSignature(), style));
+    }
+
+    public void addEnumConstant(EnumConstantMetaData enumConstant, LinkMetaData.Style style) {
+        String name = enumConstant.getName();
+        methods.put(name, new EnumConstantLinkMetaData(name, style));
     }
 
     public void addBlockMethod(MethodMetaData method) {
@@ -159,6 +173,17 @@ public class ClassLinkMetaData implements Serializable, Attachable<ClassLinkMeta
         @Override
         public String getUrlFragment(String className) {
             return String.format("%s:%s", className, propertyName);
+        }
+    }
+
+    private static class EnumConstantLinkMetaData extends MethodLinkMetaData {
+        private EnumConstantLinkMetaData(String name, LinkMetaData.Style style) {
+            super(name, name, style);
+        }
+
+        @Override
+        public String getDisplayName() {
+            return name;
         }
     }
 }

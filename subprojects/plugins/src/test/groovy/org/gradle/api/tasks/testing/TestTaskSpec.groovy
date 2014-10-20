@@ -21,12 +21,9 @@ import org.gradle.api.internal.tasks.testing.TestResultProcessor
 import org.gradle.api.internal.tasks.testing.detection.TestExecuter
 import org.gradle.api.internal.tasks.testing.junit.report.TestReporter
 import org.gradle.listener.ListenerBroadcast
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
-/**
- * by Szczepan Faber, created at: 12/7/12
- */
 class TestTaskSpec extends Specification {
 
     private testExecuter = Mock(TestExecuter)
@@ -34,7 +31,7 @@ class TestTaskSpec extends Specification {
     private testListenerBroadcaster = Mock(ListenerBroadcast)
     private testOutputListenerBroadcaster = Mock(ListenerBroadcast)
 
-    private task = HelperUtil.createTask(Test, [testExecuter: testExecuter, testFramework: testFramework,
+    private task = TestUtil.createTask(Test, [testExecuter: testExecuter, testFramework: testFramework,
             testListenerBroadcaster: testListenerBroadcaster, testOutputListenerBroadcaster: testOutputListenerBroadcaster])
 
     public setup(){
@@ -43,19 +40,21 @@ class TestTaskSpec extends Specification {
     }
 
     def "adds listeners and removes after execution"() {
+        task.setTestNameIncludePattern("Foo")
+
         when:
         task.executeTests()
 
         then:
-        3 * testListenerBroadcaster.add(_)
+        4 * testListenerBroadcaster.add(_)
         2 * testOutputListenerBroadcaster.add(_)
 
         then:
         1 * testExecuter.execute(task, _ as TestResultProcessor)
 
         then:
-        1 * testListenerBroadcaster.removeAll({it.size() == 3})
-        1 * testOutputListenerBroadcaster.removeAll({it.size() == 2})
+        1 * testListenerBroadcaster.removeAll()
+        1 * testOutputListenerBroadcaster.removeAll()
     }
 
     def "removes listeners even if execution fails"() {
@@ -69,7 +68,7 @@ class TestTaskSpec extends Specification {
         ex.message == "Boo!"
 
         and:
-        1 * testListenerBroadcaster.removeAll({it.size() == 3})
-        1 * testOutputListenerBroadcaster.removeAll({it.size() == 2})
+        1 * testListenerBroadcaster.removeAll()
+        1 * testOutputListenerBroadcaster.removeAll()
     }
 }

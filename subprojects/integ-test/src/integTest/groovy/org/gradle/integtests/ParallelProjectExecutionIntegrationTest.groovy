@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-package org.gradle.integtests;
+package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.junit.Rule
+import spock.lang.IgnoreIf
 
+@IgnoreIf({GradleContextualExecuter.parallel}) // no point, always runs in parallel
 public class ParallelProjectExecutionIntegrationTest extends AbstractIntegrationSpec {
 
     @Rule public final BlockingHttpServer blockingServer = new BlockingHttpServer()
@@ -29,24 +32,30 @@ public class ParallelProjectExecutionIntegrationTest extends AbstractIntegration
 
         settingsFile << 'include "a", "b", "c", "d"'
         buildFile << """
+assert gradle.startParameter.parallelThreadCount != 0
 allprojects {
-    task pingServer << {
-        URL url = new URL("http://localhost:${blockingServer.port}/" + project.path)
-        println url.openConnection().getHeaderField('RESPONSE')
+    tasks.addRule("ping<>") { String name ->
+        if (name.startsWith("ping")) {
+            tasks.create(name) {
+                doLast {
+                    URL url = new URL("http://localhost:${blockingServer.port}/" + path)
+                    println url.openConnection().getHeaderField('RESPONSE')
+                }
+            }
+        }
     }
 }
 """
-        executer.withArgument('--parallel')
+        executer.withArgument('--parallel-threads=3') // needs to be set to the maximum number of expectConcurrentExecution() calls
         executer.withArgument('--info')
     }
 
     def "executes dependency project targets concurrently"() {
-
         projectDependency from: 'a', to: ['b', 'c', 'd']
 
         expect:
-        blockingServer.expectConcurrentExecution(':b', ':c', ':d')
-        blockingServer.expectConcurrentExecution(':a')
+        blockingServer.expectConcurrentExecution(':b:pingServer', ':c:pingServer', ':d:pingServer')
+        blockingServer.expectConcurrentExecution(':a:pingServer')
 
         run ':a:pingServer'
     }
@@ -58,9 +67,9 @@ allprojects {
         projectDependency from: 'c', to: ['d']
 
         expect:
-        blockingServer.expectConcurrentExecution(':d')
-        blockingServer.expectConcurrentExecution(':b', ':c')
-        blockingServer.expectConcurrentExecution(':a')
+        blockingServer.expectConcurrentExecution(':d:pingServer')
+        blockingServer.expectConcurrentExecution(':b:pingServer', ':c:pingServer')
+        blockingServer.expectConcurrentExecution(':a:pingServer')
 
         run ':a:pingServer'
     }
@@ -71,7 +80,7 @@ allprojects {
         failingBuild 'c'
 
         when:
-        blockingServer.expectConcurrentExecution(':b', ':c')
+        blockingServer.expectConcurrentExecution(':b:pingServer', ':c:pingServer')
 
         fails ':a:pingServer'
 
@@ -80,6 +89,33 @@ allprojects {
         failure.error =~ 'c failed'
     }
 
+    def "tasks are executed when they are ready and not necessarily alphabetically"() {
+        buildFile << """
+            tasks.getByPath(':b:pingA').dependsOn(':a:pingA')
+            tasks.getByPath(':b:pingC').dependsOn([':b:pingA', ':b:pingB'])
+        """
+
+        expect:
+        //project a and b are both executed even though alphabetically more important task is blocked
+        blockingServer.expectConcurrentExecution(':b:pingB', ':a:pingA')
+        blockingServer.expectConcurrentExecution(':b:pingA')
+        blockingServer.expectConcurrentExecution(':b:pingC')
+
+        run 'b:pingC'
+    }
+
+    void 'tasks with should run after ordering rules are preferred when running over an idle worker thread'() {
+        buildFile << """
+            tasks.getByPath(':a:pingA').shouldRunAfter(':b:pingB')
+            tasks.getByPath(':b:pingB').dependsOn(':b:pingA')
+        """
+
+        expect:
+        blockingServer.expectConcurrentExecution(':a:pingA', ':b:pingA')
+        blockingServer.expectConcurrentExecution(':b:pingB')
+
+        run 'a:pingA', 'b:pingB'
+    }
 
     def projectDependency(def link) {
         def from = link['from']

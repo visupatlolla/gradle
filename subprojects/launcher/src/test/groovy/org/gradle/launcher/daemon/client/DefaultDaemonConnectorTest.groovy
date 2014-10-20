@@ -15,7 +15,6 @@
  */
 package org.gradle.launcher.daemon.client
 
-import org.gradle.api.GradleException
 import org.gradle.api.internal.specs.ExplainingSpec
 import org.gradle.api.internal.specs.ExplainingSpecs
 import org.gradle.launcher.daemon.context.DaemonContext
@@ -23,10 +22,10 @@ import org.gradle.launcher.daemon.context.DefaultDaemonContext
 import org.gradle.launcher.daemon.diagnostics.DaemonStartupInfo
 import org.gradle.launcher.daemon.registry.EmbeddedDaemonRegistry
 import org.gradle.messaging.remote.Address
+import org.gradle.messaging.remote.internal.ConnectCompletion
 import org.gradle.messaging.remote.internal.ConnectException
-import org.gradle.messaging.remote.internal.Connection
-import org.gradle.messaging.remote.internal.MessageSerializer
 import org.gradle.messaging.remote.internal.OutgoingConnector
+import org.gradle.messaging.remote.internal.RemoteConnection
 import spock.lang.Specification
 
 class DefaultDaemonConnectorTest extends Specification {
@@ -36,15 +35,11 @@ class DefaultDaemonConnectorTest extends Specification {
     def daemonCounter = 0
 
     class OutgoingConnectorStub implements OutgoingConnector {
-        Connection connect(Address address, ClassLoader messageClassLoader) throws ConnectException {
-            def connection = [:] as Connection
+        ConnectCompletion connect(Address address) throws ConnectException {
+            def connection = [:] as RemoteConnection
             // unsure why I can't add this as property in the map-mock above
             connection.metaClass.num = address.num
-            connection
-        }
-
-        Connection connect(Address address, MessageSerializer serializer) {
-            throw new UnsupportedOperationException()
+            return { connection } as ConnectCompletion
         }
     }
 
@@ -72,7 +67,7 @@ class DefaultDaemonConnectorTest extends Specification {
         def address = createAddress(daemonNum)
         registry.store(address, context, "password", false)
         registry.markBusy(address)
-        return new DaemonStartupInfo(daemonNum.toString(), null);
+        return new DaemonStartupInfo(daemonNum.toString(), null, null);
     }
 
     def startIdleDaemon() {
@@ -84,7 +79,7 @@ class DefaultDaemonConnectorTest extends Specification {
 
     def theConnector
 
-    def getConnector() {
+    def DefaultDaemonConnector getConnector() {
         if (theConnector == null) {
             theConnector = createConnector()
         }
@@ -113,22 +108,6 @@ class DefaultDaemonConnectorTest extends Specification {
         expect:
         def connection = connector.maybeConnect({it.pid < 12} as ExplainingSpec)
         connection && connection.connection.num < 12
-    }
-
-    def "suspect address is removed from the registry on connect failure"() {
-        given:
-        startIdleDaemon()
-        assert !registry.all.empty
-
-        connector.connector.connect(_ as Address, _) >> { throw new ConnectException("Problem!", new RuntimeException("foo")) }
-
-        when:
-        def connection = connector.maybeConnect( { true } as ExplainingSpec)
-
-        then:
-        !connection
-
-        registry.all.empty
     }
 
     def "maybeConnect() returns null when no daemon matches spec"() {
@@ -192,6 +171,22 @@ class DefaultDaemonConnectorTest extends Specification {
         connector.connect(ExplainingSpecs.satisfyNone())
 
         then:
-        thrown(GradleException)
+        thrown(DaemonConnectionException)
+    }
+
+    def "suspect address is removed from the registry on connect failure"() {
+        given:
+        startIdleDaemon()
+        assert !registry.all.empty
+
+        connector.connector.connect(_ as Address) >> { throw new ConnectException("Problem!", new RuntimeException("foo")) }
+
+        when:
+        def connection = connector.maybeConnect( { true } as ExplainingSpec)
+
+        then:
+        !connection
+
+        registry.all.empty
     }
 }

@@ -15,7 +15,7 @@
  */
 package org.gradle.api.internal.plugins.osgi;
 
-import aQute.lib.osgi.Analyzer;
+import aQute.bnd.osgi.Analyzer;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.java.archives.Attributes;
@@ -32,9 +32,6 @@ import java.io.IOException;
 import java.util.*;
 import java.util.jar.Manifest;
 
-/**
- * @author Hans Dockter
- */
 public class DefaultOsgiManifest extends DefaultManifest implements OsgiManifest {
 
     // Because these properties can be convention mapped we need special handling in here.
@@ -128,15 +125,6 @@ public class DefaultOsgiManifest extends DefaultManifest implements OsgiManifest
         analyzer.setJar(getClassesDir());
 
         analyzer.setClasspath(getClasspath().getFiles().toArray(new File[getClasspath().getFiles().size()]));
-    }
-
-    private String instructionValueString(String instructionName) {
-        List<String> values = instructionValue(instructionName);
-        if (values == null || values.isEmpty()) {
-            return null;
-        } else {
-            return createPropertyStringFromList(values);
-        }
     }
 
     public List<String> instructionValue(String instructionName) {

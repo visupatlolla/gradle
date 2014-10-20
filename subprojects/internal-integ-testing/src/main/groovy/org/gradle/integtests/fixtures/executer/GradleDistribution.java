@@ -20,6 +20,7 @@ import org.gradle.internal.os.OperatingSystem;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.util.GradleVersion;
+import org.gradle.util.VersionNumber;
 
 public interface GradleDistribution {
     /**
@@ -68,9 +69,19 @@ public interface GradleDistribution {
     boolean isToolingApiSupported();
 
     /**
+     * Returns true if the tooling API of this distribution correctly handles non-ASCII characters in logging output.
+     */
+    boolean isToolingApiNonAsciiOutputSupported();
+
+    /**
+     * Returns true if the tooling API of this distribution supports specifying the daemon base dir.
+     */
+    boolean isToolingApiDaemonBaseDirSupported();
+
+    /**
      * Returns the version of the artifact cache layout
      */
-    int getArtifactCacheLayoutVersion();
+    VersionNumber getArtifactCacheLayoutVersion();
 
     /**
      * Returns true if the open API is supported by this distribution.
@@ -79,14 +90,23 @@ public interface GradleDistribution {
 
     /**
      * Returns true if the wrapper from this distribution can execute a build using the specified version.
-     * @param version
      */
     boolean wrapperCanExecute(GradleVersion version);
 
     /**
      * Early versions had bugs that prevented any values having spaces in them in GRADLE_OPTS or JAVA_OPTS.
      *
-     * See http://issues.gradle.org/browse/GRADLE-1730
+     * See https://issues.gradle.org/browse/GRADLE-1730
      */
     boolean isSupportsSpacesInGradleAndJavaOpts();
+
+    /**
+     * The 'ivy' repository was introduced in Milestone-3, but early versions didn't work with spaces in the artifact pattern.
+     */
+    boolean isFullySupportsIvyRepository();
+
+    /**
+     * Returns true if the wrapper for this version honours the --gradle-user-home command-line option.
+     */
+    boolean isWrapperSupportsGradleUserHomeCommandLineOption();
 }

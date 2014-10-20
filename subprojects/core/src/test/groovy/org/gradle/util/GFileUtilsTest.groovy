@@ -21,12 +21,8 @@ import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
-import static org.gradle.util.GFileUtils.mkdirs
-import static org.gradle.util.GFileUtils.parentMkdirs
+import static org.gradle.util.GFileUtils.*
 
-/**
- * by Szczepan Faber, created at: 2/28/12
- */
 class GFileUtilsTest extends Specification {
 
     @Rule TestNameTestDirectoryProvider temp
@@ -121,4 +117,12 @@ three
         ex.message == "Cannot create parent directory '$c' when creating directory '$e' as '$b' is not a directory"
     }
 
+    def "reads file quietly"() {
+        temp.file("foo.txt") << "hey"
+
+        expect:
+        readFileQuietly(temp.file("foo.txt")) == "hey"
+        readFileQuietly(new File("missing")) == "Unable to read file 'missing' due to: org.gradle.api.UncheckedIOException: java.io.FileNotFoundException: File 'missing' does not exist"
+        readFileQuietly(temp.createDir("dir")).startsWith "Unable to read file"
+    }
 }

@@ -16,61 +16,96 @@
 
 package org.gradle.api.internal.tasks.testing.junit.result;
 
-import org.gradle.api.Action;
 import org.gradle.api.tasks.testing.*;
+import org.gradle.messaging.remote.internal.PlaceholderException;
 
-import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Assembles test results. Keeps a copy of the results in memory to provide them later and spools test output to file.
- *
- * by Szczepan Faber, created at: 11/13/12
+ * Collects the test results into memory and spools the test output to file during execution (to avoid holding it all in memory).
  */
-public class TestReportDataCollector extends AbstractTestResultProvider implements TestListener, TestOutputListener {
-    private final Map<String, TestClassResult> results = new HashMap<String, TestClassResult>();
-    private final TestResultSerializer serializer;
-    private final CachingFileWriter cachingFileWriter;
+public class TestReportDataCollector implements TestListener, TestOutputListener {
 
-    public TestReportDataCollector(File resultsDir) {
-        //TODO SF calculate number of open files based on parallel forks
-        this(resultsDir, new CachingFileWriter(10), new TestResultSerializer());
-    }
+    private final Map<String, TestClassResult> results;
+    private final TestOutputStore.Writer outputWriter;
+    private final Map<TestDescriptor, TestMethodResult> currentTestMethods = new HashMap<TestDescriptor, TestMethodResult>();
+    private long internalIdCounter = 1;
 
-    TestReportDataCollector(File resultsDir, CachingFileWriter cachingFileWriter, TestResultSerializer serializer) {
-        super(resultsDir);
-        this.cachingFileWriter = cachingFileWriter;
-        this.serializer = serializer;
+    public TestReportDataCollector(Map<String, TestClassResult> results, TestOutputStore.Writer outputWriter) {
+        this.results = results;
+        this.outputWriter = outputWriter;
     }
 
     public void beforeSuite(TestDescriptor suite) {
     }
 
     public void afterSuite(TestDescriptor suite, TestResult result) {
-        if (suite.getParent() == null) {
-            cachingFileWriter.closeAll();
-            writeResults();
+        if (result.getResultType() == TestResult.ResultType.FAILURE && !result.getExceptions().isEmpty()) {
+            //there are some exceptions attached to the suite. Let's make sure they are reported to the user.
+            //this may happen for example when suite initialisation fails and no tests are executed
+            TestMethodResult methodResult = new TestMethodResult(internalIdCounter++, "execution failure");
+            for (Throwable throwable : result.getExceptions()) {
+                methodResult.addFailure(failureMessage(throwable), stackTrace(throwable), exceptionClassName(throwable));
+            }
+            methodResult.completed(result);
+            TestClassResult classResult = new TestClassResult(internalIdCounter++, suite.getName(), result.getStartTime());
+            classResult.add(methodResult);
+            results.put(suite.getName(), classResult);
         }
     }
 
-    private void writeResults() {
-        serializer.write(results.values(), getResultsDir());
-    }
-
     public void beforeTest(TestDescriptor testDescriptor) {
+        TestMethodResult methodResult = new TestMethodResult(internalIdCounter++, testDescriptor.getName());
+        currentTestMethods.put(testDescriptor, methodResult);
     }
 
     public void afterTest(TestDescriptor testDescriptor, TestResult result) {
-        if (!testDescriptor.isComposite()) {
-            String className = testDescriptor.getClassName();
-            TestMethodResult methodResult = new TestMethodResult(testDescriptor.getName(), result);
-            TestClassResult classResult = results.get(className);
-            if (classResult == null) {
-                classResult = new TestClassResult(className, result.getStartTime());
-                results.put(className, classResult);
-            }
-            classResult.add(methodResult);
+        String className = testDescriptor.getClassName();
+        TestMethodResult methodResult = currentTestMethods.remove(testDescriptor).completed(result);
+        for (Throwable throwable : result.getExceptions()) {
+            methodResult.addFailure(failureMessage(throwable), stackTrace(throwable), exceptionClassName(throwable));
+        }
+        TestClassResult classResult = results.get(className);
+        if (classResult == null) {
+            classResult = new TestClassResult(internalIdCounter++, className, result.getStartTime());
+            results.put(className, classResult);
+        } else if (classResult.getStartTime() == 0) {
+            //class results may be created earlier, where we don't yet have access to the start time
+            classResult.setStartTime(result.getStartTime());
+        }
+        classResult.add(methodResult);
+    }
+
+    private String failureMessage(Throwable throwable) {
+        try {
+            return throwable.toString();
+        } catch (Throwable t) {
+            String exceptionClassName = exceptionClassName(throwable);
+            return String.format("Could not determine failure message for exception of type %s: %s",
+                    exceptionClassName, t);
+        }
+    }
+
+    private String exceptionClassName(Throwable throwable) {
+        return throwable instanceof PlaceholderException ? ((PlaceholderException) throwable).getExceptionClassName() : throwable.getClass().getName();
+    }
+
+    private String stackTrace(Throwable throwable) {
+        try {
+            StringWriter stringWriter = new StringWriter();
+            PrintWriter writer = new PrintWriter(stringWriter);
+            throwable.printStackTrace(writer);
+            writer.close();
+            return stringWriter.toString();
+        } catch (Throwable t) {
+            StringWriter stringWriter = new StringWriter();
+            PrintWriter writer = new PrintWriter(stringWriter);
+            t.printStackTrace(writer);
+            writer.close();
+            return stringWriter.toString();
         }
     }
 
@@ -81,12 +116,20 @@ public class TestReportDataCollector extends AbstractTestResultProvider implemen
             //we don't have a place for such output in any of the reports so skipping.
             return;
         }
-        cachingFileWriter.write(outputsFile(className, outputEvent.getDestination()), outputEvent.getMessage());
-    }
+        TestClassResult classResult = results.get(className);
+        if (classResult == null) {
+            //it's possible that we receive an output for a suite here
+            //in this case we will create the test result for a suite that normally would not be created
+            //feels like this scenario should modelled more explicitly
+            classResult = new TestClassResult(internalIdCounter++, className, 0);
+            results.put(className, classResult);
+        }
 
-    public void visitClasses(Action<? super TestClassResult> visitor) {
-        for (TestClassResult classResult : results.values()) {
-            visitor.execute(classResult);
+        TestMethodResult methodResult = currentTestMethods.get(testDescriptor);
+        if (methodResult == null) {
+            outputWriter.onOutput(classResult.getId(), outputEvent);
+        } else {
+            outputWriter.onOutput(classResult.getId(), methodResult.getId(), outputEvent);
         }
     }
 }

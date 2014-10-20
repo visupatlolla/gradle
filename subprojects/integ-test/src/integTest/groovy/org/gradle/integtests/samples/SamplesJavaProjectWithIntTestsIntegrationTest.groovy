@@ -23,12 +23,9 @@ import org.gradle.test.fixtures.file.TestFile
 import org.junit.Rule
 import org.junit.Test
 
-/**
- * @author Hans Dockter
- */
 class SamplesJavaProjectWithIntTestsIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('java/withIntegrationTests')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'java/withIntegrationTests')
 
     @Test
     public void canRunIntegrationTests() {
@@ -38,7 +35,7 @@ class SamplesJavaProjectWithIntTestsIntegrationTest extends AbstractIntegrationT
         executer.inDirectory(javaprojectDir).withTasks('clean', 'integrationTest').run()
 
         // Check tests have run
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(javaprojectDir)
+        def result = new DefaultTestExecutionResult(javaprojectDir)
         result.assertTestClassesExecuted('org.gradle.PersonIntegrationTest')
     }
 }

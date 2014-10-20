@@ -17,13 +17,12 @@
 package org.gradle.api.tasks.diagnostics.internal.dsl;
 
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.component.ComponentSelector;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.artifacts.result.DependencyResult;
 import org.gradle.api.artifacts.result.ResolvedDependencyResult;
 import org.gradle.api.specs.Spec;
 
-/**
-* by Szczepan Faber, created at: 11/6/12
-*/
 class DependencyResultSpec implements Spec<DependencyResult> {
     private final String stringNotation;
 
@@ -42,13 +41,20 @@ class DependencyResultSpec implements Spec<DependencyResult> {
     }
 
     private boolean matchesRequested(DependencyResult candidate) {
-        String requestedCandidate = candidate.getRequested().getGroup() + ":" + candidate.getRequested().getName() + ":" + candidate.getRequested().getVersion();
-        return requestedCandidate.contains(stringNotation);
+        ComponentSelector requested = candidate.getRequested();
+
+        if(requested instanceof ModuleComponentSelector) {
+            ModuleComponentSelector requestedModule = (ModuleComponentSelector)requested;
+            String requestedCandidate = requestedModule.getGroup() + ":" + requestedModule.getModule() + ":" + requestedModule.getVersion();
+            return requestedCandidate.contains(stringNotation);
+        }
+
+        return false;
     }
 
     private boolean matchesSelected(ResolvedDependencyResult candidate) {
-        ModuleVersionIdentifier selected = candidate.getSelected().getId();
-        String selectedCandidate = selected.getGroup() + ":" + selected.getName() + ":" + selected.getVersion();
+        ModuleVersionIdentifier selected = candidate.getSelected().getModuleVersion();
+        String selectedCandidate = selected.getGroup() + ":" + selected.getModule() + ":" + selected.getVersion();
         return selectedCandidate.contains(stringNotation);
     }
 }

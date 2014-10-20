@@ -17,11 +17,12 @@
 package org.gradle.api.internal.tasks.testing.worker;
 
 import org.gradle.api.Action;
-import org.gradle.internal.Factory;
 import org.gradle.api.internal.tasks.testing.TestClassProcessor;
 import org.gradle.api.internal.tasks.testing.TestClassRunInfo;
 import org.gradle.api.internal.tasks.testing.TestResultProcessor;
 import org.gradle.api.internal.tasks.testing.WorkerTestClassProcessorFactory;
+import org.gradle.internal.Factory;
+import org.gradle.messaging.remote.ObjectConnection;
 import org.gradle.process.JavaForkOptions;
 import org.gradle.process.internal.WorkerProcess;
 import org.gradle.process.internal.WorkerProcessBuilder;
@@ -52,23 +53,31 @@ public class ForkingTestClassProcessor implements TestClassProcessor {
 
     public void processTestClass(TestClassRunInfo testClass) {
         if (remoteProcessor == null) {
-            WorkerProcessBuilder builder = workerFactory.create();
-            builder.applicationClasspath(classPath);
-            builder.setLoadApplicationInSystemClassLoader(true);
-            builder.worker(new TestWorker(processorFactory));
-            options.copyTo(builder.getJavaCommand());
-            buildConfigAction.execute(builder);
-            
-            workerProcess = builder.build();
-            workerProcess.start();
-
-            workerProcess.getConnection().addIncoming(TestResultProcessor.class, resultProcessor);
-            remoteProcessor = workerProcess.getConnection().addOutgoing(RemoteTestClassProcessor.class);
-
-            remoteProcessor.startProcessing();
+            remoteProcessor = forkProcess();
         }
 
         remoteProcessor.processTestClass(testClass);
+    }
+
+    RemoteTestClassProcessor forkProcess() {
+        WorkerProcessBuilder builder = workerFactory.create();
+        builder.setBaseName("Gradle Test Executor");
+        builder.applicationClasspath(classPath);
+        builder.setLoadApplicationInSystemClassLoader(true);
+        builder.worker(new TestWorker(processorFactory));
+        options.copyTo(builder.getJavaCommand());
+        buildConfigAction.execute(builder);
+
+        workerProcess = builder.build();
+        workerProcess.start();
+
+        ObjectConnection connection = workerProcess.getConnection();
+        connection.useParameterSerializer(new TestEventSerializer());
+        connection.addIncoming(TestResultProcessor.class, resultProcessor);
+        RemoteTestClassProcessor remoteProcessor = connection.addOutgoing(RemoteTestClassProcessor.class);
+        connection.connect();
+        remoteProcessor.startProcessing();
+        return remoteProcessor;
     }
 
     public void stop() {

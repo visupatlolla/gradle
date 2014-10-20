@@ -20,6 +20,7 @@ import org.gradle.api.UnknownProjectException;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
+import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.internal.DomainObjectContext;
 import org.gradle.api.internal.artifacts.DependencyManagementServices;
 import org.gradle.api.internal.artifacts.DependencyResolutionServices;
@@ -28,17 +29,10 @@ import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.groovy.scripts.ScriptSource;
-import org.gradle.util.MutableURLClassLoader;
-
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 
 public class DefaultScriptHandlerFactory implements ScriptHandlerFactory {
     private final DependencyManagementServices dependencyManagementServices;
     private final DependencyMetaDataProvider dependencyMetaDataProvider;
-    private final Map<Collection<Object>, MutableURLClassLoader> classLoaderCache = new HashMap<Collection<Object>, MutableURLClassLoader>();
     private final FileResolver fileResolver;
     private final ProjectFinder projectFinder = new ProjectFinder() {
         public ProjectInternal getProject(String path) {
@@ -54,29 +48,16 @@ public class DefaultScriptHandlerFactory implements ScriptHandlerFactory {
         this.dependencyMetaDataProvider = dependencyMetaDataProvider;
     }
 
-    public ScriptHandlerInternal create(ScriptSource scriptSource, ClassLoader parentClassLoader) {
-        return create(scriptSource, parentClassLoader, new BasicDomainObjectContext());
+    public ScriptHandler create(ScriptSource scriptSource, ClassLoaderScope classLoaderScope) {
+        return create(scriptSource, classLoaderScope, new BasicDomainObjectContext());
     }
 
-    public ScriptHandlerInternal create(ScriptSource scriptSource, ClassLoader parentClassLoader, DomainObjectContext context) {
+    public ScriptHandler create(ScriptSource scriptSource, ClassLoaderScope classLoaderScope, DomainObjectContext context) {
         DependencyResolutionServices services = dependencyManagementServices.create(fileResolver, dependencyMetaDataProvider, projectFinder, context);
         RepositoryHandler repositoryHandler = services.getResolveRepositoryHandler();
         ConfigurationContainer configurationContainer = services.getConfigurationContainer();
         DependencyHandler dependencyHandler = services.getDependencyHandler();
-        Collection<Object> key = Arrays.asList(scriptSource.getClassName(), parentClassLoader);
-        MutableURLClassLoader classLoader = classLoaderCache.get(key);
-        if (classLoader == null) {
-            classLoader = new MutableURLClassLoader(parentClassLoader);
-            classLoaderCache.put(key, classLoader);
-            return new DefaultScriptHandler(scriptSource, repositoryHandler, dependencyHandler, configurationContainer, classLoader);
-        }
-
-        return new NoClassLoaderUpdateScriptHandler(classLoader, repositoryHandler, dependencyHandler, scriptSource, configurationContainer);
+        return new DefaultScriptHandler(scriptSource, repositoryHandler, dependencyHandler, configurationContainer, new ScriptHandlerClassLoaderFactory(scriptSource, classLoaderScope));
     }
 
-    private static class BasicDomainObjectContext implements DomainObjectContext {
-        public String absoluteProjectPath(String name) {
-            return name;
-        }
-    }
 }

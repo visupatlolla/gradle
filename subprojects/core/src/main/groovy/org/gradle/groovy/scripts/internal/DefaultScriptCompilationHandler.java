@@ -24,47 +24,47 @@ import org.apache.commons.lang.StringUtils;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
 import org.codehaus.groovy.ast.stmt.ReturnStatement;
 import org.codehaus.groovy.ast.stmt.Statement;
+import org.codehaus.groovy.classgen.Verifier;
 import org.codehaus.groovy.control.*;
 import org.codehaus.groovy.control.messages.SyntaxErrorMessage;
 import org.codehaus.groovy.syntax.SyntaxException;
 import org.gradle.api.GradleException;
+import org.gradle.api.internal.initialization.loadercache.ClassLoaderCache;
 import org.gradle.groovy.scripts.ScriptCompilationException;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.groovy.scripts.Transformer;
 import org.gradle.internal.UncheckedException;
+import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.util.Clock;
 import org.gradle.util.GFileUtils;
-import org.gradle.util.WrapUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.lang.reflect.Field;
-import java.net.URLClassLoader;
 import java.security.CodeSource;
 import java.util.List;
 
-/**
- * @author Hans Dockter
- */
 public class DefaultScriptCompilationHandler implements ScriptCompilationHandler {
     private Logger logger = LoggerFactory.getLogger(DefaultScriptCompilationHandler.class);
     private static final String EMPTY_SCRIPT_MARKER_FILE_NAME = "emptyScript.txt";
     private final EmptyScriptGenerator emptyScriptGenerator;
+    private final ClassLoaderCache classLoaderCache;
 
-    public DefaultScriptCompilationHandler(EmptyScriptGenerator emptyScriptGenerator) {
+    public DefaultScriptCompilationHandler(EmptyScriptGenerator emptyScriptGenerator, ClassLoaderCache classLoaderCache) {
         this.emptyScriptGenerator = emptyScriptGenerator;
+        this.classLoaderCache = classLoaderCache;
     }
 
     public void compileToDir(ScriptSource source, ClassLoader classLoader, File classesDir,
-                             Transformer transformer, Class<? extends Script> scriptBaseClass) {
+                             Transformer transformer, Class<? extends Script> scriptBaseClass, Verifier verifier) {
         Clock clock = new Clock();
         GFileUtils.deleteDirectory(classesDir);
         GFileUtils.mkdirs(classesDir);
         CompilerConfiguration configuration = createBaseCompilerConfiguration(scriptBaseClass);
         configuration.setTargetDirectory(classesDir);
         try {
-            compileScript(source, classLoader, configuration, classesDir, transformer);
+            compileScript(source, classLoader, configuration, classesDir, transformer, verifier);
         } catch (GradleException e) {
             GFileUtils.deleteDirectory(classesDir);
             throw e;
@@ -75,7 +75,7 @@ public class DefaultScriptCompilationHandler implements ScriptCompilationHandler
     }
 
     private void compileScript(final ScriptSource source, ClassLoader classLoader, CompilerConfiguration configuration,
-                               File classesDir, final Transformer transformer) {
+                               File classesDir, final Transformer transformer, final Verifier customVerifier) {
         logger.info("Compiling {} using {}.", source.getDisplayName(), transformer != null ? transformer.getClass().getSimpleName() : "no transformer");
 
         final EmptyScriptDetector emptyScriptDetector = new EmptyScriptDetector();
@@ -84,23 +84,7 @@ public class DefaultScriptCompilationHandler implements ScriptCompilationHandler
             @Override
             protected CompilationUnit createCompilationUnit(CompilerConfiguration compilerConfiguration,
                                                             CodeSource codeSource) {
-                CompilationUnit compilationUnit = new CompilationUnit(compilerConfiguration, codeSource, this) {
-                    // This creepy bit of code is here to put the full source path of the script into the debug info for
-                    // the class.  This makes it possible for a debugger to find the source file for the class.  By default
-                    // Groovy will only put the filename into the class, but that does not help a debugger for Gradle
-                    // because it does not know where Gradle scripts might live.
-                    @Override
-                    protected groovyjarjarasm.asm.ClassVisitor createClassVisitor() {
-                        return new ClassWriter(ClassWriter.COMPUTE_MAXS) {
-                            // ignore the sourcePath that is given by Groovy (this is only the filename) and instead
-                            // insert the full path if our script source has a source file
-                            @Override
-                            public void visitSource(String sourcePath, String debugInfo) {
-                                super.visitSource(source.getFileName(), debugInfo);
-                            }
-                        };
-                    }
-                };
+                CompilationUnit compilationUnit = new CustomCompilationUnit(compilerConfiguration, codeSource, customVerifier, source, this);
 
                 if (transformer != null) {
                     transformer.register(compilationUnit);
@@ -162,18 +146,17 @@ public class DefaultScriptCompilationHandler implements ScriptCompilationHandler
     }
 
     public <T extends Script> Class<? extends T> loadFromDir(ScriptSource source, ClassLoader classLoader, File scriptCacheDir,
-                                              Class<T> scriptBaseClass) {
+                                                             Class<T> scriptBaseClass) {
         if (new File(scriptCacheDir, EMPTY_SCRIPT_MARKER_FILE_NAME).isFile()) {
             return emptyScriptGenerator.generate(scriptBaseClass);
         }
-        
+
         try {
-            URLClassLoader urlClassLoader = new URLClassLoader(WrapUtil.toArray(scriptCacheDir.toURI().toURL()),
-                    classLoader);
-            return urlClassLoader.loadClass(source.getClassName()).asSubclass(scriptBaseClass);
+            ClassLoader loader = this.classLoaderCache.get(classLoader, new DefaultClassPath(scriptCacheDir), null);
+            return loader.loadClass(source.getClassName()).asSubclass(scriptBaseClass);
         } catch (Exception e) {
-            File expectedClassFile = new File(scriptCacheDir, source.getClassName()+".class");
-            if(!expectedClassFile.exists()){
+            File expectedClassFile = new File(scriptCacheDir, source.getClassName() + ".class");
+            if (!expectedClassFile.exists()) {
                 throw new GradleException(String.format("Could not load compiled classes for %s from cache. Expected class file %s does not exist.", source.getDisplayName(), expectedClassFile.getAbsolutePath()), e);
             }
             throw new GradleException(String.format("Could not load compiled classes for %s from cache.", source.getDisplayName()), e);
@@ -225,6 +208,34 @@ public class DefaultScriptCompilationHandler implements ScriptCompilationHandler
 
         public boolean isEmptyScript() {
             return emptyScript;
+        }
+    }
+
+    private class CustomCompilationUnit extends CompilationUnit {
+
+        private final ScriptSource source;
+
+        public CustomCompilationUnit(CompilerConfiguration compilerConfiguration, CodeSource codeSource, Verifier customVerifier, ScriptSource source, GroovyClassLoader groovyClassLoader) {
+            super(compilerConfiguration, codeSource, groovyClassLoader);
+            this.source = source;
+            this.verifier = customVerifier;
+        }
+
+        // This creepy bit of code is here to put the full source path of the script into the debug info for
+        // the class.  This makes it possible for a debugger to find the source file for the class.  By default
+        // Groovy will only put the filename into the class, but that does not help a debugger for Gradle
+        // because it does not know where Gradle scripts might live.
+        @Override
+        protected groovyjarjarasm.asm.ClassVisitor createClassVisitor() {
+            return new ClassWriter(ClassWriter.COMPUTE_MAXS) {
+                @Override
+                public byte[] toByteArray() {
+                    // ignore the sourcePath that is given by Groovy (this is only the filename) and instead
+                    // insert the full path if our script source has a source file
+                    visitSource(source.getFileName(), null);
+                    return super.toByteArray();
+                }
+            };
         }
     }
 }

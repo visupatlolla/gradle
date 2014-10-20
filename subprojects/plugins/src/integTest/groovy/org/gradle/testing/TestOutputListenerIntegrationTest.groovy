@@ -17,18 +17,18 @@ package org.gradle.testing
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.TestResources
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.Before
 import spock.lang.Issue
 
 @Issue("GRADLE-1009")
 public class TestOutputListenerIntegrationTest extends AbstractIntegrationSpec {
-    @Rule public final TestResources resources = new TestResources()
+    @Rule public final TestResources resources = new TestResources(temporaryFolder)
 
     @Before
     public void before() {
-        executer.allowExtraLogging = false
+        executer.noExtraLogging()
     }
 
     @Test
@@ -199,7 +199,7 @@ test {
         !result.output.contains('output from foo')
 
         when: "run with lifecycle"
-        result = executer.setAllowExtraLogging(false).withTasks('cleanTest', 'test').run()
+        result = executer.noExtraLogging().withTasks('cleanTest', 'test').run()
 
         then:
         result.output.contains('output from foo')

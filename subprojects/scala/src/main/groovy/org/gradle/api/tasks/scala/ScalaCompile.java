@@ -18,25 +18,25 @@ package org.gradle.api.tasks.scala;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-
-import org.gradle.api.AntBuilder;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Project;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.project.IsolatedAntBuilder;
 import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.api.internal.tasks.compile.Compiler;
+import org.gradle.api.internal.tasks.compile.JavaCompilerFactory;
+import org.gradle.api.internal.tasks.compile.daemon.CompilerDaemonFactory;
+import org.gradle.api.internal.tasks.compile.daemon.CompilerDaemonManager;
 import org.gradle.api.internal.tasks.scala.*;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.plugins.ExtraPropertiesExtension;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.compile.AbstractCompile;
 import org.gradle.api.tasks.compile.CompileOptions;
-import org.gradle.internal.Factory;
+import org.gradle.language.base.internal.compile.Compiler;
 
-import javax.inject.Inject;
 import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
@@ -54,16 +54,6 @@ public class ScalaCompile extends AbstractCompile {
     private Compiler<ScalaJavaJointCompileSpec> compiler;
     private final CompileOptions compileOptions = new CompileOptions();
     private final ScalaCompileOptions scalaCompileOptions = new ScalaCompileOptions();
-
-    @Inject
-    public ScalaCompile() {
-        ProjectInternal projectInternal = (ProjectInternal) getProject();
-        IsolatedAntBuilder antBuilder = getServices().get(IsolatedAntBuilder.class);
-        Factory<AntBuilder> antBuilderFactory = getServices().getFactory(AntBuilder.class);
-        ScalaCompilerFactory scalaCompilerFactory = new ScalaCompilerFactory(projectInternal, antBuilder, antBuilderFactory);
-        Compiler<ScalaJavaJointCompileSpec> delegatingCompiler = new DelegatingScalaCompiler(scalaCompilerFactory);
-        compiler = new IncrementalScalaCompiler(delegatingCompiler, getOutputs());
-    }
 
     /**
      * Returns the classpath to use to load the Scala compiler.
@@ -113,12 +103,27 @@ public class ScalaCompile extends AbstractCompile {
         this.compiler = compiler;
     }
 
-    @Override
+    private Compiler<ScalaJavaJointCompileSpec> getCompiler(ScalaJavaJointCompileSpec spec) {
+        if (compiler == null) {
+            ProjectInternal projectInternal = (ProjectInternal) getProject();
+            IsolatedAntBuilder antBuilder = getServices().get(IsolatedAntBuilder.class);
+            CompilerDaemonFactory compilerDaemonFactory = getServices().get(CompilerDaemonManager.class);
+            JavaCompilerFactory javaCompilerFactory = getServices().get(JavaCompilerFactory.class);
+            ScalaCompilerFactory scalaCompilerFactory = new ScalaCompilerFactory(projectInternal, antBuilder, javaCompilerFactory, compilerDaemonFactory);
+            Compiler<ScalaJavaJointCompileSpec> delegatingCompiler = scalaCompilerFactory.newCompiler(spec);
+            compiler = new CleaningScalaCompiler(delegatingCompiler, getOutputs());
+        }
+        return compiler;
+    }
+
+    @TaskAction
     protected void compile() {
         checkScalaClasspathIsNonEmpty();
         DefaultScalaJavaJointCompileSpec spec = new DefaultScalaJavaJointCompileSpec();
         spec.setSource(getSource());
         spec.setDestinationDir(getDestinationDir());
+        spec.setWorkingDir(getProject().getProjectDir());
+        spec.setTempDir(getTemporaryDir());
         spec.setClasspath(getClasspath());
         spec.setScalaClasspath(getScalaClasspath());
         spec.setZincClasspath(getZincClasspath());
@@ -130,12 +135,13 @@ public class ScalaCompile extends AbstractCompile {
             configureIncrementalCompilation(spec);
         }
 
-        compiler.execute(spec);
+        getCompiler(spec).execute(spec);
     }
 
     private void checkScalaClasspathIsNonEmpty() {
         if (getScalaClasspath().isEmpty()) {
-            throw new InvalidUserDataException("'" + getName() + ".scalaClasspath' must not be empty");
+            throw new InvalidUserDataException("'" + getName() + ".scalaClasspath' must not be empty. If a Scala compile dependency is provided, "
+                    + "the 'scala-base' plugin will attempt to configure 'scalaClasspath' automatically. Alternatively, you may configure 'scalaClasspath' explicitly.");
         }
     }
 

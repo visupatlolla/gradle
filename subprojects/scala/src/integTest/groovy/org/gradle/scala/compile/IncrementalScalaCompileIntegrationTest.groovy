@@ -16,6 +16,7 @@
 package org.gradle.scala.compile
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ForkScalaCompileInDaemonModeFixture
 import org.gradle.integtests.fixtures.TestResources
 import org.junit.Rule
 import spock.lang.Ignore
@@ -23,7 +24,8 @@ import spock.lang.Issue
 
 class IncrementalScalaCompileIntegrationTest extends AbstractIntegrationSpec {
 
-    @Rule TestResources resources = new TestResources()
+    @Rule TestResources resources = new TestResources(temporaryFolder)
+    @Rule public final ForkScalaCompileInDaemonModeFixture daemonModeFixture = new ForkScalaCompileInDaemonModeFixture(executer, temporaryFolder)
 
     def recompilesSourceWhenPropertiesChange() {
         expect:
@@ -61,7 +63,7 @@ class IncrementalScalaCompileIntegrationTest extends AbstractIntegrationSpec {
             }
 
             dependencies {
-                compile 'org.scala-lang:scala-library:2.9.2'
+                compile 'org.scala-lang:scala-library:2.11.1'
             }
         """
 

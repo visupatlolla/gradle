@@ -18,12 +18,8 @@ package org.gradle.api.internal.file.pattern;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * @author Steve Appling
- */
 public class RegExpPatternStep implements PatternStep {
     private static final String ESCAPE_CHARS = "\\[]^-&.{}()$+|<=!";
-    private static final String PATTERN_CHARS = "*?";
 
     private final Pattern pattern;
 
@@ -35,22 +31,23 @@ public class RegExpPatternStep implements PatternStep {
         StringBuilder result = new StringBuilder();
         for (int i=0; i<pattern.length(); i++) {
             char next = pattern.charAt(i);
-            if (ESCAPE_CHARS.indexOf(next) >= 0) {
+            if (next == '*') {
+                result.append(".*");
+            } else if (next == '?') {
+                result.append(".");
+            } else if (ESCAPE_CHARS.indexOf(next) >= 0) {
                 result.append('\\');
-            } else if (PATTERN_CHARS.indexOf(next) >= 0) {
-                result.append('.');
+                result.append(next);
+            } else {
+                result.append(next);
             }
-            result.append(next);
         }
         return result.toString();
     }
 
-    public boolean matches(String testString, boolean isFile) {
+    public boolean matches(String testString) {
         Matcher matcher = pattern.matcher(testString);
         return matcher.matches();
     }
 
-    public boolean isGreedy() {
-        return false;
-    }
 }

@@ -16,33 +16,34 @@
 
 package org.gradle.integtests.fixtures.executer;
 
-import org.gradle.BuildListener;
 import org.gradle.BuildResult;
-import org.gradle.GradleLauncher;
 import org.gradle.StartParameter;
 import org.gradle.api.GradleException;
 import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionGraph;
 import org.gradle.api.execution.TaskExecutionGraphListener;
 import org.gradle.api.execution.TaskExecutionListener;
-import org.gradle.api.initialization.Settings;
-import org.gradle.api.internal.LocationAwareException;
 import org.gradle.api.internal.classpath.DefaultModuleRegistry;
-import org.gradle.api.internal.file.IdentityFileResolver;
-import org.gradle.api.invocation.Gradle;
-import org.gradle.api.logging.LogLevel;
+import org.gradle.api.internal.file.TestFiles;
 import org.gradle.api.logging.StandardOutputListener;
 import org.gradle.api.tasks.TaskState;
 import org.gradle.cli.CommandLineParser;
+import org.gradle.cli.ParsedCommandLine;
 import org.gradle.execution.MultipleBuildFailures;
-import org.gradle.initialization.DefaultCommandLineConverter;
-import org.gradle.initialization.DefaultGradleLauncherFactory;
+import org.gradle.initialization.*;
 import org.gradle.internal.Factory;
+import org.gradle.internal.exceptions.LocationAwareException;
 import org.gradle.internal.jvm.Jvm;
-import org.gradle.internal.nativeplatform.ProcessEnvironment;
-import org.gradle.internal.nativeplatform.services.NativeServices;
+import org.gradle.internal.nativeintegration.ProcessEnvironment;
+import org.gradle.internal.nativeintegration.services.NativeServices;
+import org.gradle.internal.service.ServiceRegistry;
+import org.gradle.internal.service.ServiceRegistryBuilder;
+import org.gradle.internal.service.scopes.GlobalScopeServices;
 import org.gradle.launcher.Main;
-import org.gradle.launcher.daemon.registry.DaemonRegistry;
+import org.gradle.launcher.cli.converter.LayoutToPropertiesConverter;
+import org.gradle.launcher.cli.converter.PropertiesToStartParameterConverter;
+import org.gradle.logging.LoggingServiceRegistry;
+import org.gradle.logging.ShowStacktrace;
 import org.gradle.process.internal.JavaExecHandleBuilder;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.util.DeprecationLogger;
@@ -56,15 +57,20 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.regex.Pattern;
 
-import static java.util.Arrays.asList;
 import static org.gradle.util.Matchers.*;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
 class InProcessGradleExecuter extends AbstractGradleExecuter {
-
-    private final ProcessEnvironment processEnvironment = NativeServices.getInstance().get(ProcessEnvironment.class);
+    private static final ServiceRegistry GLOBAL_SERVICES = ServiceRegistryBuilder.builder()
+            .displayName("Global services")
+            .parent(LoggingServiceRegistry.newProcessLogging())
+            .parent(NativeServices.getInstance())
+            .provider(new GlobalScopeServices(true))
+            .build();
+    private final ProcessEnvironment processEnvironment = GLOBAL_SERVICES.get(ProcessEnvironment.class);
 
     InProcessGradleExecuter(GradleDistribution distribution, TestDirectoryProvider testDirectoryProvider) {
         super(distribution, testDirectoryProvider);
@@ -87,8 +93,8 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
         } catch (Exception e) {
             throw new UnexpectedBuildFailure(e);
         }
-        return new InProcessExecutionResult(buildListener.executedTasks, buildListener.skippedTasks,
-                outputListener.toString(), errorListener.toString());
+        return assertResult(new InProcessExecutionResult(buildListener.executedTasks, buildListener.skippedTasks,
+                new OutputScrapingExecutionResult(outputListener.toString(), errorListener.toString())));
     }
 
     @Override
@@ -100,16 +106,21 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             doRun(outputListener, errorListener, buildListener).rethrowFailure();
             throw new AssertionError("expected build to fail but it did not.");
         } catch (GradleException e) {
-            return new InProcessExecutionFailure(buildListener.executedTasks, buildListener.skippedTasks,
-                    outputListener.writer.toString(), errorListener.writer.toString(), e);
+            return assertResult(new InProcessExecutionFailure(buildListener.executedTasks, buildListener.skippedTasks,
+                    new OutputScrapingExecutionFailure(outputListener.writer.toString(), errorListener.writer.toString()), e));
         }
+    }
+
+    private <T extends ExecutionResult> T assertResult(T result) {
+        getResultAssertion().execute(result);
+        return result;
     }
 
     @Override
     protected GradleHandle doStart() {
-        return new ForkingGradleHandle(getDefaultCharacterEncoding(), new Factory<JavaExecHandleBuilder>() {
+        return new ForkingGradleHandle(getResultAssertion(), getDefaultCharacterEncoding(), new Factory<JavaExecHandleBuilder>() {
             public JavaExecHandleBuilder create() {
-                JavaExecHandleBuilder builder = new JavaExecHandleBuilder(new IdentityFileResolver());
+                JavaExecHandleBuilder builder = new JavaExecHandleBuilder(TestFiles.resolver());
                 builder.workingDir(getWorkingDir());
                 Set<File> classpath = new DefaultModuleRegistry().getFullClasspath();
                 builder.classpath(classpath);
@@ -126,7 +137,7 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
         Properties originalSysProperties = new Properties();
         originalSysProperties.putAll(System.getProperties());
         File originalUserDir = new File(originalSysProperties.getProperty("user.dir"));
-        Map<String, String> originalEnv = System.getenv();
+        Map<String, String> originalEnv = new HashMap<String, String>(System.getenv());
 
         // Augment the environment for the execution
         System.setIn(getStdin());
@@ -138,32 +149,44 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
         System.getProperties().putAll(implicitJvmSystemProperties);
 
         StartParameter parameter = new StartParameter();
-        parameter.setLogLevel(LogLevel.INFO);
-        parameter.setSearchUpwards(true);
         parameter.setCurrentDir(getWorkingDir());
+        parameter.setShowStacktrace(ShowStacktrace.ALWAYS);
 
         CommandLineParser parser = new CommandLineParser();
         DefaultCommandLineConverter converter = new DefaultCommandLineConverter();
         converter.configure(parser);
-        converter.convert(parser.parse(getAllArgs()), parameter);
+        ParsedCommandLine parsedCommandLine = parser.parse(getAllArgs());
 
-        DefaultGradleLauncherFactory factory = (DefaultGradleLauncherFactory) GradleLauncher.getFactory();
+        BuildLayoutParameters layout = converter.getLayoutConverter().convert(parsedCommandLine, new BuildLayoutParameters());
+
+        Map<String, String> properties = new HashMap<String, String>();
+        new LayoutToPropertiesConverter().convert(layout, properties);
+        converter.getSystemPropertiesConverter().convert(parsedCommandLine, properties);
+
+        new PropertiesToStartParameterConverter().convert(properties, parameter);
+        converter.convert(parsedCommandLine, parameter);
+
+        DefaultGradleLauncherFactory factory = GLOBAL_SERVICES.get(DefaultGradleLauncherFactory.class);
         factory.addListener(listener);
-        GradleLauncher gradleLauncher = GradleLauncher.newInstance(parameter);
-        gradleLauncher.addStandardOutputListener(outputListener);
-        gradleLauncher.addStandardErrorListener(errorListener);
         try {
-            return gradleLauncher.run();
+            GradleLauncher gradleLauncher = factory.newInstance(parameter, new DefaultBuildCancellationToken());
+            try {
+                gradleLauncher.addStandardOutputListener(outputListener);
+                gradleLauncher.addStandardErrorListener(errorListener);
+                return gradleLauncher.run();
+            } finally {
+                gradleLauncher.stop();
+            }
         } finally {
             // Restore the environment
             System.setProperties(originalSysProperties);
             processEnvironment.maybeSetProcessDir(originalUserDir);
-            for (Map.Entry<String, String> entry : originalEnv.entrySet()) {
-                String oldValue = entry.getValue();
+            for (String envVar : getEnvironmentVars().keySet()) {
+                String oldValue = originalEnv.get(envVar);
                 if (oldValue != null) {
-                    processEnvironment.maybeSetEnvironmentVariable(entry.getKey(), oldValue);
+                    processEnvironment.maybeSetEnvironmentVariable(envVar, oldValue);
                 } else {
-                    processEnvironment.maybeRemoveEnvironmentVariable(entry.getKey());
+                    processEnvironment.maybeRemoveEnvironmentVariable(envVar);
                 }
             }
             factory.removeListener(listener);
@@ -171,44 +194,27 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
         }
     }
 
-    public DaemonRegistry getDaemonRegistry() {
-        throw new UnsupportedOperationException();
-    }
-
     public void assertCanExecute() {
         assertNull(getExecutable());
         assertEquals(getJavaHome(), Jvm.current().getJavaHome());
-        assertEquals(getDefaultCharacterEncoding(), Charset.defaultCharset().name());
+        String defaultEncoding = getImplicitJvmSystemProperties().get("file.encoding");
+        if (defaultEncoding != null) {
+            assertEquals(Charset.forName(defaultEncoding), Charset.defaultCharset());
+        }
+        Locale defaultLocale = getDefaultLocale();
+        if (defaultLocale != null) {
+            assertEquals(defaultLocale, Locale.getDefault());
+        }
         assertFalse(isRequireGradleHome());
     }
 
-    private static class BuildListenerImpl implements TaskExecutionGraphListener, BuildListener {
+    private static class BuildListenerImpl implements TaskExecutionGraphListener {
         private final List<String> executedTasks = new CopyOnWriteArrayList<String>();
         private final Set<String> skippedTasks = new CopyOnWriteArraySet<String>();
 
         public void graphPopulated(TaskExecutionGraph graph) {
             List<Task> planned = new ArrayList<Task>(graph.getAllTasks());
             graph.addTaskExecutionListener(new TaskListenerImpl(planned, executedTasks, skippedTasks));
-        }
-
-        public void buildStarted(Gradle gradle) {
-            DeprecationLogger.setLogTrace(true);
-        }
-
-        public void settingsEvaluated(Settings settings) {
-
-        }
-
-        public void projectsLoaded(Gradle gradle) {
-
-        }
-
-        public void projectsEvaluated(Gradle gradle) {
-
-        }
-
-        public void buildFinished(BuildResult result) {
-            DeprecationLogger.setLogTrace(false);
         }
     }
 
@@ -266,28 +272,25 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
     public static class InProcessExecutionResult implements ExecutionResult {
         private final List<String> plannedTasks;
         private final Set<String> skippedTasks;
-        private final String output;
-        private final String error;
+        private final OutputScrapingExecutionResult outputResult;
 
-        public InProcessExecutionResult(List<String> plannedTasks, Set<String> skippedTasks, String output,
-                                        String error) {
+        public InProcessExecutionResult(List<String> plannedTasks, Set<String> skippedTasks, OutputScrapingExecutionResult outputResult) {
             this.plannedTasks = plannedTasks;
             this.skippedTasks = skippedTasks;
-            this.output = output;
-            this.error = error;
+            this.outputResult = outputResult;
         }
 
         public String getOutput() {
-            return output;
+            return outputResult.getOutput();
         }
 
-        public ExecutionResult assertOutputEquals(String expectedOutput, boolean ignoreExtraLines) {
-            new SequentialOutputMatcher().assertOutputMatches(expectedOutput, getOutput(), ignoreExtraLines);
+        public ExecutionResult assertOutputEquals(String expectedOutput, boolean ignoreExtraLines, boolean ignoreLineOrder) {
+            outputResult.assertOutputEquals(expectedOutput, ignoreExtraLines, ignoreLineOrder);
             return this;
         }
 
         public String getError() {
-            return error;
+            return outputResult.getError();
         }
 
         public List<String> getExecutedTasks() {
@@ -297,11 +300,7 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
         public ExecutionResult assertTasksExecuted(String... taskPaths) {
             List<String> expected = Arrays.asList(taskPaths);
             assertThat(plannedTasks, equalTo(expected));
-            return this;
-        }
-
-        public ExecutionResult assertProjectsEvaluated(String... projectPaths) {
-            new OutputScraper(getOutput()).assertProjectsEvaluated(asList(projectPaths));
+            outputResult.assertTasksExecuted(taskPaths);
             return this;
         }
 
@@ -312,11 +311,13 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
         public ExecutionResult assertTasksSkipped(String... taskPaths) {
             Set<String> expected = new HashSet<String>(Arrays.asList(taskPaths));
             assertThat(skippedTasks, equalTo(expected));
+            outputResult.assertTasksSkipped(taskPaths);
             return this;
         }
 
         public ExecutionResult assertTaskSkipped(String taskPath) {
             assertThat(skippedTasks, hasItem(taskPath));
+            outputResult.assertTaskSkipped(taskPath);
             return this;
         }
 
@@ -324,11 +325,13 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             Set<String> expected = new HashSet<String>(Arrays.asList(taskPaths));
             Set<String> notSkipped = getNotSkippedTasks();
             assertThat(notSkipped, equalTo(expected));
+            outputResult.assertTasksNotSkipped(taskPaths);
             return this;
         }
 
         public ExecutionResult assertTaskNotSkipped(String taskPath) {
             assertThat(getNotSkippedTasks(), hasItem(taskPath));
+            outputResult.assertTaskNotSkipped(taskPath);
             return this;
         }
 
@@ -340,27 +343,51 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
     }
 
     private static class InProcessExecutionFailure extends InProcessExecutionResult implements ExecutionFailure {
+        private static final Pattern LOCATION_PATTERN = Pattern.compile("(?m)^((\\w+ )+'.+') line: (\\d+)$");
+        private final OutputScrapingExecutionFailure outputFailure;
         private final GradleException failure;
+        private final String fileName;
+        private final String lineNumber;
+        private final String description;
 
-        public InProcessExecutionFailure(List<String> tasks, Set<String> skippedTasks, String output, String error,
+        public InProcessExecutionFailure(List<String> tasks, Set<String> skippedTasks, OutputScrapingExecutionFailure outputFailure,
                                          GradleException failure) {
-            super(tasks, skippedTasks, output, error);
+            super(tasks, skippedTasks, outputFailure);
+            this.outputFailure = outputFailure;
             this.failure = failure;
+
+            // Chop up the exception message into its expected parts
+            java.util.regex.Matcher matcher = LOCATION_PATTERN.matcher(failure.getMessage());
+            if (matcher.find()) {
+                fileName = matcher.group(1);
+                lineNumber = matcher.group(3);
+                description = failure.getMessage().substring(matcher.end()).trim();
+            } else {
+                fileName = "";
+                lineNumber = "";
+                description = failure.getMessage().trim();
+            }
         }
 
         public ExecutionFailure assertHasLineNumber(int lineNumber) {
-            assertThat(failure.getMessage(), containsString(String.format(" line: %d", lineNumber)));
+            assertThat(this.lineNumber, equalTo(String.valueOf(lineNumber)));
+            outputFailure.assertHasLineNumber(lineNumber);
             return this;
-
         }
 
         public ExecutionFailure assertHasFileName(String filename) {
-            assertThat(failure.getMessage(), startsWith(String.format("%s", filename)));
+            assertThat(this.fileName, equalTo(filename));
+            outputFailure.assertHasFileName(filename);
+            return this;
+        }
+
+        public ExecutionFailure assertHasResolution(String resolution) {
+            outputFailure.assertHasResolution(resolution);
             return this;
         }
 
         public ExecutionFailure assertHasCause(String description) {
-            assertThatCause(startsWith(description));
+            assertThatCause(normalizedLineSeparators(startsWith(description)));
             return this;
         }
 
@@ -368,6 +395,7 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             List<Throwable> causes = new ArrayList<Throwable>();
             extractCauses(failure, causes);
             assertThat(causes, Matchers.<Throwable>hasItem(hasMessage(matcher)));
+            outputFailure.assertThatCause(matcher);
             return this;
         }
 
@@ -380,7 +408,7 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             } else if (failure instanceof LocationAwareException) {
                 causes.addAll(((LocationAwareException) failure).getReportableCauses());
             } else {
-                causes.add(failure.getCause());
+                causes.add(failure);
             }
         }
 
@@ -391,16 +419,18 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             } else {
                 assertThat(failure.getCause(), nullValue());
             }
+            outputFailure.assertHasNoCause();
             return this;
         }
 
         public ExecutionFailure assertHasDescription(String context) {
-            assertThatDescription(startsWith(context));
+            assertThatDescription(equalTo(context));
             return this;
         }
 
         public ExecutionFailure assertThatDescription(Matcher<String> matcher) {
-            assertThat(failure.getMessage(), containsLine(matcher));
+            assertThat(description, normalizedLineSeparators(matcher));
+            outputFailure.assertThatDescription(matcher);
             return this;
         }
 
@@ -409,8 +439,8 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             return this;
         }
 
-        public DependencyResolutionFailure getDependencyResolutionFailure() {
-            return new DependencyResolutionFailure(this);
+        public DependencyResolutionFailure assertResolutionFailure(String configurationPath) {
+            return new DependencyResolutionFailure(this, configurationPath);
         }
     }
 }

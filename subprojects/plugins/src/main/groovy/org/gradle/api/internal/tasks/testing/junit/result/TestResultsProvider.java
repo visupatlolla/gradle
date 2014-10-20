@@ -19,19 +19,32 @@ package org.gradle.api.internal.tasks.testing.junit.result;
 import org.gradle.api.Action;
 import org.gradle.api.tasks.testing.TestOutputEvent;
 
+import java.io.Closeable;
 import java.io.Writer;
 
-/**
- * by Szczepan Faber, created at: 11/16/12
- */
-public interface TestResultsProvider {
+public interface TestResultsProvider extends Closeable {
     /**
      * Writes the output of the given test to the given writer. This method must be called only after {@link #visitClasses(org.gradle.api.Action)}.
+     *
+     * Writes all output for the test class.
      */
-    void writeOutputs(String className, TestOutputEvent.Destination destination, Writer writer);
+    void writeAllOutput(long id, TestOutputEvent.Destination destination, Writer writer);
+
+    void writeNonTestOutput(long id, TestOutputEvent.Destination destination, Writer writer);
+
+    /**
+     * Writes the output of the given test to the given writer. This method must be called only after {@link #visitClasses(org.gradle.api.Action)}.
+     *
+     * Write all output for the given test case name of the test class.
+     */
+    void writeTestOutput(long classId, long testId, TestOutputEvent.Destination destination, Writer writer);
 
     /**
      * Visits the results of each test class, in no specific order. Each class is visited exactly once.
      */
     void visitClasses(Action<? super TestClassResult> visitor);
+
+    boolean hasOutput(long id, TestOutputEvent.Destination destination);
+
+    boolean isHasResults();
 }

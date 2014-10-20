@@ -183,14 +183,13 @@ public class BuildScriptClasspathIntegrationTest extends AbstractIntegrationTest
                 "include 'child'"
         );
         testFile("build.gradle").writelns(
-                "assert gradle.scriptClassLoader == buildscript.classLoader.parent",
                 "buildscript {",
                 "    repositories { flatDir { dirs 'repo' }}",
                 "    dependencies { classpath name: 'test', version: '1.3' }",
                 "}"
         );
         testFile("child/build.gradle").writelns(
-                "assert parent.buildscript.classLoader == buildscript.classLoader.parent",
+                "assert parent.buildscript.classLoader == buildscript.classLoader",
                 "task hello << ",
                 "{",
                 "    new org.gradle.test.BuildClass()",

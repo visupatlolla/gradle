@@ -24,12 +24,9 @@ import org.junit.Test
 import static org.hamcrest.Matchers.equalTo
 import static org.junit.Assert.assertThat
 
-/**
- * @author Hans Dockter
- */
 class SamplesRepositoriesIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('userguide/artifacts/defineRepository')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'userguide/artifacts/defineRepository')
 
     @Test
     public void repositoryNotations() {

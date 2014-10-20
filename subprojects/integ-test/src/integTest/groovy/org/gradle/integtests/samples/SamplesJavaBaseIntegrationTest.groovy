@@ -23,13 +23,9 @@ import org.gradle.test.fixtures.file.TestFile
 import org.junit.Rule
 import org.junit.Test
 
-/**
- * @author Hans Dockter
- */
-
 class SamplesJavaBaseIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('java/base')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'java/base')
 
     @Test
     public void canBuildAndUploadJar() {
@@ -39,7 +35,7 @@ class SamplesJavaBaseIntegrationTest extends AbstractIntegrationTest {
         executer.inDirectory(javaprojectDir).withTasks('clean', 'build').run()
 
         // Check tests have run
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(javaprojectDir.file('test'))
+        def result = new DefaultTestExecutionResult(javaprojectDir.file('test'))
         result.assertTestClassesExecuted('org.gradle.PersonTest')
 
         // Check jar exists

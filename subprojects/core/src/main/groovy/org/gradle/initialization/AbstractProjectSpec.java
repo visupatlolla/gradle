@@ -15,32 +15,25 @@
  */
 package org.gradle.initialization;
 
-import org.gradle.api.internal.project.IProjectRegistry;
-import org.gradle.api.internal.project.ProjectIdentifier;
 import org.gradle.api.InvalidUserDataException;
+import org.gradle.api.internal.project.ProjectIdentifier;
+import org.gradle.api.internal.project.ProjectRegistry;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 
 public abstract class AbstractProjectSpec implements ProjectSpec {
-    public boolean containsProject(IProjectRegistry<?> registry) {
+    public boolean containsProject(ProjectRegistry<? extends ProjectIdentifier> registry) {
         checkPreconditions(registry);
-        for (ProjectIdentifier project : registry.getAllProjects()) {
-            if (select(project)) {
-                return true;
-            }
-        }
-        return false;
+        List<ProjectIdentifier> matches = new ArrayList<ProjectIdentifier>();
+        select(registry, matches);
+        return !matches.isEmpty();
     }
 
-    public <T extends ProjectIdentifier> T selectProject(IProjectRegistry<? extends T> registry) {
+    public <T extends ProjectIdentifier> T selectProject(ProjectRegistry<? extends T> registry) {
         checkPreconditions(registry);
         List<T> matches = new ArrayList<T>();
-        for (T project : registry.getAllProjects()) {
-            if (select(project)) {
-                matches.add(project);
-            }
-        }
+        select(registry, matches);
         if (matches.isEmpty()) {
             throw new InvalidUserDataException(formatNoMatchesMessage());
         }
@@ -50,12 +43,12 @@ public abstract class AbstractProjectSpec implements ProjectSpec {
         return matches.get(0);
     }
 
-    protected void checkPreconditions(IProjectRegistry<?> registry) {
+    protected void checkPreconditions(ProjectRegistry<?> registry) {
     }
 
     protected abstract String formatMultipleMatchesMessage(Iterable<? extends ProjectIdentifier> matches);
 
     protected abstract String formatNoMatchesMessage();
 
-    protected abstract boolean select(ProjectIdentifier project);
+    protected abstract <T extends ProjectIdentifier> void select(ProjectRegistry<? extends T> candidates, List<? super T> matches);
 }

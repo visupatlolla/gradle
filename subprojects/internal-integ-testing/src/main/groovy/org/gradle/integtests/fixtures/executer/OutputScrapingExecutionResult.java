@@ -24,9 +24,9 @@ import java.io.StringReader;
 import java.util.*;
 import java.util.regex.Pattern;
 
-import static java.util.Arrays.asList;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
 
 public class OutputScrapingExecutionResult implements ExecutionResult {
@@ -37,7 +37,7 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
     private final Pattern skippedTaskPattern = Pattern.compile("(:\\S+?(:\\S+?)*)\\s+((SKIPPED)|(UP-TO-DATE))");
 
     //for example: ':hey' or ':a SKIPPED' or ':foo:bar:baz UP-TO-DATE' but not ':a FOO'
-    private final Pattern taskPattern = Pattern.compile("(:\\S+?(:\\S+?)*)((\\s+SKIPPED)|(\\s+UP-TO-DATE)|(\\s*))");
+    private final Pattern taskPattern = Pattern.compile("(:\\S+?(:\\S+?)*)((\\s+SKIPPED)|(\\s+UP-TO-DATE)|(\\s+FAILED)|(\\s*))");
 
     public OutputScrapingExecutionResult(String output, String error) {
         this.output = output;
@@ -48,8 +48,9 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
         return output;
     }
 
-    public ExecutionResult assertOutputEquals(String expectedOutput, boolean ignoreExtraLines) {
-        new SequentialOutputMatcher().assertOutputMatches(expectedOutput, getOutput(), ignoreExtraLines);
+    public ExecutionResult assertOutputEquals(String expectedOutput, boolean ignoreExtraLines, boolean ignoreLineOrder) {
+        SequentialOutputMatcher matcher = ignoreLineOrder ? new AnyOrderOutputMatcher() : new SequentialOutputMatcher();
+        matcher.assertOutputMatches(expectedOutput, getOutput(), ignoreExtraLines);
         return this;
     }
 
@@ -67,8 +68,9 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
         return this;
     }
 
-    public ExecutionResult assertProjectsEvaluated(String... projectPaths) {
-        new OutputScraper(getOutput()).assertProjectsEvaluated(asList(projectPaths));
+    public ExecutionResult assertTaskNotExecuted(String taskPath) {
+        Set<String> tasks = new HashSet<String>(getExecutedTasks());
+        assertThat(String.format("Expected task %s found in process output:%n%s", taskPath, getOutput()), tasks, not(hasItem(taskPath)));
         return this;
     }
 

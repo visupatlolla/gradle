@@ -54,10 +54,17 @@ public class TextUtil {
     }
 
     /**
-     * Converts all line separators in the specified string to the the platform's line separator.
+     * Converts all line separators in the specified string to the platform's line separator.
      */
     public static String toPlatformLineSeparators(String str) {
         return str == null ? null : convertLineSeparators(str, getPlatformLineSeparator());
+    }
+
+    /**
+     * Converts all line separators in the specified string to a single new line character.
+     */
+    public static String normaliseLineSeparators(String str) {
+        return str == null ? null : convertLineSeparators(str, "\n");
     }
 
     /**

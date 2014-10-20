@@ -16,15 +16,16 @@
 
 package org.gradle.launcher.daemon.registry;
 
-import org.gradle.messaging.remote.Address;
 import org.gradle.launcher.daemon.context.DaemonContext;
+import org.gradle.launcher.daemon.context.DaemonInstanceDetails;
+import org.gradle.messaging.remote.Address;
 
 import java.io.Serializable;
 
 /**
  * Provides information about a daemon that is potentially available to do some work.
  */
-public class DaemonInfo implements Serializable {
+public class DaemonInfo implements Serializable, DaemonInstanceDetails {
 
     private final Address address;
     private final DaemonContext context;
@@ -41,6 +42,14 @@ public class DaemonInfo implements Serializable {
     public DaemonInfo setIdle(boolean idle) {
         this.idle = idle;
         return this;
+    }
+
+    public String getUid() {
+        return context.getUid();
+    }
+
+    public Long getPid() {
+        return context.getPid();
     }
 
     public Address getAddress() {
@@ -61,7 +70,7 @@ public class DaemonInfo implements Serializable {
 
     @Override
     public String toString() {
-        return String.format("DaemonInfo{address=%s, idle=%s, context=%s}", address, idle, context);
+        return String.format("DaemonInfo{pid=%s, address=%s, idle=%s, context=%s}", context.getPid(), address, idle, context);
     }
 
 }

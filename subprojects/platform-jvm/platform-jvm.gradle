@@ -1,0 +1,10 @@
+dependencies {
+    compile project(":platformBase")
+    compile project(":core")
+
+    testCompile libraries.groovy
+}
+
+useTestFixtures()
+useClassycle()
+strictCompile()

@@ -16,145 +16,23 @@
 
 package org.gradle.api.internal.artifacts
 
-import org.apache.ivy.plugins.resolver.FileSystemResolver
 import org.gradle.api.Action
 import org.gradle.api.artifacts.ArtifactRepositoryContainer
 import org.gradle.api.artifacts.UnknownRepositoryException
 import org.gradle.api.artifacts.repositories.ArtifactRepository
-import org.gradle.api.internal.artifacts.repositories.ArtifactRepositoryInternal
-import org.gradle.api.internal.artifacts.repositories.FixedResolverArtifactRepository
 import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.internal.reflect.Instantiator
 import spock.lang.Specification
 
 class DefaultArtifactRepositoryContainerTest extends Specification {
-
-    BaseRepositoryFactory repositoryFactory
     DefaultArtifactRepositoryContainer container
 
     def setup() {
-        repositoryFactory = Mock(BaseRepositoryFactory)
         container = createResolverContainer()
     }
 
-    ArtifactRepositoryContainer createResolverContainer(
-            BaseRepositoryFactory repositoryFactory = repositoryFactory,
-            Instantiator instantiator = new DirectInstantiator()
-    ) {
-        new DefaultArtifactRepositoryContainer(repositoryFactory, instantiator)
-    }
-
-    List setupNotation(int i, repositoryFactory = repositoryFactory) {
-        setupNotation("repoNotation$i", "repo$i", "resolver$i", repositoryFactory)
-    }
-
-    List setupNotation(notation, repoName, resolverName, repositoryFactory = repositoryFactory) {
-        def repo = Mock(ArtifactRepositoryInternal) { getName() >> repoName }
-        def resolver = new FileSystemResolver()
-        def resolverRepo = Spy(FixedResolverArtifactRepository, constructorArgs: [resolver])
-
-        interaction {
-            1 * repositoryFactory.createRepository(notation) >> repo
-            1 * repositoryFactory.toResolver(repo) >> resolver
-            1 * repositoryFactory.createResolverBackedRepository(resolver) >> resolverRepo
-            1 * resolverRepo.onAddToContainer(container)
-        }
-
-        [notation, repo, resolver, resolverRepo]
-    }
-
-    def "can add resolver"() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        def (repo2Notation, repo2, resolver2, resolverRepo2) = setupNotation(2)
-
-        expect:
-        container.addLast(repo1Notation).is resolver1
-        assert container.findByName(resolver1.name) != null
-        container.addLast(repo2Notation)
-        container == [resolverRepo1, resolverRepo2]
-    }
-
-    def "can add repositories with duplicate names"() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        def (repo2Notation, repo2, resolver2, resolverRepo2) = setupNotation(2)
-
-        when:
-        container.addLast(repo1Notation)
-        container.addLast(repo2Notation)
-
-        then:
-        container*.name == ["repository", "repository2"]
-    }
-
-    def testAddResolverWithClosure() {
-        given:
-        def repo = Mock(ArtifactRepositoryInternal) { getName() >> "name" }
-        def resolver = new FileSystemResolver()
-        def resolverRepo = Spy(FixedResolverArtifactRepository, constructorArgs: [resolver])
-
-        interaction {
-            1 * repositoryFactory.createRepository(resolver) >> repo
-            1 * repositoryFactory.toResolver(repo) >> resolver
-            1 * repositoryFactory.createResolverBackedRepository(resolver) >> resolverRepo
-            1 * resolverRepo.onAddToContainer(container)
-        }
-
-        when:
-        container.add(resolver) {
-            transactional = "foo"
-            name = "bar"
-        }
-
-        then:
-        resolver.transactional == "foo"
-        resolverRepo.name == "bar"
-    }
-
-    def testAddBefore() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        def (repo2Notation, repo2, resolver2, resolverRepo2) = setupNotation(2)
-
-        when:
-        container.addLast(repo1Notation)
-        container.addBefore(repo2Notation, "repository")
-
-        then:
-        container == [resolverRepo2, resolverRepo1]
-    }
-
-    def testAddAfter() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        def (repo2Notation, repo2, resolver2, resolverRepo2) = setupNotation(2)
-        def (repo3Notation, repo3, resolver3, resolverRepo3) = setupNotation(3)
-
-        when:
-        container.addLast(repo1Notation)
-        container.addAfter(repo2Notation, "repository")
-        container.addAfter(repo3Notation, "repository")
-
-        then:
-        container == [resolverRepo1, resolverRepo3, resolverRepo2]
-    }
-
-
-    def testAddBeforeWithUnknownResolver() {
-        when:
-        container.addBefore("asdfasd", 'unknownName')
-
-        then:
-        thrown(UnknownRepositoryException)
-    }
-
-    def testAddAfterWithUnknownResolver() {
-        when:
-        container.addAfter("asdfasd", 'unknownName')
-
-        then:
-        thrown(UnknownRepositoryException)
+    ArtifactRepositoryContainer createResolverContainer(Instantiator instantiator = new DirectInstantiator()) {
+        new DefaultArtifactRepositoryContainer(instantiator)
     }
 
     def testAddFirst() {
@@ -184,44 +62,6 @@ class DefaultArtifactRepositoryContainerTest extends Specification {
 
         then:
         container == [repo1, repo2]
-    }
-
-    def testAddFirstUsingUserDescription() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        def (repo2Notation, repo2, resolver2, resolverRepo2) = setupNotation(2)
-
-        when:
-        container.addFirst(repo1Notation)
-        container.addFirst(repo2Notation)
-
-        then:
-        container == [resolverRepo2, resolverRepo1]
-    }
-
-    def testAddLastUsingUserDescription() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        def (repo2Notation, repo2, resolver2, resolverRepo2) = setupNotation(2)
-
-        when:
-        container.addLast(repo1Notation)
-        container.addLast(repo2Notation)
-
-        then:
-        container == [resolverRepo1, resolverRepo2]
-    }
-
-    public void testAddWithUnnamedResolver() {
-        given:
-        def (repo1Notation, repo1, resolver1, resolverRepo1) = setupNotation(1)
-        resolver1.name = null
-
-        when:
-        container.addLast(repo1Notation)
-
-        then:
-        resolver1.name == 'repository'
     }
 
     def testGetThrowsExceptionForUnknownResolver() {

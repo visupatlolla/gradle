@@ -16,33 +16,35 @@
 
 package org.gradle.execution;
 
+import org.gradle.api.BuildCancelledException;
 import org.gradle.api.Project;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.initialization.BuildCancellationToken;
 
-/**
- * by Szczepan Faber, created at: 1/8/13
- */
-public class TaskPathProjectEvaluator {
+public class TaskPathProjectEvaluator implements ProjectConfigurer {
+    private final BuildCancellationToken cancellationToken;
 
-    private final ProjectFinderByTaskPath finder;
-
-    public TaskPathProjectEvaluator() {
-        this(new ProjectFinderByTaskPath());
+    public TaskPathProjectEvaluator(BuildCancellationToken cancellationToken) {
+        this.cancellationToken = cancellationToken;
     }
 
-    TaskPathProjectEvaluator(ProjectFinderByTaskPath finder) {
-        this.finder = finder;
+    public void configure(ProjectInternal project) {
+        if (cancellationToken.isCancellationRequested()) {
+            throw new BuildCancelledException();
+        }
+        project.evaluate();
     }
 
-    public void evaluateByPath(ProjectInternal project, String path) {
-        if (path.contains(Project.PATH_SEPARATOR)) {
-            ProjectInternal foundProject = finder.findProject(path, project);
-            foundProject.evaluate();
-        } else {
-            project.evaluate();
-            for (Project sub : project.getSubprojects()) {
-                ((ProjectInternal) sub).evaluate();
+    public void configureHierarchy(ProjectInternal project) {
+        if (cancellationToken.isCancellationRequested()) {
+            throw new BuildCancelledException();
+        }
+        project.evaluate();
+        for (Project sub : project.getSubprojects()) {
+            if (cancellationToken.isCancellationRequested()) {
+                throw new BuildCancelledException();
             }
+            ((ProjectInternal) sub).evaluate();
         }
     }
 }

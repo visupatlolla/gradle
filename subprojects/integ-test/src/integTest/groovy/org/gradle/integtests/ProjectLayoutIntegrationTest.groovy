@@ -17,14 +17,20 @@ package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
+import org.gradle.integtests.fixtures.ForkScalaCompileInDaemonModeFixture
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.test.fixtures.file.TestFile
 import org.junit.Rule
 import org.junit.Test
 
 class ProjectLayoutIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final TestResources resources = new TestResources()
+    @Rule
+    public final ForkScalaCompileInDaemonModeFixture forkScalaCompileInDaemonModeFixture = new ForkScalaCompileInDaemonModeFixture(executer, testDirectoryProvider)
+
+    @Rule
+    public final TestResources resources = new TestResources(testDirectoryProvider)
 
     @Test
     public void canHaveSomeSourceAndResourcesInSameDirectoryAndSomeInDifferentDirectories() {
@@ -38,9 +44,8 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    compile 'org.codehaus.groovy:groovy-all:2.0.5'
-    // scaladoc in Scala 2.9.2 requires Java 1.6
-    compile 'org.scala-lang:scala-library:2.9.1'
+    compile 'org.codehaus.groovy:groovy-all:2.3.6'
+    compile 'org.scala-lang:scala-library:2.11.1'
 }
 
 sourceSets.each {
@@ -123,11 +128,20 @@ sourceSets.each {
                 'org/gradle/ScalaClass2.class'
         )
 
-        executer.withTasks('javadoc', 'groovydoc', 'scaladoc').run()
+        def runScalaDoc = !GradleContextualExecuter.daemon
+        def tasks = ['javadoc', 'groovydoc']
+        if (runScalaDoc) {
+            tasks << "scaladoc"
+        }
+
+        executer.withTasks(tasks).run()
 
         buildDir.file('docs/javadoc/index.html').assertIsFile()
         buildDir.file('docs/groovydoc/index.html').assertIsFile()
-        buildDir.file('docs/scaladoc/index.html').assertIsFile()
+
+        if (runScalaDoc) {
+            buildDir.file('docs/scaladoc/index.html').assertIsFile()
+        }
     }
 
     @Test
@@ -164,12 +178,24 @@ sourceSets.main.java {
 
     @Test
     public void canUseANonStandardBuildDir() {
-        executer.withTasks('build').withArguments('-i').run()
+        executer.withTasks('build').run()
 
         file('build').assertDoesNotExist()
 
-        DefaultTestExecutionResult results = new DefaultTestExecutionResult(file(), 'target')
+        def results = new DefaultTestExecutionResult(file(), 'target')
         results.assertTestClassesExecuted('PersonTest')
         results.testClass('PersonTest').assertTestsExecuted('ok')
+    }
+
+    @Test
+    public void projectPathsResolvedRelativeToRoot() {
+        file('relative/a/build.gradle') << """
+            task someTask
+        """
+        file('settings.gradle') << '''
+        include ':a'
+        project(':a').projectDir = new File('relative/a')
+        '''
+        executer.inDirectory(file('relative/a')).withTasks(':a:someTask').run()
     }
 }

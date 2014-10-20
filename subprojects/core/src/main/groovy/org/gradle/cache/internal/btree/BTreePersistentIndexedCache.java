@@ -18,6 +18,8 @@ package org.gradle.cache.internal.btree;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.messaging.serialize.Serializer;
+import org.gradle.messaging.serialize.kryo.KryoBackedDecoder;
+import org.gradle.messaging.serialize.kryo.KryoBackedEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -131,7 +133,9 @@ public class BTreePersistentIndexedCache<K, V> implements PersistentIndexedCache
     public void put(K key, V value) {
         try {
             MessageDigestStream digestStream = new MessageDigestStream();
-            keySerializer.write(digestStream, key);
+            KryoBackedEncoder encoder = new KryoBackedEncoder(digestStream);
+            keySerializer.write(encoder, key);
+            encoder.flush();
             long hashCode = digestStream.getChecksum();
             Lookup lookup = header.getRoot().find(hashCode);
             boolean needNewBlock = true;
@@ -447,7 +451,9 @@ public class BTreePersistentIndexedCache<K, V> implements PersistentIndexedCache
 
         public Lookup find(K key) throws Exception {
             MessageDigestStream digestStream = new MessageDigestStream();
-            keySerializer.write(digestStream, key);
+            KryoBackedEncoder encoder = new KryoBackedEncoder(digestStream);
+            keySerializer.write(encoder, key);
+            encoder.flush();
             long checksum = digestStream.getChecksum();
             return find(checksum);
         }
@@ -645,13 +651,15 @@ public class BTreePersistentIndexedCache<K, V> implements PersistentIndexedCache
 
         public void setValue(V value) throws Exception {
             ByteArrayOutputStream outStr = new ByteArrayOutputStream();
-            serializer.write(outStr, value);
+            KryoBackedEncoder encoder = new KryoBackedEncoder(outStr);
+            serializer.write(encoder, value);
+            encoder.flush();
             this.serialisedValue = outStr.toByteArray();
         }
 
         public V getValue() throws Exception {
             if (value == null) {
-                value = serializer.read(new ByteArrayInputStream(serialisedValue));
+                value = serializer.read(new KryoBackedDecoder(new ByteArrayInputStream(serialisedValue)));
             }
             return value;
         }

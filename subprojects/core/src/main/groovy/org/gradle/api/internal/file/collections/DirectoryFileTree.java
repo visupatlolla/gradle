@@ -25,6 +25,8 @@ import org.gradle.api.logging.Logging;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.util.PatternFilterable;
 import org.gradle.api.tasks.util.PatternSet;
+import org.gradle.internal.nativeintegration.filesystem.FileSystem;
+import org.gradle.internal.nativeintegration.services.FileSystems;
 import org.gradle.util.GFileUtils;
 import org.gradle.util.GUtil;
 
@@ -43,8 +45,6 @@ import java.util.regex.Pattern;
  *
  * A file or directory will only be visited if it matches all includes and no
  * excludes.
- *
- * @author Steve Appling
  */
 public class DirectoryFileTree implements MinimalFileTree, PatternFilterableFileTree, RandomAccessFileCollection, LocalFileTree, DirectoryTree {
     private static final Logger LOGGER = Logging.getLogger(DirectoryFileTree.class);
@@ -52,6 +52,7 @@ public class DirectoryFileTree implements MinimalFileTree, PatternFilterableFile
     private final File dir;
     private PatternSet patternSet;
     private boolean postfix;
+    private final FileSystem fileSystem = FileSystems.getDefault();
 
     public DirectoryFileTree(File dir) {
         this(dir, new PatternSet());
@@ -101,12 +102,12 @@ public class DirectoryFileTree implements MinimalFileTree, PatternFilterableFile
         }
         RelativePath path = new RelativePath(true, file.getAbsolutePath().substring(prefix.length()).split(
                 Pattern.quote(File.separator)));
-        return patternSet.getAsSpec().isSatisfiedBy(new DefaultFileTreeElement(file, path));
+        return patternSet.getAsSpec().isSatisfiedBy(new DefaultFileTreeElement(file, path, fileSystem, fileSystem));
     }
 
     /**
      * Process the specified file or directory.  Note that the startFile parameter
-     * may be either a directory or a file.  If it is a directory, then it's contents
+     * may be either a directory or a file.  If it is a directory, then its contents
      * (but not the directory itself) will be checked with isAllowed and notified to
      * the listener.  If it is a file, the file will be checked and notified.
      */
@@ -130,7 +131,7 @@ public class DirectoryFileTree implements MinimalFileTree, PatternFilterableFile
 
     private void processSingleFile(File file, FileVisitor visitor, Spec<FileTreeElement> spec, AtomicBoolean stopFlag) {
         RelativePath path = new RelativePath(true, file.getName());
-        FileVisitDetails details = new DefaultFileVisitDetails(file, path, stopFlag);
+        FileVisitDetails details = new DefaultFileVisitDetails(file, path, stopFlag, fileSystem, fileSystem);
         if (isAllowed(details, spec)) {
             visitor.visitFile(details);
         }
@@ -150,7 +151,7 @@ public class DirectoryFileTree implements MinimalFileTree, PatternFilterableFile
             File child = children[i];
             boolean isFile = child.isFile();
             RelativePath childPath = path.append(isFile, child.getName());
-            FileVisitDetails details = new DefaultFileVisitDetails(child, childPath, stopFlag);
+            FileVisitDetails details = new DefaultFileVisitDetails(child, childPath, stopFlag, fileSystem, fileSystem);
             if (isAllowed(details, spec)) {
                 if (isFile) {
                     visitor.visitFile(details);

@@ -15,7 +15,7 @@
  */
 package org.gradle.plugins.ide.eclipse
 
-import org.gradle.api.internal.artifacts.ivyservice.DefaultCacheLockingManager
+import org.gradle.api.internal.artifacts.ivyservice.CacheLayout
 import org.gradle.test.fixtures.file.TestFile
 
 import java.util.regex.Pattern
@@ -75,6 +75,10 @@ class EclipseClasspathFixture {
             this.entry = entry
         }
 
+        String getJarPath() {
+            entry.@path
+        }
+
         void assertHasJar(File jar) {
             assert entry.@path == jar.absolutePath.replace(File.separator, '/')
         }
@@ -84,11 +88,15 @@ class EclipseClasspathFixture {
         }
 
         void assertHasCachedJar(String group, String module, String version) {
-            assert entry.@path ==~ cachePath(group, module, version, "jar") + Pattern.quote("${module}-${version}.jar")
+            assert entry.@path ==~ cachePath(group, module, version) + Pattern.quote("${module}-${version}.jar")
         }
 
         void assertHasSource(File jar) {
             assert entry.@sourcepath == jar.absolutePath.replace(File.separator, '/')
+        }
+
+        String getSourcePath() {
+            entry.@sourcepath
         }
 
         void assertHasSource(String jar) {
@@ -96,19 +104,21 @@ class EclipseClasspathFixture {
         }
 
         void assertHasCachedSource(String group, String module, String version) {
-            assert entry.@sourcepath ==~ cachePath(group, module, version, "source") + Pattern.quote("${module}-${version}-sources.jar")
+            assert entry.@sourcepath ==~ cachePath(group, module, version) + Pattern.quote("${module}-${version}-sources.jar")
         }
 
-        private String cachePath(String group, String module, String version, String type) {
-            return Pattern.quote("${userHomeDir.absolutePath.replace(File.separator, '/')}") + "/caches/artifacts-${artifactCacheVersion}/filestore/" + Pattern.quote("${group}/${module}/${version}/${type}/") + "\\w+/"
-        }
-
-        private def getArtifactCacheVersion() {
-            return DefaultCacheLockingManager.CACHE_LAYOUT_VERSION;
+        private String cachePath(String group, String module, String version) {
+            return Pattern.quote("${userHomeDir.absolutePath.replace(File.separator, '/')}") + "/caches/${CacheLayout.ROOT.getKey()}/${CacheLayout.FILE_STORE.getKey()}/" + Pattern.quote("${group}/${module}/${version}/") + "\\w+/"
         }
 
         void assertHasNoSource() {
             assert !entry.@sourcepath
+        }
+
+        String getJavadocLocation() {
+            assert entry.attributes
+            assert entry.attributes[0].attribute[0].@name == 'javadoc_location'
+            entry.attributes[0].attribute[0].@value
         }
 
         void assertHasJavadoc(File file) {

@@ -18,16 +18,19 @@ package org.gradle.api.tasks
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.util.Matchers
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 
 import static org.hamcrest.Matchers.equalTo
 import static org.hamcrest.Matchers.startsWith
+import static org.junit.Assert.assertFalse
 import static org.junit.Assert.assertThat
 
 public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
     @Rule
-    public final TestResources resources = new TestResources("copyTestResources")
+    public final TestResources resources = new TestResources(testDirectoryProvider, "copyTestResources")
 
     @Test
     public void testSingleSourceWithIncludeAndExclude() {
@@ -162,7 +165,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         )
     }
 
-    @Test public void copySingleFiles() {
+    @Test
+    public void copySingleFiles() {
         TestFile buildFile = testFile("build.gradle").writelns(
                 "task copyIt << {",
                 "   copy {",
@@ -183,7 +187,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
      * If these filters are chained in the correct order, you should get 6, 11, and 16
      */
 
-    @Test public void copyMultipleFilterTest() {
+    @Test
+    public void copyMultipleFilterTest() {
         TestFile buildFile = testFile('build.gradle').writelns(
                 """task (copy, type:Copy) {
                    into 'dest'
@@ -203,7 +208,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         assertThat(it.next(), startsWith('16'))
     }
 
-    @Test public void chainedTransformations() {
+    @Test
+    public void chainedTransformations() {
         def buildFile = testFile('build.gradle') << '''
             task copy(type: Copy) {
                 into 'dest'
@@ -235,7 +241,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         assertThat(it.next(), equalTo('[prefix: line 2]'))
     }
 
-    @Test public void testCopyFromFileTree() {
+    @Test
+    public void testCopyFromFileTree() {
         TestFile buildFile = testFile("build.gradle").writelns(
                 """task cpy << {
                    copy {
@@ -255,7 +262,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         )
     }
 
-    @Test public void testCopyFromFileCollection() {
+    @Test
+    public void testCopyFromFileCollection() {
         TestFile buildFile = testFile("build.gradle").writelns(
                 """task copy << {
                    copy {
@@ -277,7 +285,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         )
     }
 
-    @Test public void testCopyFromCompositeFileCollection() {
+    @Test
+    public void testCopyFromCompositeFileCollection() {
         testFile('a.jar').touch()
 
         TestFile buildFile = testFile("build.gradle").writelns(
@@ -302,7 +311,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         )
     }
 
-    @Test public void testCopyFromTask() {
+    @Test
+    public void testCopyFromTask() {
         TestFile buildFile = testFile("build.gradle").writelns(
                 """
                     configurations { compile }
@@ -335,7 +345,8 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         )
     }
 
-    @Test public void testCopyFromTaskOutputs() {
+    @Test
+    public void testCopyFromTaskOutputs() {
         TestFile buildFile = testFile("build.gradle").writelns(
                 """
                         configurations { compile }
@@ -368,10 +379,11 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
         )
     }
 
-    @Test public void testCopyWithCopyspec() {
+    @Test
+    public void testCopyWithCopyspec() {
         TestFile buildFile = testFile("build.gradle").writelns(
                 """
-                def spec = copySpec {
+                def parentSpec = copySpec {
                     from 'src'
                     exclude '**/ignore/**'
                     include '*/*.a'
@@ -379,13 +391,114 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
                 }
                 task copy(type: Copy) {
                     into 'dest'
-                    with spec
+                    with parentSpec
                 }"""
         )
         usingBuildFile(buildFile).withTasks("copy").run()
         testFile('dest').assertHasDescendants(
                 'subdir/one/one.a',
                 'subdir/two/two.a'
+        )
+    }
+
+    @Test
+    public void testTransformWithCopyspec() {
+        TestFile buildFile = testFile("build.gradle").writelns(
+                """
+                def parentSpec = copySpec {
+                    from 'src'
+                    include '*/*.a'
+                    into 'subdir'
+                    eachFile { fcd -> fcd.relativePath = fcd.relativePath.prepend('transformedAgain')}
+                }
+                task copy(type: Copy) {
+                    into 'dest'
+                    with parentSpec
+                    eachFile { fcd -> fcd.relativePath = fcd.relativePath.prepend('transformed') }
+                }"""
+        )
+        usingBuildFile(buildFile).withTasks("copy").run()
+        testFile('dest').assertHasDescendants(
+                'transformedAgain/transformed/subdir/one/one.a',
+                'transformedAgain/transformed/subdir/two/two.a'
+        )
+    }
+
+    @Test
+    @Ignore
+    //this does not pass with current implementation
+    public void testIncludeExcludeWithCopyspec() {
+        TestFile buildFile = testFile("build.gradle").writelns(
+                """
+                def parentSpec = copySpec {
+                    from 'src'
+                    include '**/one/**'
+                    exclude '**/ignore/**'
+                    into 'subdir'
+                }
+                task copy(type: Copy) {
+                    into 'dest'
+                    include '**/two/**'
+                    exclude '**/*.b'
+                    with parentSpec
+                }"""
+        )
+        usingBuildFile(buildFile).withTasks("copy").run()
+        testFile('dest').assertHasDescendants(
+                'subdir/one/one.a',
+                'subdir/one/sub/onesub.a',
+                'subdir/two/two.a'
+        )
+    }
+
+    /*
+   * two.a starts off with "$one\n${one+1}\n${one+1+1}\n"
+   * If these filters are chained in the correct order, you should get 6, 11, and 16
+   */
+
+    @Test
+    public void testMultipleFilterWithCopyspec() {
+        TestFile buildFile = testFile('build.gradle').writelns(
+                """
+                  def parentSpec = copySpec {
+                    from('src/two/two.a')
+                    filter { (Integer.parseInt(it) / 2) as String }
+                  }
+                  task (copy, type:Copy) {
+                   into 'dest'
+                   expand(one: 1)
+                   filter { (Integer.parseInt(it) * 10) as String }
+                   filter { (Integer.parseInt(it) + 2) as String }
+                   with parentSpec
+                }
+                """
+        )
+        usingBuildFile(buildFile).withTasks("copy").run()
+        Iterator<String> it = testFile('dest/two.a').readLines().iterator()
+        assertThat(it.next(), startsWith('6'))
+        assertThat(it.next(), startsWith('11'))
+        assertThat(it.next(), startsWith('16'))
+    }
+
+    @Test
+    void testRenameWithCopySpec() {
+        TestFile buildFile = testFile("build.gradle") << '''
+            def parentSpec = copySpec {
+               from 'src/one'
+               exclude '**/ignore/**'
+               rename '(.*).b$', '$1.renamed'
+            }
+            task (copy, type:Copy) {
+               with parentSpec
+               into 'dest'
+               rename { it.startsWith('one.') ? "renamed_$it" : it }
+            }'''
+        usingBuildFile(buildFile).withTasks("copy").run()
+        testFile('dest').assertHasDescendants(
+                'renamed_one.renamed',
+                'renamed_one.a',
+                'sub/onesub.renamed',
+                'sub/onesub.a',
         )
     }
 
@@ -434,5 +547,161 @@ public class CopyTaskIntegrationTest extends AbstractIntegrationTest {
 
         assert !file("dest", "emptyDir").exists()
         assert !file("dest", "yet", "another", "veryEmptyDir").exists()
+    }
+
+    @Test
+    public void testCopyExcludeDuplicates() {
+        file('dir1', 'path', 'file.txt').createFile() << "f1"
+        file('dir2', 'path', 'file.txt').createFile() << "f2"
+
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+            task copy(type: Copy) {
+                from 'dir1'
+                from 'dir2'
+                into 'dest'
+
+                eachFile { it.duplicatesStrategy = 'exclude' }
+            }
+
+        '''
+
+        def result = usingBuildFile(buildFile).withTasks("copy").run()
+        file('dest').assertHasDescendants('path/file.txt')
+        file('dest/path/file.txt').assertContents(Matchers.containsText("f1"))
+        assertFalse(result.output.contains('deprecated'))
+    }
+
+    @Test
+    public void renamedFileCanBeTreatedAsDuplicate() {
+        File file1 = file('dir1', 'path', 'file.txt').createFile()
+        File file2 = file('dir2', 'path', 'file2.txt').createFile()
+        file1.text = "file1"
+        file2.text = "file2"
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+                task copy(type: Copy) {
+                    from 'dir1'
+                    from 'dir2'
+                    rename 'file2.txt', 'file.txt'
+                    into 'dest'
+
+                    eachFile { it.duplicatesStrategy = 'exclude' }
+                }
+            '''
+        def result = usingBuildFile(buildFile).withTasks("copy").run()
+        file('dest').assertHasDescendants('path/file.txt')
+        file('dest/path/file.txt').assertContents(Matchers.containsText("file1"))
+        assertFalse(result.output.contains('deprecated'))
+    }
+
+    @Test
+    public void testEachChainedMatchingRuleAlwaysMatchesAgainstInitialSourcePath() {
+        file('path/abc.txt').createFile().write('test file with $attr')
+        file('path/bcd.txt').createFile()
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+            task copy(type: Copy) {
+                from 'path'
+                into 'dest'
+                filesMatching ('**/a*') {
+                    path = path + '.template'
+                }
+                filesMatching ('**/a*') {
+                    expand(attr: 'some value')
+                    path = path.replace('template', 'concrete')
+                }
+            }'''
+
+        usingBuildFile(buildFile).withTasks('copy').run();
+        file('dest').assertHasDescendants('bcd.txt', 'abc.txt.concrete')
+        file('dest/abc.txt.concrete').text = 'test file with some value'
+    }
+
+    @Test
+    public void testChainedMatchingRulesDoNotMatchAgainstDestinationPathSetByPreviousChainElement() {
+        file('path/abc.txt').createFile().write('test file with $attr')
+        file('path/bcd.txt').createFile()
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+            task copy(type: Copy) {
+                from 'path'
+                into 'dest'
+                filesMatching ('**/a*') {
+                    path = path + '.template'
+                }
+                filesMatching ('**/*.template') {
+                    expand(attr: 'some value')
+                    path = path.replace('template', 'concrete')
+                }
+            }'''
+
+        usingBuildFile(buildFile).withTasks('copy').run();
+        file('dest').assertHasDescendants('bcd.txt', 'abc.txt.template')
+        file('dest/abc.txt.template').text = 'test file with some $attr'
+    }
+
+    @Test
+    public void testAccessSourceNameFromFileCopyDetails() {
+        file('path/abc.txt').createFile().write('content')
+        file('path/bcd.txt').createFile()
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+            task copy(type: Copy) {
+                from 'path'
+                into 'dest'
+                filesMatching ('**/a*') {
+                    name = "DEST-" + sourceName
+                }
+            }'''
+
+        usingBuildFile(buildFile).withTasks('copy').run();
+        file('dest').assertHasDescendants('bcd.txt', 'DEST-abc.txt')
+        file('dest/DEST-abc.txt').text = 'content'
+    }
+
+    @Test
+    public void testAccessSourcePathFromFileCopyDetails() {
+        file('path/abc.txt').createFile().write('content')
+        file('path/bcd.txt').createFile()
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+            task copy(type: Copy) {
+                from 'path'
+                into 'dest'
+                filesMatching ('**/a*') {
+                    path = sourcePath.replace('txt', 'log')
+                }
+            }'''
+
+        usingBuildFile(buildFile).withTasks('copy').run();
+        file('dest').assertHasDescendants('bcd.txt', 'abc.log')
+        file('dest/abc.log').text = 'content'
+    }
+
+    @Test
+    public void testAccessRelativeSourcePathFromFileCopyDetails() {
+        file('path/abc.txt').createFile().write('content')
+        file('path/bcd.txt').createFile()
+
+        def buildFile = testFile('build.gradle') <<
+                '''
+            task copy(type: Copy) {
+                from 'path'
+                into 'dest'
+                filesMatching ('**/a*') {
+                    relativePath = relativeSourcePath.replaceLastName('abc.log')
+                }
+            }'''
+
+        usingBuildFile(buildFile).withTasks('copy').run();
+        file('dest').assertHasDescendants('bcd.txt', 'abc.log')
+        file('dest/abc.log').text = 'content'
     }
 }

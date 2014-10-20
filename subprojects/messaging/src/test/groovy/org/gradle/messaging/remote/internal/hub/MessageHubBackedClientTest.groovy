@@ -21,29 +21,35 @@ package org.gradle.messaging.remote.internal.hub
 import org.gradle.internal.concurrent.ExecutorFactory
 import org.gradle.internal.concurrent.StoppableExecutor
 import org.gradle.messaging.remote.Address
-import org.gradle.messaging.remote.internal.Connection
-import org.gradle.messaging.remote.internal.MessageSerializer
+import org.gradle.messaging.remote.internal.ConnectCompletion
 import org.gradle.messaging.remote.internal.OutgoingConnector
+import org.gradle.messaging.remote.internal.RemoteConnection
 import org.gradle.messaging.remote.internal.hub.protocol.InterHubMessage
 import spock.lang.Specification
 
 class MessageHubBackedClientTest extends Specification {
     final OutgoingConnector connector = Mock()
     final ExecutorFactory executorFactory = Mock()
-    final MessageSerializer<InterHubMessage> serializer = Mock()
-    final MessageHubBackedClient client = new MessageHubBackedClient(connector, serializer, executorFactory)
+    final MessageHubBackedClient client = new MessageHubBackedClient(connector, executorFactory)
 
     def "creates connection and cleans up on stop"() {
         Address address = Stub()
-        Connection<InterHubMessage> backingConnection = Mock()
+        ConnectCompletion connectCompletion = Mock()
+        RemoteConnection<InterHubMessage> backingConnection = Mock()
         StoppableExecutor executor = Mock()
 
         when:
         def objectConnection = client.getConnection(address)
 
         then:
-        1 * connector.connect(address, serializer) >> backingConnection
-        1 * executorFactory.create("${backingConnection} workers") >> executor
+        1 * connector.connect(address) >> connectCompletion
+        1 * executorFactory.create("${connectCompletion} workers") >> executor
+
+        when:
+        objectConnection.connect()
+
+        then:
+        1 * connectCompletion.create(_) >> backingConnection
 
         when:
         objectConnection.stop()

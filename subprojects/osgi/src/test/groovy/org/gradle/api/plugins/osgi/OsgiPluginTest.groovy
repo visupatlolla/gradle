@@ -18,12 +18,12 @@ package org.gradle.api.plugins.osgi;
 
 import org.gradle.api.Project
 import org.gradle.api.plugins.JavaPlugin
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 import org.gradle.api.tasks.SourceSet
 
 public class OsgiPluginTest extends Specification {
-    private final Project project = HelperUtil.createRootProject();
+    private final Project project = TestUtil.createRootProject();
     private final OsgiPlugin osgiPlugin = new OsgiPlugin();
     
     public void appliesTheJavaPlugin() {
@@ -40,7 +40,6 @@ public class OsgiPluginTest extends Specification {
         
         expect:
         OsgiManifest osgiManifest = project.jar.manifest
-        osgiManifest.mergeSpecs[0].mergePaths[0] == project.manifest
         osgiManifest.classpath == project.configurations."$JavaPlugin.RUNTIME_CONFIGURATION_NAME"
         osgiManifest.classesDir == project.sourceSets."$SourceSet.MAIN_SOURCE_SET_NAME".output.classesDir
     }

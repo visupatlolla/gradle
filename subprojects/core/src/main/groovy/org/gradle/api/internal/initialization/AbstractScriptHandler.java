@@ -20,30 +20,28 @@ import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
+import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.util.ConfigureUtil;
-import org.gradle.util.MutableURLClassLoader;
 
 import java.io.File;
 import java.net.URI;
 
-public abstract class AbstractScriptHandler implements ScriptHandlerInternal {
+public abstract class AbstractScriptHandler implements ScriptHandler {
     private final ScriptSource scriptSource;
     private final RepositoryHandler repositoryHandler;
     private final DependencyHandler dependencyHandler;
     private final ConfigurationContainer configContainer;
-    private final MutableURLClassLoader classLoader;
     private final Configuration classpathConfiguration;
 
-    public AbstractScriptHandler(MutableURLClassLoader classLoader, RepositoryHandler repositoryHandler,
+    public AbstractScriptHandler(RepositoryHandler repositoryHandler,
                                  DependencyHandler dependencyHandler, ScriptSource scriptSource,
                                  ConfigurationContainer configContainer) {
-        this.classLoader = classLoader;
         this.repositoryHandler = repositoryHandler;
         this.dependencyHandler = dependencyHandler;
         this.scriptSource = scriptSource;
         this.configContainer = configContainer;
-        classpathConfiguration = configContainer.add(CLASSPATH_CONFIGURATION);
+        classpathConfiguration = configContainer.create(CLASSPATH_CONFIGURATION);
     }
 
     public void dependencies(Closure configureClosure) {
@@ -68,10 +66,6 @@ public abstract class AbstractScriptHandler implements ScriptHandlerInternal {
 
     public ConfigurationContainer getConfigurations() {
         return configContainer;
-    }
-
-    public MutableURLClassLoader getClassLoader() {
-        return classLoader;
     }
 
     public File getSourceFile() {

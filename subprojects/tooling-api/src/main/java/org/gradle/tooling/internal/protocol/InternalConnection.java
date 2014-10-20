@@ -17,9 +17,15 @@
 package org.gradle.tooling.internal.protocol;
 
 /**
- * by Szczepan Faber, created at: 1/1/12
+ * <p>DO NOT CHANGE THIS INTERFACE - it is part of the cross-version protocol.
  *
- * @deprecated Use {@link BuildActionRunner} instead.
+ * <p>Consumer compatibility: This interface is used by all consumer versions from 1.0-milestone-8 to 1.1. It is also used by later consumers when the
+ * provider does not implement newer interfaces.</p>
+ * <p>Provider compatibility: This interface is implemented by all provider versions from 1.0-milestone-8.</p>
+ *
+ * @since 1.0-milestone-8
+ * @deprecated 1.2-rc-1. Use {@link InternalCancellableConnection} instead.
+ * @see ConnectionVersion4
  */
 @Deprecated
 public interface InternalConnection extends ConnectionVersion4, InternalProtocolInterface {
@@ -29,9 +35,14 @@ public interface InternalConnection extends ConnectionVersion4, InternalProtocol
      * <p>
      * The other method on the interface, e.g. {@link #getModel(Class, BuildOperationParametersVersion1)} should be considered deprecated
      *
+     * <p>Consumer compatibility: This method is used by all consumer versions from 1.0-milestone-8 to 1.1. It is also used by later consumers when the
+     * provider does not implement newer interfaces.</p>
+     * <p>Provider compatibility: This interface is implemented by all provider versions from 1.0-milestone-8. Versions 2.0 and later fail with a 'no longer implemented' exception.</p>
+     *
      * @throws UnsupportedOperationException When the given model type is not supported.
      * @throws IllegalStateException When this connection has been stopped.
-     * @deprecated Use {@link BuildActionRunner#run(Class, BuildOperationParametersVersion1)} instead.
+     * @since 1.0-milestone-8
+     * @deprecated 1.2-rc-1 Use {@link InternalCancellableConnection#getModel(ModelIdentifier, InternalCancellationToken, BuildParameters)} instead.
      */
     @Deprecated
     <T> T getTheModel(Class<T> type, BuildOperationParametersVersion1 operationParameters) throws UnsupportedOperationException, IllegalStateException;

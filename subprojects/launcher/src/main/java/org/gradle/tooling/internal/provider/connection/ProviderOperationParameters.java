@@ -17,6 +17,7 @@
 package org.gradle.tooling.internal.provider.connection;
 
 import org.gradle.api.logging.LogLevel;
+import org.gradle.tooling.internal.protocol.InternalLaunchable;
 import org.gradle.tooling.internal.protocol.ProgressListenerVersion1;
 
 import java.io.File;
@@ -27,8 +28,6 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Defines what information is needed on the provider side regarding the build operation.
- * <p>
- * by Szczepan Faber, created at: 12/20/11
  */
 public interface ProviderOperationParameters {
     boolean getVerboseLogging(boolean defaultValue);
@@ -51,6 +50,8 @@ public interface ProviderOperationParameters {
 
     Boolean isEmbedded();
 
+    Boolean isColorOutput();
+
     OutputStream getStandardOutput();
 
     OutputStream getStandardError();
@@ -59,9 +60,13 @@ public interface ProviderOperationParameters {
 
     TimeUnit getDaemonMaxIdleTimeUnits();
 
+    File getDaemonBaseDir(File defaultDaemonBaseDir);
+
     ProgressListenerVersion1 getProgressListener();
 
     List<String> getArguments(List<String> defaultArguments);
 
     List<String> getTasks();
+
+    List<InternalLaunchable> getLaunchables(List<InternalLaunchable> defaultLaunchables);
 }

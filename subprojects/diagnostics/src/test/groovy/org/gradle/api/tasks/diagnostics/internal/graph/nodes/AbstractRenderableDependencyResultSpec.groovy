@@ -16,42 +16,50 @@
 
 package org.gradle.api.tasks.diagnostics.internal.graph.nodes
 
-import org.gradle.api.artifacts.ModuleVersionIdentifier
-import org.gradle.api.artifacts.ModuleVersionSelector
+import org.gradle.api.artifacts.component.ComponentIdentifier
+import org.gradle.api.artifacts.component.ComponentSelector
+import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
+import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
+import org.gradle.internal.component.local.model.DefaultProjectComponentIdentifier
+import org.gradle.internal.component.local.model.DefaultProjectComponentSelector
 import spock.lang.Specification
 
-import static org.gradle.api.internal.artifacts.DefaultModuleVersionSelector.newSelector
-import static org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier.newId
-
-/**
- * by Szczepan Faber, created at: 10/9/12
- */
 class AbstractRenderableDependencyResultSpec extends Specification {
 
-    def "renders name cleanly"() {
+    def "renders name for ModuleComponentSelector"() {
         given:
-        def requested = newSelector('org.mockito', 'mockito-core', '1.0')
+        def requested = DefaultModuleComponentSelector.newSelector('org.mockito', 'mockito-core', '1.0')
 
         expect:
-        dep(requested, newId('org.mockito', 'mockito-core', '1.0')).name == 'org.mockito:mockito-core:1.0'
-        dep(requested, newId('org.mockito', 'mockito-core', '2.0')).name == 'org.mockito:mockito-core:1.0 -> 2.0'
-        dep(requested, newId('org.mockito', 'mockito', '1.0')).name == 'org.mockito:mockito-core:1.0 -> mockito:1.0'
-        dep(requested, newId('com.mockito', 'mockito', '2.0')).name == 'org.mockito:mockito-core:1.0 -> com.mockito:mockito:2.0'
+        dep(requested, DefaultModuleComponentIdentifier.newId('org.mockito', 'mockito-core', '1.0')).name == 'org.mockito:mockito-core:1.0'
+        dep(requested, DefaultModuleComponentIdentifier.newId('org.mockito', 'mockito-core', '2.0')).name == 'org.mockito:mockito-core:1.0 -> 2.0'
+        dep(requested, DefaultModuleComponentIdentifier.newId('org.mockito', 'mockito', '1.0')).name == 'org.mockito:mockito-core:1.0 -> org.mockito:mockito:1.0'
+        dep(requested, DefaultModuleComponentIdentifier.newId('com.mockito', 'mockito', '2.0')).name == 'org.mockito:mockito-core:1.0 -> com.mockito:mockito:2.0'
+        dep(requested, DefaultModuleComponentIdentifier.newId('com.mockito.other', 'mockito-core', '3.0')).name == 'org.mockito:mockito-core:1.0 -> com.mockito.other:mockito-core:3.0'
+        dep(requested, DefaultModuleComponentIdentifier.newId('com.mockito.other', 'mockito-core', '1.0')).name == 'org.mockito:mockito-core:1.0 -> com.mockito.other:mockito-core:1.0'
+        dep(requested, DefaultProjectComponentIdentifier.newId(':a')).name == 'org.mockito:mockito-core:1.0 -> project :a'
     }
 
-    private AbstractRenderableDependencyResult dep(ModuleVersionSelector requested, ModuleVersionIdentifier selected) {
+    def "renders name for ProjectComponentSelector"() {
+        given:
+        def requested = DefaultProjectComponentSelector.newSelector(':a')
+
+        expect:
+        dep(requested, DefaultProjectComponentIdentifier.newId(':a')).name == 'project :a'
+        dep(requested, DefaultProjectComponentIdentifier.newId(':b')).name == 'project :a -> project :b'
+        dep(requested, DefaultModuleComponentIdentifier.newId('org.somegroup', 'module', '1.0')).name == 'project :a -> org.somegroup:module:1.0'
+    }
+
+    private AbstractRenderableDependencyResult dep(ComponentSelector requested, ComponentIdentifier selected) {
         return new AbstractRenderableDependencyResult() {
-            @Override
-            protected ModuleVersionSelector getRequested() {
+            ComponentSelector getRequested() {
                 return requested
             }
 
-            @Override
-            protected ModuleVersionIdentifier getActual() {
+            ComponentIdentifier getActual() {
                 return selected
             }
 
-            @Override
             boolean isResolvable() {
                 throw new UnsupportedOperationException()
             }

@@ -15,13 +15,12 @@
  */
 package org.gradle.testfixtures.internal;
 
-import org.gradle.CacheUsage;
+import com.google.common.collect.Maps;
 import org.gradle.api.Action;
-import org.gradle.api.internal.changedetection.InMemoryIndexedCache;
 import org.gradle.cache.*;
-import org.gradle.cache.internal.*;
+import org.gradle.cache.internal.CacheFactory;
+import org.gradle.cache.internal.filelock.LockOptions;
 import org.gradle.internal.Factory;
-import org.gradle.messaging.serialize.DefaultSerializer;
 import org.gradle.messaging.serialize.Serializer;
 import org.gradle.util.GFileUtils;
 
@@ -30,11 +29,11 @@ import java.util.Collections;
 import java.util.Map;
 
 public class InMemoryCacheFactory implements CacheFactory {
-    public PersistentCache openStore(File storeDir, String displayName, FileLockManager.LockMode lockMode, Action<? super PersistentCache> initializer) throws CacheOpenException {
-        return open(storeDir, displayName, CacheUsage.ON, null, Collections.<String, Object>emptyMap(), lockMode, initializer);
+    public PersistentCache openStore(File storeDir, String displayName, LockOptions lockOptions, Action<? super PersistentCache> initializer) throws CacheOpenException {
+        return open(storeDir, displayName, null, Collections.<String, Object>emptyMap(), lockOptions, initializer);
     }
 
-    public PersistentCache open(File cacheDir, String displayName, CacheUsage usage, CacheValidator cacheValidator, Map<String, ?> properties, FileLockManager.LockMode lockMode, Action<? super PersistentCache> initializer) {
+    public PersistentCache open(File cacheDir, String displayName, CacheValidator cacheValidator, Map<String, ?> properties, LockOptions lockOptions, Action<? super PersistentCache> initializer) {
         GFileUtils.mkdirs(cacheDir);
         InMemoryCache cache = new InMemoryCache(cacheDir);
         if (initializer != null) {
@@ -43,56 +42,58 @@ public class InMemoryCacheFactory implements CacheFactory {
         return cache;
     }
 
-    public <K, V> PersistentIndexedCache<K, V> openIndexedCache(File cacheDir, CacheUsage usage, CacheValidator validator, Map<String, ?> properties, FileLockManager.LockMode lockMode, Serializer<V> serializer) {
-        return new InMemoryIndexedCache<K, V>();
+    public <K, V> PersistentIndexedCache<K, V> openIndexedCache(File cacheDir, CacheValidator validator, Map<String, ?> properties, LockOptions lockOptions, Serializer<V> serializer) {
+        return new InMemoryIndexedCache<K, V>(serializer);
     }
 
-    public <E> PersistentStateCache<E> openStateCache(File cacheDir, CacheUsage usage, CacheValidator validator, Map<String, ?> properties, FileLockManager.LockMode lockMode, Serializer<E> serializer) {
-        GFileUtils.mkdirs(cacheDir);
-        return new SimpleStateCache<E>(new File(cacheDir, "state.bin"), new NoOpFileLock(), new DefaultSerializer<E>());
-    }
+    public static class InMemoryCache implements PersistentCache {
 
-    private static class NoOpFileLock extends AbstractFileAccess {
-        public <T> T readFile(Factory<? extends T> action) throws LockTimeoutException {
-            return action.create();
-        }
+        final Map<String, PersistentIndexedCache<?, ?>> caches = Maps.newLinkedHashMap();
 
-        public void updateFile(Runnable action) throws LockTimeoutException {
-            action.run();
-        }
-
-        public void writeFile(Runnable action) throws LockTimeoutException {
-            action.run();
-        }
-
-        public void close() {
-        }
-    }
-
-    private static class InMemoryCache implements PersistentCache {
         private final File cacheDir;
+        private boolean closed;
 
         public InMemoryCache(File cacheDir) {
             this.cacheDir = cacheDir;
+        }
+
+        public void close() {
+            closed = true;
+        }
+
+        public boolean isClosed() {
+            return closed;
         }
 
         public File getBaseDir() {
             return cacheDir;
         }
 
-        public <K, V> PersistentIndexedCache<K, V> createCache(File cacheFile, Class<K> keyType, Class<V> valueType) {
-            return new InMemoryIndexedCache<K, V>();
+        private void assertNotClosed() {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
         }
 
-        public <K, V> PersistentIndexedCache<K, V> createCache(File cacheFile, Class<K> keyType, Serializer<V> valueSerializer) {
-            return new InMemoryIndexedCache<K, V>();
+        public <K, V> PersistentIndexedCache<K, V> createCache(String name, Class<K> keyType, Serializer<V> valueSerializer) {
+            assertNotClosed();
+            return createCache(name, valueSerializer);
         }
 
-        public <K, V> PersistentIndexedCache<K, V> createCache(File cacheFile, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
-            return new InMemoryIndexedCache<K, V>();
+        public <K, V> PersistentIndexedCache<K, V> createCache(PersistentIndexedCacheParameters<K, V> parameters) {
+            assertNotClosed();
+            return createCache(parameters.getCacheName(), parameters.getValueSerializer());
+        }
+
+        private <K, V> PersistentIndexedCache<K, V> createCache(String name, Serializer<V> valueSerializer) {
+            assertNotClosed();
+            InMemoryIndexedCache<K, V> cache = new InMemoryIndexedCache<K, V>(valueSerializer);
+            caches.put(name, cache);
+            return cache;
         }
 
         public <T> T useCache(String operationDisplayName, Factory<? extends T> action) {
+            assertNotClosed();
             // The contract of useCache() means we have to provide some basic synchronization.
             synchronized (this) {
                 return action.create();
@@ -100,14 +101,17 @@ public class InMemoryCacheFactory implements CacheFactory {
         }
 
         public void useCache(String operationDisplayName, Runnable action) {
+            assertNotClosed();
             action.run();
         }
 
         public <T> T longRunningOperation(String operationDisplayName, Factory<? extends T> action) {
+            assertNotClosed();
             return action.create();
         }
 
         public void longRunningOperation(String operationDisplayName, Runnable action) {
+            assertNotClosed();
             action.run();
         }
     }

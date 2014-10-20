@@ -1,15 +1,8 @@
-apply plugin: "sonar"
-
-description = "Sonar Test Build"
-  
-allprojects {
-  version = "1.42"  
-  group = "org.gradle.test.sonar"
-}
+apply plugin:  "sonar"
 
 subprojects {
-    apply plugin: "java" 
-  
+    apply plugin: "java"
+
     repositories {
         mavenCentral()
     }
@@ -25,7 +18,7 @@ sonar {
     }
     database {
         url databaseUrl
+        driverClassName = "org.h2.Driver"
     }
 }
-    
-    
+

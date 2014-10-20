@@ -16,6 +16,8 @@
 
 package org.gradle.api.plugins;
 
+import org.gradle.api.Action;
+import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 
 /**
@@ -24,12 +26,10 @@ import org.gradle.api.Plugin;
  *
  * <p>Plugins can be specified using either an id or type. The id of a plugin is specified using a
  * META-INF/gradle-plugins/${id}.properties classpath resource.</p>
- *
- * @author Hans Dockter
  */
 public interface PluginContainer extends PluginCollection<Plugin> {
     /**
-     * Has the same behavior as {@link #apply(Class)} except that the the plugin is specified via its id. Not all
+     * Has the same behavior as {@link #apply(Class)} except that the plugin is specified via its id. Not all
      * plugins have an id.
      *
      * @param id The id of the plugin to be applied.
@@ -110,4 +110,18 @@ public interface PluginContainer extends PluginCollection<Plugin> {
      * @throws UnknownPluginException When there is no plugin with the given type.
      */
     <T extends Plugin> T getAt(Class<T> type) throws UnknownPluginException;
+
+    /**
+     * Executes or registers an action for a plugin with given id.
+     * If the plugin was already applied, the action is executed.
+     * If the plugin is applied sometime later the action will be executed after the plugin is applied.
+     * If the plugin is never applied, the action is never executed.
+     * The behavior is similar to {@link #withType(Class, org.gradle.api.Action)}.
+     *
+     * @param pluginId the id of the plugin
+     * @param action the action
+     */
+    @Incubating
+    void withId(String pluginId, Action<? super Plugin> action);
+
 }

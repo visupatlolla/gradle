@@ -23,20 +23,18 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.plugins.BasePlugin
+import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.api.plugins.WarPlugin
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import org.junit.Before
 import org.junit.Test
-import static org.gradle.util.Matchers.dependsOn
+
+import static org.gradle.api.tasks.TaskDependencyMatchers.dependsOn
 import static org.gradle.util.TextUtil.toPlatformLineSeparators
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
-import org.gradle.api.plugins.JavaBasePlugin
 
-/**
- * @author David Gileadi
- */
 class EarPluginTest {
     private ProjectInternal project
     private static final String TEST_APP_XML = toPlatformLineSeparators('<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -56,7 +54,7 @@ class EarPluginTest {
 
     @Before
     public void setUp() {
-        project = HelperUtil.createRootProject()
+        project = TestUtil.createRootProject()
     }
 
     @Test public void appliesBasePluginAndAddsConvention() {
@@ -105,7 +103,7 @@ class EarPluginTest {
     @Test public void dependsOnEarlibConfig() {
         project.plugins.apply(EarPlugin)
 
-        Project childProject = HelperUtil.createChildProject(project, 'child')
+        Project childProject = TestUtil.createChildProject(project, 'child')
         JavaPlugin javaPlugin = new JavaPlugin()
         javaPlugin.apply(childProject)
 
@@ -136,9 +134,7 @@ class EarPluginTest {
         project.plugins.apply(EarPlugin)
         project.plugins.apply(JavaPlugin.class)
 
-        def task = project.task(type: Ear, 'customEar') {
-            earModel = new EarPluginConvention(null)
-        }
+        def task = project.task(type: Ear, 'customEar')
         assertThat(task.destinationDir, equalTo(project.libsDir))
 
         assertThat(task, dependsOn(hasItems(JavaPlugin.CLASSES_TASK_NAME)))
@@ -195,13 +191,11 @@ class EarPluginTest {
     }
 
     @Test public void supportsRenamingLibDir() {
-        Project childProject = HelperUtil.createChildProject(project, 'child')
+        Project childProject = TestUtil.createChildProject(project, 'child')
         childProject.file("src/main/resources").mkdirs()
         childProject.file("src/main/resources/test.txt").createNewFile()
         JavaPlugin javaPlugin = new JavaPlugin()
         javaPlugin.apply(childProject)
-
-        execute childProject.tasks[BasePlugin.ASSEMBLE_TASK_NAME]
 
         project.plugins.apply(EarPlugin)
         project.convention.plugins.ear.libDirName = "APP-INF/lib"

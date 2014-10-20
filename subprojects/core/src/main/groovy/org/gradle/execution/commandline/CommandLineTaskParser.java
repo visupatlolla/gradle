@@ -16,9 +16,8 @@
 
 package org.gradle.execution.commandline;
 
-import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.SetMultimap;
+import com.google.common.collect.Lists;
+import org.gradle.TaskExecutionRequest;
 import org.gradle.api.Task;
 import org.gradle.execution.TaskSelector;
 
@@ -26,23 +25,24 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
-/**
- * by Szczepan Faber, created at: 10/8/12
- */
 public class CommandLineTaskParser {
+    private final CommandLineTaskConfigurer taskConfigurer;
+    private final TaskSelector taskSelector;
 
-    CommandLineTaskConfigurer taskConfigurer =  new CommandLineTaskConfigurer();
+    public CommandLineTaskParser(CommandLineTaskConfigurer commandLineTaskConfigurer, TaskSelector taskSelector) {
+        this.taskConfigurer = commandLineTaskConfigurer;
+        this.taskSelector = taskSelector;
+    }
 
-    public Multimap<String, Task> parseTasks(List<String> taskPaths, TaskSelector taskSelector) {
-        SetMultimap<String, Task> out = LinkedHashMultimap.create();
-        List<String> remainingPaths = new LinkedList<String>(taskPaths);
+    public List<TaskSelector.TaskSelection> parseTasks(TaskExecutionRequest taskExecutionRequest) {
+        List<TaskSelector.TaskSelection> out = Lists.newArrayList();
+        List<String> remainingPaths = new LinkedList<String>(taskExecutionRequest.getArgs());
         while (!remainingPaths.isEmpty()) {
             String path = remainingPaths.remove(0);
-            TaskSelector.TaskSelection selection = taskSelector.getSelection(path);
+            TaskSelector.TaskSelection selection = taskSelector.getSelection(taskExecutionRequest.getProjectPath(), path);
             Set<Task> tasks = selection.getTasks();
             remainingPaths = taskConfigurer.configureTasks(tasks, remainingPaths);
-
-            out.putAll(selection.getTaskName(), tasks);
+            out.add(selection);
         }
         return out;
     }

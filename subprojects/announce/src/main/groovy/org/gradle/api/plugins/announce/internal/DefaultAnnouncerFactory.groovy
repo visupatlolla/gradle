@@ -16,15 +16,12 @@
 package org.gradle.api.plugins.announce.internal
 
 import org.gradle.api.InvalidUserDataException
-import org.gradle.api.JavaVersion
 import org.gradle.api.internal.ProcessOperations
 import org.gradle.api.plugins.announce.AnnouncePluginExtension
 import org.gradle.api.plugins.announce.Announcer
+import org.gradle.api.plugins.announce.internal.jdk6.AppleScriptBackedGrowlAnnouncer
 import org.gradle.internal.os.OperatingSystem
 
-/**
- * @author Hans Dockter
- */
 class DefaultAnnouncerFactory implements AnnouncerFactory {
     private final AnnouncePluginExtension announcePluginConvention
     private final IconProvider iconProvider
@@ -60,14 +57,11 @@ class DefaultAnnouncerFactory implements AnnouncerFactory {
             case "snarl":
                 return new Snarl(iconProvider)
             case "growl":
-                if (JavaVersion.current().java6Compatible) {
+                if (!java.awt.GraphicsEnvironment.isHeadless()) {
                     try {
-                        return getClass().getClassLoader().loadClass("org.gradle.api.plugins.announce.internal.jdk6.AppleScriptBackedGrowlAnnouncer").newInstance(iconProvider)
+                        return new AppleScriptBackedGrowlAnnouncer(iconProvider)
                     }
                     catch (AnnouncerUnavailableException e) {
-                        // Ignore and fall back to growl notify
-                    }
-                    catch (ClassNotFoundException e) {
                         // Ignore and fall back to growl notify
                     }
                 }

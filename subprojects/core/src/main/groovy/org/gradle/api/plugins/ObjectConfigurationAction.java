@@ -36,7 +36,7 @@ public interface ObjectConfigurationAction {
      * Adds a script to use to configure the target objects. You can call this method multiple times, to use multiple
      * scripts. Scripts and plugins are applied in the order that they are added.
      *
-     * @param script The script. Evaluated as for {@link org.gradle.api.Project#file(Object)}. However, note that
+     * @param script The script. Evaluated as per {@link org.gradle.api.Project#file(Object)}. However, note that
      * a URL can also be used, allowing the script to be fetched using HTTP, for example.
      * @return this
      */
@@ -50,6 +50,17 @@ public interface ObjectConfigurationAction {
      * @return this
      */
     ObjectConfigurationAction plugin(Class<? extends Plugin> pluginClass);
+
+    /**
+     * Adds the plugin implemented by the given class to the target.
+     * <p>
+     * The class is expected to either implement {@link Plugin}, and/or be a {@link org.gradle.model.RuleSource}.
+     * An exception will be thrown if the class is not a valid plugin implementation.
+     *
+     * @param pluginClass the plugin to apply
+     * @return this
+     */
+    ObjectConfigurationAction type(Class<?> pluginClass);
 
     /**
      * Adds a {@link org.gradle.api.Plugin} to use to configure the target objects. You can call this method multiple

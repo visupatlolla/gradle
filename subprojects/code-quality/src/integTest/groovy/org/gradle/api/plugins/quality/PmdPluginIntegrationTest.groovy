@@ -17,6 +17,7 @@ package org.gradle.api.plugins.quality
 
 import org.gradle.integtests.fixtures.WellBehavedPluginTest
 import org.hamcrest.Matcher
+
 import static org.gradle.util.Matchers.containsLine
 import static org.hamcrest.Matchers.containsString
 import static org.hamcrest.Matchers.not
@@ -31,11 +32,28 @@ class PmdPluginIntegrationTest extends WellBehavedPluginTest {
         return "check"
     }
 
+    def "allows configuring tool dependencies explicitly"() {
+        expect: //defaults exist and can be inspected
+        succeeds("dependencies", "--configuration", "pmd")
+        output.contains "pmd:pmd:"
+
+        when:
+        buildFile << """
+            dependencies {
+                //downgrade version:
+                pmd "pmd:pmd:4.2"
+            }
+        """
+
+        then:
+        succeeds("dependencies", "--configuration", "pmd")
+        output.contains "pmd:pmd:4.2"
+    }
+
     def "analyze good code"() {
         goodCode()
 
         expect:
-        executer.withArguments("--info")
         succeeds("check")
         file("build/reports/pmd/main.xml").exists()
         file("build/reports/pmd/test.xml").exists()
@@ -46,7 +64,7 @@ class PmdPluginIntegrationTest extends WellBehavedPluginTest {
 
         expect:
         fails("check")
-        failure.assertHasDescription("Execution failed for task ':pmdTest'")
+        failure.assertHasDescription("Execution failed for task ':pmdTest'.")
         failure.assertThatCause(containsString("2 PMD rule violations were found. See the report at:"))
         file("build/reports/pmd/main.xml").assertContents(not(containsClass("org.gradle.Class1")))
         file("build/reports/pmd/test.xml").assertContents(containsClass("org.gradle.Class1Test"))
@@ -67,11 +85,23 @@ class PmdPluginIntegrationTest extends WellBehavedPluginTest {
         output.contains("2 PMD rule violations were found. See the report at:")
     }
 
-    def "can configure reporting"() {
-        given:
-        goodCode()
+    def "can set target JDK for PMD versions prior to 5.0"() {
+        badCode()
+        buildFile << """
+            pmd {
+                toolVersion = '4.3'
+                targetJdk = 1.4
+            }
+        """
 
-        and:
+        expect:
+        //with 1.4 target, code can't be parsed due to usage of Generics
+        //TODO: Allow to expose this error from ant pmd. (pniederw: not sure what this means)
+        succeeds("check")
+    }
+
+    def "can configure reporting"() {
+        goodCode()
         buildFile << """
             pmdMain {
                 reports {
@@ -80,25 +110,78 @@ class PmdPluginIntegrationTest extends WellBehavedPluginTest {
                 }
             }
         """
+
         expect:
         succeeds("check")
-
         !file("build/reports/pmd/main.xml").exists()
         file("htmlReport.html").exists()
     }
 
+    def "use custom rule set files"() {
+        customCode()
+        customRuleSet()
+
+        buildFile << """
+            pmd {
+                ruleSets = []
+                ruleSetFiles = files("customRuleSet.xml")
+            }
+        """
+
+        expect:
+        fails("pmdMain")
+        failure.assertHasDescription("Execution failed for task ':pmdMain'.")
+        failure.assertThatCause(containsString("1 PMD rule violations were found. See the report at:"))
+        file("build/reports/pmd/main.xml").assertContents(not(containsClass("org.gradle.Class1")))
+        file("build/reports/pmd/main.xml").assertContents(containsClass("org.gradle.Class2"))
+    }
+
+    def "use custom rule set"() {
+        customCode()
+
+        buildFile << """
+            pmd {
+                ruleSets = []
+                ruleSetConfig = resources.text.fromString('''${customRuleSetText()}''')
+            }
+        """
+
+        expect:
+        fails("pmdMain")
+        failure.assertHasDescription("Execution failed for task ':pmdMain'.")
+        failure.assertThatCause(containsString("1 PMD rule violations were found. See the report at:"))
+        file("build/reports/pmd/main.xml").assertContents(not(containsClass("org.gradle.Class1")))
+        file("build/reports/pmd/main.xml").assertContents(containsClass("org.gradle.Class2"))
+
+    }
+
+    def "can enable console output"() {
+        buildFile << """
+            pmd {
+                consoleOutput = true
+            }
+        """
+        badCode()
+
+        expect:
+        fails("check")
+        failure.assertHasDescription("Execution failed for task ':pmdTest'.")
+        failure.assertThatCause(containsString("2 PMD rule violations were found. See the report at:"))
+        output.contains "Class1Test.java:1:\tEmpty initializer was found"
+    }
+
     private void writeBuildFile() {
         file("build.gradle") << """
-apply plugin: "java"
-apply plugin: "pmd"
+            apply plugin: "java"
+            apply plugin: "pmd"
 
-repositories {
-    mavenCentral()
-}
+            repositories {
+                mavenCentral()
+            }
         """
     }
 
-    private Matcher<String> containsClass(String className) {
+    private static Matcher<String> containsClass(String className) {
         containsLine(containsString(className.replace(".", File.separator)))
     }
 
@@ -113,6 +196,34 @@ repositories {
         file("src/main/java/org/gradle/Class1.java") <<
                 "package org.gradle; class Class1 { public boolean isFoo(Object arg) { return true; } }"
         file("src/test/java/org/gradle/Class1Test.java") <<
-                "package org.gradle; class Class1Test { {} public boolean equals(Object arg) { return true; } }"
+                "package org.gradle; class Class1Test<T> { {} public boolean equals(Object arg) { return true; } }"
+    }
+
+    private customCode() {
+        // class that would fail basic rule set but doesn't fail custom rule set
+        file("src/main/java/org/gradle/Class1.java") <<
+                "package org.gradle; public class Class1 { public void doit() { boolean x = true; if (x) {} } }" // empty then-block
+        // class that wouldn't fail basic rule set but does fail custom rule set
+        file("src/main/java/org/gradle/Class2.java") <<
+                "package org.gradle; public class Class2 { public void doit() { boolean x = true; if (x) x = false; } }" // missing braces
+    }
+
+    private customRuleSet() {
+        file("customRuleSet.xml") << customRuleSetText()
+    }
+
+    private customRuleSetText() {
+        """
+            <ruleset name="custom"
+                xmlns="http://pmd.sf.net/ruleset/1.0.0"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="http://pmd.sf.net/ruleset/1.0.0 http://pmd.sf.net/ruleset_xml_schema.xsd"
+                xsi:noNamespaceSchemaLocation="http://pmd.sf.net/ruleset_xml_schema.xsd">
+
+                <description>Custom rule set</description>
+
+                <rule ref="rulesets/java/braces.xml"/>
+            </ruleset>
+        """
     }
 }

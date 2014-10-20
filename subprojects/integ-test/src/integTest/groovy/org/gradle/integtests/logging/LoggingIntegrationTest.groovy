@@ -26,13 +26,10 @@ import org.gradle.test.fixtures.file.TestFile
 import org.junit.Rule
 import org.junit.Test
 
-/**
- * @author Hans Dockter
- */
 class LoggingIntegrationTest extends AbstractIntegrationTest {
 
-    @Rule public final TestResources resources = new TestResources()
-    @Rule public final Sample sampleResources = new Sample()
+    @Rule public final TestResources resources = new TestResources(testDirectoryProvider)
+    @Rule public final Sample sampleResources = new Sample(testDirectoryProvider)
 
     private final LogOutput logOutput = new LogOutput() {{
         quiet(
@@ -154,7 +151,7 @@ class LoggingIntegrationTest extends AbstractIntegrationTest {
     }}
 
     private final LogOutput brokenBuild = new LogOutput() {{
-        error('FAILURE: Could not determine which tasks to execute.')
+        error('FAILURE: Build failed with an exception.')
     }}
 
     @Test
@@ -225,60 +222,27 @@ class LoggingIntegrationTest extends AbstractIntegrationTest {
 
         String initScript = new File(loggingDir, 'init.gradle').absolutePath
         String[] allArgs = level.args + ['-I', initScript]
-        return executer.setAllowExtraLogging(false).inDirectory(loggingDir).withArguments(allArgs).withTasks('log').run()
+        return executer.noExtraLogging().inDirectory(loggingDir).withArguments(allArgs).withTasks('log').run()
     }
 
     def runBroken(LogLevel level) {
         TestFile loggingDir = testDirectory
 
-        return executer.setAllowExtraLogging(false).inDirectory(loggingDir).withTasks('broken').runWithFailure()
+        return executer.noExtraLogging().inDirectory(loggingDir).withTasks('broken').runWithFailure()
     }
 
     def runMultiThreaded(LogLevel level) {
         resources.maybeCopy('LoggingIntegrationTest/multiThreaded')
-        return executer.setAllowExtraLogging(false).withArguments(level.args).withTasks('log').run()
+        return executer.noExtraLogging().withArguments(level.args).withTasks('log').run()
     }
 
     def runSample(LogLevel level) {
-        return executer.setAllowExtraLogging(false).inDirectory(sampleResources.dir).withArguments(level.args).withTasks('log').run()
+        return executer.noExtraLogging().inDirectory(sampleResources.dir).withArguments(level.args).withTasks('log').run()
     }
 
     void checkOutput(Closure run, LogLevel level) {
         ExecutionResult result = run.call(level)
         level.checkOuts(result)
-    }
-
-    @Test
-    public void deprecatedLogging() {
-        LogLevel deprecated = new LogLevel(
-            args: [],
-            infoMessages: [['A deprecation warning']],
-            errorMessages: [],
-            allMessages: []
-        )
-
-        resources.maybeCopy('LoggingIntegrationTest/deprecated')
-        ExecutionResult result = executer.withDeprecationChecksDisabled().withArguments(deprecated.args).withTasks('log').run()
-        deprecated.checkOuts(result)
-
-        // Ensure warnings are logged the second time
-        ExecutionResult secondResult = executer.withDeprecationChecksDisabled().withArguments(deprecated.args).withTasks('log').run()
-        deprecated.checkOuts(secondResult)
-    }
-
-    @Test
-    public void deprecatedLoggingIsNotDisplayedWithQuietFlag() {
-        LogLevel deprecated = new LogLevel(
-            args: ['-q'],
-            infoMessages: [],
-            errorMessages: [],
-            allMessages: [['A deprecation warning']]
-        )
-
-        resources.maybeCopy('LoggingIntegrationTest/deprecated')
-        ExecutionResult result = executer.withArguments(deprecated.args).withTasks('log').run()
-
-        deprecated.checkOuts(result)
     }
 }
 

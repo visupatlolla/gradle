@@ -15,22 +15,21 @@
  */
 package org.gradle.api.plugins.quality
 
+import groovy.transform.PackageScope
 import org.gradle.api.GradleException
+import org.gradle.api.Incubating
+import org.gradle.api.JavaVersion
 import org.gradle.api.file.FileCollection
-import org.gradle.api.plugins.quality.internal.FindBugsReportsImpl
-import org.gradle.api.plugins.quality.internal.findbugs.FindBugsWorkerManager
-import org.gradle.api.plugins.quality.internal.findbugs.FindBugsResult
-import org.gradle.api.plugins.quality.internal.findbugs.FindBugsSpec
-import org.gradle.api.plugins.quality.internal.findbugs.FindBugsSpecBuilder
-import org.gradle.api.reporting.Reporting
-import org.gradle.api.tasks.*
 import org.gradle.api.logging.LogLevel
+import org.gradle.api.plugins.quality.internal.FindBugsReportsImpl
+import org.gradle.api.plugins.quality.internal.findbugs.*
+import org.gradle.api.reporting.Reporting
+import org.gradle.api.resources.TextResource
+import org.gradle.api.tasks.*
 import org.gradle.internal.Factory
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.logging.ConsoleRenderer
 import org.gradle.process.internal.WorkerProcessBuilder
-
-import groovy.transform.PackageScope
 
 import javax.inject.Inject
 
@@ -90,6 +89,13 @@ class FindBugs extends SourceTask implements VerificationTask, Reporting<FindBug
     String reportLevel
 
     /**
+     * The maximum heap size for the forked findbugs process (ex: '1g').
+     */
+    @Input
+    @Optional
+    String maxHeapSize
+
+    /**
      * The bug detectors which should be run. The bug detectors are specified by their class names,
      * without any package qualification. By default, all detectors which are not disabled by default are run.
      */
@@ -106,28 +112,40 @@ class FindBugs extends SourceTask implements VerificationTask, Reporting<FindBug
     Collection<String> omitVisitors = []
 
     /**
-     * The filename of a filter specifying which bugs are reported.
+     * A filter specifying which bugs are reported. Replaces the {@code includeFilter} property.
+     *
+     * @since 2.2
      */
-    @InputFile
+    @Incubating
+    @Nested
     @Optional
-    File includeFilter
+    TextResource includeFilterConfig
 
     /**
-     * The filename of a filter specifying bugs to exclude from being reported.
+     * A filter specifying bugs to exclude from being reported. Replaces the {@code excludeFilter} property.
+     *
+     * @since 2.2
      */
-    @InputFile
+    @Incubating
+    @Nested
     @Optional
-    File excludeFilter
+    TextResource excludeFilterConfig
 
     @Nested
     private final FindBugsReportsImpl reports
 
-    private final Factory<WorkerProcessBuilder> workerFactory
+    FindBugs() {
+        reports = instantiator.newInstance(FindBugsReportsImpl, this)
+    }
 
     @Inject
-    FindBugs(Instantiator instantiator, Factory<WorkerProcessBuilder> workerFactory) {
-        reports = instantiator.newInstance(FindBugsReportsImpl, this)
-        this.workerFactory = workerFactory
+    Instantiator getInstantiator() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    Factory<WorkerProcessBuilder> getWorkerProcessBuilderFactory() {
+        throw new UnsupportedOperationException();
     }
 
     /**
@@ -161,15 +179,45 @@ class FindBugs extends SourceTask implements VerificationTask, Reporting<FindBug
         reports.configure(closure)
     }
 
+    /**
+     * The filename of a filter specifying which bugs are reported.
+     */
+    File getIncludeFilter() {
+        getIncludeFilterConfig()?.asFile()
+    }
+
+    /**
+     * The filename of a filter specifying which bugs are reported.
+     */
+    void setIncludeFilter(File filter) {
+        setIncludeFilterConfig(project.resources.text.fromFile(filter))
+    }
+
+    /**
+     * The filename of a filter specifying bugs to exclude from being reported.
+     */
+    File getExcludeFilter() {
+        getExcludeFilterConfig()?.asFile()
+    }
+
+    /**
+     * The filename of a filter specifying bugs to exclude from being reported.
+     */
+    void setExcludeFilter(File filter) {
+        setExcludeFilterConfig(project.resources.text.fromFile(filter))
+    }
+
     @TaskAction
     void run() {
+        new FindBugsClasspathValidator(JavaVersion.current()).validateClasspath(getFindbugsClasspath().files*.name)
+
         FindBugsSpec spec = generateSpec()
         FindBugsWorkerManager manager = new FindBugsWorkerManager()
 
         logging.captureStandardOutput(LogLevel.DEBUG)
         logging.captureStandardError(LogLevel.DEBUG)
 
-        FindBugsResult result = manager.runWorker(getProject().getProjectDir(), workerFactory, getFindbugsClasspath(), spec)
+        FindBugsResult result = manager.runWorker(getProject().getProjectDir(), workerProcessBuilderFactory, getFindbugsClasspath(), spec)
         evaluateResult(result);
     }
 
@@ -185,6 +233,7 @@ class FindBugs extends SourceTask implements VerificationTask, Reporting<FindBug
             .withDebugging(logger.isDebugEnabled())
             .withEffort(getEffort())
             .withReportLevel(getReportLevel())
+            .withMaxHeapSize(getMaxHeapSize())
             .withVisitors(getVisitors())
             .withOmitVisitors(getOmitVisitors())
             .withExcludeFilter(getExcludeFilter())

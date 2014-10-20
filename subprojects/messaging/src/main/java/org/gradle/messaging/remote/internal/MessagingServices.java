@@ -15,27 +15,21 @@
  */
 package org.gradle.messaging.remote.internal;
 
-import org.gradle.internal.CompositeStoppable;
-import org.gradle.internal.Stoppable;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.ExecutorFactory;
+import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.internal.id.IdGenerator;
 import org.gradle.internal.id.UUIDGenerator;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.messaging.dispatch.DiscardingFailureHandler;
-import org.gradle.messaging.dispatch.MethodInvocation;
 import org.gradle.messaging.remote.MessagingClient;
 import org.gradle.messaging.remote.MessagingServer;
-import org.gradle.messaging.remote.internal.hub.InterHubMessageSerializer;
 import org.gradle.messaging.remote.internal.hub.MessageHubBackedClient;
 import org.gradle.messaging.remote.internal.hub.MessageHubBackedServer;
-import org.gradle.messaging.remote.internal.hub.MethodInvocationSerializer;
 import org.gradle.messaging.remote.internal.inet.*;
 import org.gradle.messaging.remote.internal.protocol.DiscoveryMessage;
 import org.gradle.messaging.remote.internal.protocol.DiscoveryProtocolSerializer;
-import org.gradle.messaging.serialize.kryo.JavaSerializer;
-import org.gradle.messaging.serialize.kryo.TypeSafeSerializer;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
@@ -62,13 +56,6 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
     private final ClassLoader messageClassLoader;
     private final String broadcastGroup;
     private final SocketInetAddress broadcastAddress;
-    private MessagingClient messagingClient;
-    private IncomingConnector incomingConnector;
-    private DefaultExecutorFactory executorFactory;
-    private MessagingServer messagingServer;
-    private DefaultIncomingBroadcast incomingBroadcast;
-    private AsyncConnectionAdapter<DiscoveryMessage> multiCastConnection;
-    private DefaultOutgoingBroadcast outgoingBroadcast;
 
     public MessagingServices(ClassLoader messageClassLoader) {
         this(messageClassLoader, "gradle");
@@ -96,19 +83,6 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
         close();
     }
 
-    @Override
-    public void close() {
-        CompositeStoppable stoppable = new CompositeStoppable();
-        stoppable.add(incomingConnector);
-        stoppable.add(messagingClient);
-        stoppable.add(messagingServer);
-        stoppable.add(outgoingBroadcast);
-        stoppable.add(incomingBroadcast);
-        stoppable.add(multiCastConnection);
-        stoppable.add(executorFactory);
-        stoppable.stop();
-    }
-
     protected MessageOriginator createMessageOriginator() {
         String hostName = get(InetAddressFactory.class).getHostName();
         String nodeName = String.format("%s@%s", System.getProperty("user.name"), hostName);
@@ -116,8 +90,7 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
     }
 
     protected ExecutorFactory createExecutorFactory() {
-        executorFactory = new DefaultExecutorFactory();
-        return executorFactory;
+        return new DefaultExecutorFactory();
     }
 
     protected InetAddressFactory createInetAddressFactory() {
@@ -128,71 +101,53 @@ public class MessagingServices extends DefaultServiceRegistry implements Stoppab
         return new TcpOutgoingConnector();
     }
 
-    protected IncomingConnector createIncomingConnector() {
-        incomingConnector = new TcpIncomingConnector(
-                get(ExecutorFactory.class),
-                get(InetAddressFactory.class),
+    protected IncomingConnector createIncomingConnector(ExecutorFactory executorFactory, InetAddressFactory inetAddressFactory) {
+        return new TcpIncomingConnector(
+                executorFactory,
+                inetAddressFactory,
                 idGenerator
         );
-        return incomingConnector;
     }
 
-    protected InterHubMessageSerializer createInterHubSerializer() {
-        return new InterHubMessageSerializer(
-                new TypeSafeSerializer<MethodInvocation>(
-                        MethodInvocation.class,
-                        new MethodInvocationSerializer(
-                                messageClassLoader,
-                                new JavaSerializer<Object[]>(
-                                        messageClassLoader))));
+    protected MessagingClient createMessagingClient(OutgoingConnector outgoingConnector, ExecutorFactory executorFactory) {
+        return new MessageHubBackedClient(
+                outgoingConnector,
+                executorFactory);
     }
 
-    protected MessagingClient createMessagingClient() {
-        messagingClient = new MessageHubBackedClient(
-                get(OutgoingConnector.class),
-                get(InterHubMessageSerializer.class),
-                get(ExecutorFactory.class));
-        return messagingClient;
+    protected MessagingServer createMessagingServer(IncomingConnector incomingConnector, ExecutorFactory executorFactory) {
+        return new MessageHubBackedServer(
+                incomingConnector,
+                executorFactory);
     }
 
-    protected MessagingServer createMessagingServer() {
-        messagingServer = new MessageHubBackedServer(
-                get(IncomingConnector.class),
-                get(InterHubMessageSerializer.class),
-                get(ExecutorFactory.class));
-        return messagingServer;
-    }
-
-    protected IncomingBroadcast createIncomingBroadcast() {
-        incomingBroadcast = new DefaultIncomingBroadcast(
-                get(MessageOriginator.class),
+    protected IncomingBroadcast createIncomingBroadcast(MessageOriginator messageOriginator, AsyncConnection<DiscoveryMessage> asyncConnection, IncomingConnector incomingConnector, ExecutorFactory executorFactory) {
+        return new DefaultIncomingBroadcast(
+                messageOriginator,
                 broadcastGroup,
-                get(AsyncConnection.class),
-                createIncomingConnector(),
-                get(ExecutorFactory.class),
+                asyncConnection,
+                incomingConnector,
+                executorFactory,
                 idGenerator,
                 messageClassLoader);
-        return incomingBroadcast;
     }
 
-    protected OutgoingBroadcast createOutgoingBroadcast() {
-        outgoingBroadcast = new DefaultOutgoingBroadcast(
-                get(MessageOriginator.class),
+    protected OutgoingBroadcast createOutgoingBroadcast(MessageOriginator messageOriginator, AsyncConnection<DiscoveryMessage> asyncConnection, OutgoingConnector outgoingConnector, ExecutorFactory executorFactory) {
+        return new DefaultOutgoingBroadcast(
+                messageOriginator,
                 broadcastGroup,
-                get(AsyncConnection.class),
-                createOutgoingConnector(),
-                get(ExecutorFactory.class),
+                asyncConnection,
+                outgoingConnector,
+                executorFactory,
                 idGenerator,
                 messageClassLoader);
-        return outgoingBroadcast;
     }
 
-    protected AsyncConnection<DiscoveryMessage> createMulticastConnection() {
-        MulticastConnection<DiscoveryMessage> connection = new MulticastConnection<DiscoveryMessage>(broadcastAddress, new DiscoveryProtocolSerializer());
-        multiCastConnection = new AsyncConnectionAdapter<DiscoveryMessage>(
+    protected AsyncConnection<DiscoveryMessage> createMulticastConnection(ExecutorFactory executorFactory, InetAddressFactory addressFactory) {
+        MulticastConnection<DiscoveryMessage> connection = new MulticastConnection<DiscoveryMessage>(broadcastAddress, new DiscoveryProtocolSerializer(), addressFactory);
+        return new AsyncConnectionAdapter<DiscoveryMessage>(
                 connection,
                 new DiscardingFailureHandler<DiscoveryMessage>(LoggerFactory.getLogger(MulticastConnection.class)),
-                get(ExecutorFactory.class));
-        return multiCastConnection;
+                executorFactory);
     }
 }

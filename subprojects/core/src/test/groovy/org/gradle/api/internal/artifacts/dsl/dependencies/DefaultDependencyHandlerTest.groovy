@@ -15,12 +15,12 @@
  */
 package org.gradle.api.internal.artifacts.dsl.dependencies
 
-import spock.lang.Specification
 import org.gradle.api.artifacts.*
+import org.gradle.api.artifacts.dsl.ComponentMetadataHandler
+import org.gradle.api.artifacts.dsl.ComponentModuleMetadataHandler
+import org.gradle.api.internal.artifacts.query.ArtifactResolutionQueryFactory
+import spock.lang.Specification
 
-/**
- * @author Hans Dockter
- */
 class DefaultDependencyHandlerTest extends Specification {
     private static final String TEST_CONF_NAME = "someConf"
     private ConfigurationContainer configurationContainer = Mock()
@@ -29,7 +29,8 @@ class DefaultDependencyHandlerTest extends Specification {
     private ProjectFinder projectFinder = Mock()
     private DependencySet dependencySet = Mock()
 
-    private DefaultDependencyHandler dependencyHandler = new DefaultDependencyHandler(configurationContainer, dependencyFactory, projectFinder)
+    private DefaultDependencyHandler dependencyHandler = new DefaultDependencyHandler(
+            configurationContainer, dependencyFactory, projectFinder, Stub(ComponentMetadataHandler), Stub(ComponentModuleMetadataHandler), Stub(ArtifactResolutionQueryFactory))
 
     void setup() {
         _ * configurationContainer.findByName(TEST_CONF_NAME) >> configuration
@@ -261,5 +262,13 @@ class DefaultDependencyHandlerTest extends Specification {
 
         then:
         thrown(MissingMethodException)
+    }
+
+    void "reasonable error when supplying null as a dependency notation"() {
+        when:
+        dependencyHandler."$TEST_CONF_NAME"(null)
+
+        then:
+        1 * dependencyFactory.createDependency(null)
     }
 }

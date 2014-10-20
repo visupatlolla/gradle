@@ -15,22 +15,21 @@
  */
 package org.gradle.api.plugins.sonar
 
-import org.gradle.api.plugins.sonar.model.SonarRootModel
-import org.gradle.api.plugins.sonar.model.SonarProjectModel
-import org.gradle.api.plugins.sonar.model.SonarProject
 import org.gradle.api.Project
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPlugin
-import org.gradle.util.ConfigureUtil
-import org.gradle.util.HelperUtil
+import org.gradle.api.plugins.sonar.model.SonarProject
+import org.gradle.api.plugins.sonar.model.SonarProjectModel
+import org.gradle.api.plugins.sonar.model.SonarRootModel
 import org.gradle.internal.jvm.Jvm
-
-import spock.lang.Specification
+import org.gradle.util.ConfigureUtil
+import org.gradle.util.TestUtil
 import spock.lang.Issue
+import spock.lang.Specification
 
 class SonarPluginTest extends Specification {
     def "adds model and task to root project"() {
-        def project = HelperUtil.createRootProject()
+        def project = TestUtil.createRootProject()
 
         when:
         project.plugins.apply(SonarPlugin)
@@ -41,8 +40,8 @@ class SonarPluginTest extends Specification {
     }
 
     def "adds model to subprojects"() {
-        def project = HelperUtil.createRootProject()
-        def child = HelperUtil.createChildProject(project, "child")
+        def project = TestUtil.createRootProject()
+        def child = TestUtil.createChildProject(project, "child")
 
         when:
         project.plugins.apply(SonarPlugin)
@@ -53,7 +52,7 @@ class SonarPluginTest extends Specification {
     }
 
     def "provides defaults for global configuration"() {
-        def project = HelperUtil.createRootProject()
+        def project = TestUtil.createRootProject()
 
         when:
         project.plugins.apply(SonarPlugin)
@@ -64,6 +63,8 @@ class SonarPluginTest extends Specification {
         sonar.server.url == "http://localhost:9000"
 
         def db = sonar.database
+        db.url == "jdbc:derby://localhost:1527/sonar"
+        db.driverClassName == "org.apache.derby.jdbc.ClientDriver"
         db.username == "sonar"
         db.password == "sonar"
 
@@ -88,7 +89,7 @@ class SonarPluginTest extends Specification {
         project << createMultiProject().allprojects
     }
 
-    def "provides additional defaults for project configuration if java-base plugin is present"() {
+    def "provides additional defaults for project configuration if java-base plugin is present"(Project project) {
         SonarProject sonarProject = project.sonar.project
 
         expect:
@@ -102,18 +103,13 @@ class SonarPluginTest extends Specification {
     def "provides additional defaults for project configuration if java plugin is present"(Project project) {
         SonarProject sonarProject = project.sonar.project
 
-        project.sourceSets.main.allSource.srcDirs*.mkdirs()
-        project.sourceSets.test.allSource.srcDirs*.mkdirs()
-        project.sourceSets.main.output.classesDir.mkdirs()
-        project.test.testResultsDir.mkdirs()
-
         expect:
-        sonarProject.sourceDirs as Set == project.sourceSets.main.allSource.srcDirs as Set
-        sonarProject.testDirs as Set == project.sourceSets.test.allSource.srcDirs as Set
-        sonarProject.binaryDirs as Set == [project.sourceSets.main.output.classesDir] as Set
-        sonarProject.libraries as Set == [Jvm.current().runtimeJar] as Set
+        sonarProject.sourceDirs == project.sourceSets.main.allSource.srcDirs as List
+        sonarProject.testDirs == project.sourceSets.test.allSource.srcDirs as List
+        sonarProject.binaryDirs == [project.sourceSets.main.output.classesDir]
+        sonarProject.libraries.files as List == [Jvm.current().runtimeJar]
 
-        sonarProject.testReportPath == project.test.testResultsDir
+        sonarProject.testReportPath == project.test.reports.junitXml.destination
         sonarProject.language == "java"
 
         where:
@@ -131,11 +127,11 @@ class SonarPluginTest extends Specification {
     }
 
     private Project createMultiProject(Closure commonConfig = {}) {
-        def root = HelperUtil.createRootProject()
+        def root = TestUtil.createRootProject()
         ConfigureUtil.configure(commonConfig, root)
         root.group = "group"
 
-        def child = HelperUtil.createChildProject(root, "child")
+        def child = TestUtil.createChildProject(root, "child")
         ConfigureUtil.configure(commonConfig, child)
         child.group = "group"
 

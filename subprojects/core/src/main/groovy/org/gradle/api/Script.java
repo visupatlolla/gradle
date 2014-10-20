@@ -26,6 +26,8 @@ import org.gradle.api.logging.LoggingManager;
 import org.gradle.api.resources.ResourceHandler;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.process.ExecResult;
+import org.gradle.process.ExecSpec;
+import org.gradle.process.JavaExecSpec;
 
 import java.io.File;
 import java.net.URI;
@@ -131,7 +133,7 @@ public interface Script {
      * using the given closure. This method works as described for {@link Project#files(Object, groovy.lang.Closure)}.
      * Relative paths are resolved relative to the directory containing this script.</p>
      *
-     * @param paths The contents of the file collection. Evaluated as for {@link #files(Object...)}.
+     * @param paths The contents of the file collection. Evaluated as per {@link #files(Object...)}.
      * @param configureClosure The closure to use to configure the file collection.
      * @return the configured file tree. Never returns null.
      */
@@ -148,20 +150,13 @@ public interface Script {
 
     /**
      * <p>Creates a new {@code ConfigurableFileTree} using the given base directory. The given baseDir path is evaluated
-     * as for {@link #file(Object)}.</p>
+     * as per {@link #file(Object)}.</p>
      * 
-     * <p><b>Note:</b> to use a closure as the baseDir, you must explicitly cast the closure to {@code Object} to force
-     * the use of this method instead of {@link #fileTree(Closure)}. Example:</p>
-     *
-     * <pre>
-     * fileTree((Object){ someDir })
-     * </pre>
-     *
      * <p>The returned file tree is lazy, so that it scans for files only when the contents of the file tree are
      * queried. The file tree is also live, so that it scans for files each time the contents of the file tree are
      * queried.</p>
      *
-     * @param baseDir The base directory of the file tree. Evaluated as for {@link #file(Object)}.
+     * @param baseDir The base directory of the file tree. Evaluated as per {@link #file(Object)}.
      * @return the file tree. Never returns null.
      */
     ConfigurableFileTree fileTree(Object baseDir);
@@ -182,27 +177,8 @@ public interface Script {
     ConfigurableFileTree fileTree(Map<String, ?> args);
 
     /**
-     * <p>Creates a new {@code ConfigurableFileTree} using the provided closure.  The closure will be used to configure
-     * the new file tree. The file tree is passed to the closure as its delegate.  Example:</p>
-     * <pre>
-     * fileTree {
-     *    from 'src'
-     *    exclude '**&#47;.svn/**'
-     * }.copy { into 'dest'}
-     * </pre>
-     * <p>The returned file tree is lazy, so that it scans for files only when the contents of the file tree are
-     * queried. The file tree is also live, so that it scans for files each time the contents of the file tree are
-     * queried.</p>
-     *
-     * @deprecated Use {@link #fileTree(Object,Closure)} instead.
-     * @param closure Closure to configure the {@code ConfigurableFileTree} object
-     * @return the configured file tree. Never returns null.
-     */
-    ConfigurableFileTree fileTree(Closure closure);
-
-    /**
      * <p>Creates a new {@code ConfigurableFileTree} using the given base directory. The given baseDir path is evaluated
-     * as for {@link #file(Object)}. The closure will be used to configure the new file tree. 
+     * as per {@link #file(Object)}. The closure will be used to configure the new file tree.
      * The file tree is passed to the closure as its delegate.  Example:</p>
      *
      * <pre>
@@ -215,7 +191,7 @@ public interface Script {
      * queried. The file tree is also live, so that it scans for files each time the contents of the file tree are
      * queried.</p>
      *
-     * @param baseDir The base directory of the file tree. Evaluated as for {@link #file(Object)}.
+     * @param baseDir The base directory of the file tree. Evaluated as per {@link #file(Object)}.
      * @param configureClosure Closure to configure the {@code ConfigurableFileTree} object.
      * @return the configured file tree. Never returns null.
      */
@@ -223,14 +199,14 @@ public interface Script {
 
     /**
      * <p>Creates a new {@code FileTree} which contains the contents of the given ZIP file. The given zipPath path is
-     * evaluated as for {@link #file(Object)}. You can combine this method with the {@link #copy(groovy.lang.Closure)}
+     * evaluated as per {@link #file(Object)}. You can combine this method with the {@link #copy(groovy.lang.Closure)}
      * method to unzip a ZIP file.</p>
      *
      * <p>The returned file tree is lazy, so that it scans for files only when the contents of the file tree are
      * queried. The file tree is also live, so that it scans for files each time the contents of the file tree are
      * queried.</p>
      *
-     * @param zipPath The ZIP file. Evaluated as for {@link #file(Object)}.
+     * @param zipPath The ZIP file. Evaluated as per {@link #file(Object)}.
      * @return the file tree. Never returns null.
      */
     FileTree zipTree(Object zipPath);
@@ -239,7 +215,7 @@ public interface Script {
      * Creates a new {@code FileTree} which contains the contents of the given TAR file. The given tarPath path can be:
      * <ul>
      *   <li>an instance of {@link org.gradle.api.resources.Resource}</li>
-     *   <li>any other object is evaluated as for {@link #file(Object)}</li>
+     *   <li>any other object is evaluated as per {@link #file(Object)}</li>
      * </ul>
      *
      * The returned file tree is lazy, so that it scans for files only when the contents of the file tree are
@@ -314,7 +290,7 @@ public interface Script {
     /**
      * Creates a directory and returns a file pointing to it.
      *
-     * @param path The path for the directory to be created. Evaluated as for {@link #file(Object)}.
+     * @param path The path for the directory to be created. Evaluated as per {@link #file(Object)}.
      * @return the created directory
      * @throws org.gradle.api.InvalidUserDataException If the path points to an existing file.
      */
@@ -337,12 +313,28 @@ public interface Script {
     ExecResult javaexec(Closure closure);
 
     /**
+     * Executes a Java main class.
+     *
+     * @param action The action for configuring the execution.
+     * @return the result of the execution
+     */
+    ExecResult javaexec(Action<? super JavaExecSpec> action);
+
+    /**
      * Executes an external command. The closure configures a {@link org.gradle.process.ExecSpec}.
      *
      * @param closure The closure for configuring the execution.
      * @return the result of the execution
      */
     ExecResult exec(Closure closure);
+
+    /**
+     * Executes an external command.
+     *
+     * @param action The action for configuring the execution.
+     * @return the result of the execution
+     */
+    ExecResult exec(Action<? super ExecSpec> action);
 
     /**
      * Returns the {@link org.gradle.api.logging.LoggingManager} which can be used to control the logging level and
@@ -366,4 +358,5 @@ public interface Script {
      * @return Returned instance contains various resource-specific utility methods.
      */
     ResourceHandler getResources();
+
 }

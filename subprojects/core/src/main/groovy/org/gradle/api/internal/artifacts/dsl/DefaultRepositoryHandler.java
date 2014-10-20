@@ -16,7 +16,6 @@
 package org.gradle.api.internal.artifacts.dsl;
 
 import groovy.lang.Closure;
-import org.apache.ivy.plugins.resolver.DependencyResolver;
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
@@ -26,22 +25,17 @@ import org.gradle.api.internal.ClosureBackedAction;
 import org.gradle.api.internal.ConfigureByMapAction;
 import org.gradle.api.internal.artifacts.BaseRepositoryFactory;
 import org.gradle.api.internal.artifacts.DefaultArtifactRepositoryContainer;
-import org.gradle.api.internal.artifacts.configurations.ResolverProvider;
-import org.gradle.api.internal.artifacts.repositories.FixedResolverArtifactRepository;
 import org.gradle.internal.reflect.Instantiator;
-import org.gradle.util.ConfigureUtil;
-import org.gradle.util.DeprecationLogger;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import static org.gradle.util.CollectionUtils.flattenToList;
+import static org.gradle.util.CollectionUtils.flattenCollections;
 
-/**
- * @author Hans Dockter
- */
-public class DefaultRepositoryHandler extends DefaultArtifactRepositoryContainer implements RepositoryHandler, ResolverProvider {
+public class DefaultRepositoryHandler extends DefaultArtifactRepositoryContainer implements RepositoryHandler {
+
+    public static final String DEFAULT_BINTRAY_JCENTER_REPO_NAME = "BintrayJCenter";
+    public static final String BINTRAY_JCENTER_URL = "https://jcenter.bintray.com/";
 
     public static final String FLAT_DIR_DEFAULT_NAME = "flatDir";
     private static final String MAVEN_REPO_DEFAULT_NAME = "maven";
@@ -50,7 +44,7 @@ public class DefaultRepositoryHandler extends DefaultArtifactRepositoryContainer
     private final BaseRepositoryFactory repositoryFactory;
 
     public DefaultRepositoryHandler(BaseRepositoryFactory repositoryFactory, Instantiator instantiator) {
-        super(repositoryFactory, instantiator);
+        super(instantiator);
         this.repositoryFactory = repositoryFactory;
     }
 
@@ -65,7 +59,7 @@ public class DefaultRepositoryHandler extends DefaultArtifactRepositoryContainer
     public FlatDirectoryArtifactRepository flatDir(Map<String, ?> args) {
         Map<String, Object> modifiedArgs = new HashMap<String, Object>(args);
         if (modifiedArgs.containsKey("dirs")) {
-            modifiedArgs.put("dirs", flattenToList(modifiedArgs.get("dirs")));
+            modifiedArgs.put("dirs", flattenCollections(modifiedArgs.get("dirs")));
         }
         return flatDir(new ConfigureByMapAction<FlatDirectoryArtifactRepository>(modifiedArgs));
     }
@@ -74,51 +68,22 @@ public class DefaultRepositoryHandler extends DefaultArtifactRepositoryContainer
         return addRepository(repositoryFactory.createMavenCentralRepository(), DEFAULT_MAVEN_CENTRAL_REPO_NAME);
     }
 
+    public MavenArtifactRepository jcenter() {
+        return addRepository(repositoryFactory.createJCenterRepository(), DEFAULT_BINTRAY_JCENTER_REPO_NAME);
+    }
+
+    public MavenArtifactRepository jcenter(Action<? super MavenArtifactRepository> action) {
+        return addRepository(repositoryFactory.createJCenterRepository(), DEFAULT_BINTRAY_JCENTER_REPO_NAME, action);
+    }
+
     public MavenArtifactRepository mavenCentral(Map<String, ?> args) {
         Map<String, Object> modifiedArgs = new HashMap<String, Object>(args);
-        if (modifiedArgs.containsKey("urls")) {
-            DeprecationLogger.nagUserOfDeprecated(
-                    "The 'urls' property of the RepositoryHandler.mavenCentral() method",
-                    "You should use the 'artifactUrls' property to define additional artifact locations"
-            );
-            List<?> urls = flattenToList(modifiedArgs.remove("urls"));
-            modifiedArgs.put("artifactUrls", urls);
-        }
-
         return addRepository(repositoryFactory.createMavenCentralRepository(), DEFAULT_MAVEN_CENTRAL_REPO_NAME, new ConfigureByMapAction<MavenArtifactRepository>(modifiedArgs));
     }
 
     public MavenArtifactRepository mavenLocal() {
         return addRepository(repositoryFactory.createMavenLocalRepository(), DEFAULT_MAVEN_LOCAL_REPO_NAME);
     }
-
-    public DependencyResolver mavenRepo(Map<String, ?> args) {
-        return mavenRepo(args, null);
-    }
-
-    public DependencyResolver mavenRepo(Map<String, ?> args, Closure configClosure) {
-        Map<String, Object> modifiedArgs = new HashMap<String, Object>(args);
-        if (modifiedArgs.containsKey("urls")) {
-            List<?> urls = flattenToList(modifiedArgs.remove("urls"));
-            if (!urls.isEmpty()) {
-                DeprecationLogger.nagUserOfDeprecated(
-                        "The 'urls' property of the RepositoryHandler.mavenRepo() method",
-                        "You should use the 'url' property to define the core maven repository & the 'artifactUrls' property to define any additional artifact locations"
-                );
-                modifiedArgs.put("url", urls.get(0));
-                List<?> extraUrls = urls.subList(1, urls.size());
-                modifiedArgs.put("artifactUrls", extraUrls);
-            }
-        }
-
-        MavenArtifactRepository repository = repositoryFactory.createMavenRepository();
-        ConfigureUtil.configureByMap(modifiedArgs, repository);
-        DependencyResolver resolver = repositoryFactory.toResolver(repository);
-        ConfigureUtil.configure(configClosure, resolver);
-        addRepository(new FixedResolverArtifactRepository(resolver), "mavenRepo");
-        return resolver;
-    }
-
 
     public MavenArtifactRepository maven(Action<? super MavenArtifactRepository> action) {
         return addRepository(repositoryFactory.createMavenRepository(), MAVEN_REPO_DEFAULT_NAME, action);

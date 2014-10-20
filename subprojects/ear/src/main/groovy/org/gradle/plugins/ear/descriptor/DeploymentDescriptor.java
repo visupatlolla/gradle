@@ -26,8 +26,6 @@ import java.util.Set;
 
 /**
  * A deployment descriptor such as application.xml.
- * 
- * @author David Gileadi
  */
 public interface DeploymentDescriptor {
 
@@ -149,6 +147,14 @@ public interface DeploymentDescriptor {
     public DeploymentDescriptor securityRole(String role);
 
     /**
+     * Add a security role to the deployment descriptor after configuring it with the given action.
+     *
+     * @param action an action to configure the security role
+     * @return this.
+     */
+    public DeploymentDescriptor securityRole(Action<? extends EarSecurityRole> action);
+
+    /**
      * Mapping of module paths to module types. Non-null by default. For example, to specify that a module is a java
      * module, set <code>moduleTypeMappings["myJavaModule.jar"] = "java"</code>.
      */
@@ -190,7 +196,7 @@ public interface DeploymentDescriptor {
 
     /**
      * Reads the deployment descriptor from a file. The paths are resolved as defined by
-     * {@link org.gradle.api.Project#files(Object...)}
+     * {@link org.gradle.api.Project#file(Object)}
      * 
      * @param path
      *            The path of the file to read the deployment descriptor from
@@ -209,7 +215,7 @@ public interface DeploymentDescriptor {
 
     /**
      * Writes the deployment descriptor into a file. The paths are resolved as defined by
-     * {@link org.gradle.api.Project#files(Object...)}
+     * {@link org.gradle.api.Project#file(Object)}
      * 
      * @param path
      *            The path of the file to write the deployment descriptor into.

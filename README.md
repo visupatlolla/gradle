@@ -1,12 +1,12 @@
 <img src="http://gradle.org/img/gradle_logo.gif" />
 
-Gradle is build automation *evolved*. Gradle can automate the building, testing, publishing, deployment and more of software packages or other types of projects such as generated static websites, generated documentation or indeed anything else.
+Gradle is a build tool with a focus on build automation and support for multi-language development. If you are building, testing, publishing, and deploying software on any platform, Gradle offers a flexible model that can support the entire development lifecycle from compiling and packaging code to publishing web sites. Gradle has been designed to support build automation across multiple languages and platforms including Java, Scala, Android, C/C++, and Groovy, and is closely integrated with development tools and continuous integration servers including Eclipse, IntelliJ, and Jenkins.
 
-For more information about Gradle, please visit http://gradle.org.
+For more information about Gradle, please visit: http://gradle.org
 
 ## Downloading
 
-You can download released versions and nightly build artifacts from http://gradle.org/downloads.
+You can download released versions and nightly build artifacts from: http://gradle.org/downloads
 
 ## Building
 
@@ -28,17 +28,17 @@ To create an install from the source tree you can run either of the following:
 
 This will create a minimal installation; just what's needed to run Gradle (i.e. no docs). Note that the `-Pgradle_installPath` denotes where to install to. 
 
-You can then build a Gradle built project with this installation:
+You can then build a Gradle based project with this installation:
 
     /usr/local/gradle-source-build/bin/gradle «some task»
 
-To create a full installation (includes docs)…
+To create a full installation (includes docs):
 
     ./gradlew installAll -Pgradle_installPath=/usr/local/gradle-source-build
 
 ### Working with subprojects
 
-The Gradle build uses Gradle's ability to customise the logical structure of a multiproject build. All of the build's subprojects are in the `subprojects/` directory and are mapped to top level children in [settings.gradle](https://github.com/gradle/gradle/blob/master/settings.gradle).
+The Gradle build uses Gradle's ability to customize the logical structure of a multiproject build. All of the build's subprojects are in the `subprojects/` directory and are mapped to top level children in [settings.gradle](https://github.com/gradle/gradle/blob/master/settings.gradle).
 
 This means that to build just the `core` subproject (that lives in `subprojects/core`) you would run:
 
@@ -78,7 +78,11 @@ To open the Gradle project in IDEA, simply run the following task from the root:
 
 This will generate appropriate IDEA metadata so that the project can be opened from within IDEA.
 
+Note that due to an IDEA glitch, the first build of Gradle from IDEA will fail. Launching a second build fixes the compilation error.
+
 ### Eclipse
+
+#### Gradle Integration for Eclipse (by Pivotal)
 
 The Gradle project is not currently buildable in Eclipse. This is something that will be rectified in the future.
 
@@ -88,3 +92,8 @@ You can try running:
 
 This command generates Eclipse metadata that allows importing the project into Eclipse. However, you will have to do some manual fixes to the project's setup to make it work.
 
+#### Gradle for Eclipse (by Nodeclipse/Enide)
+
+With [Gradle(Enide) Eclipse plugin](http://marketplace.eclipse.org/content/gradle), you can import as general plugin or prepare before with `./gradlew eclipse`. 
+
+Build is run via right-click on `build.gradle` <kbd>Run As -> gradle build Gradle Build</kbd>

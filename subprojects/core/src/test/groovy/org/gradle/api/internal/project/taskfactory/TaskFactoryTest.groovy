@@ -25,13 +25,13 @@ import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.tasks.TaskInstantiationException
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.internal.reflect.ObjectInstantiationException
-import org.gradle.util.HelperUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class TaskFactoryTest extends Specification {
     final ClassGenerator generator = Mock()
     final Instantiator instantiator = Mock()
-    final ProjectInternal project = HelperUtil.createRootProject()
+    final ProjectInternal project = TestUtil.createRootProject()
     final ITaskFactory taskFactory = new TaskFactory(generator).createChild(project, instantiator)
 
     def setup() {
@@ -94,6 +94,23 @@ class TaskFactoryTest extends Specification {
         task.dependsOn == ["/path1"] as Set
     }
 
+    public void taskCreationFailsWithUnknownArguments() {
+        when:
+        taskFactory.createTask([name: 'task', dependson: 'anotherTask'])
+
+        then:
+        InvalidUserDataException exception = thrown()
+        exception.message == "Could not create task 'task': Unknown argument(s) in task definition: [dependson]"
+
+        when:
+        taskFactory.createTask([name: 'task', Type: NotATask])
+
+        then:
+        exception = thrown()
+        exception.message == "Could not create task 'task': Unknown argument(s) in task definition: [Type]"
+
+    }
+
     public void testCreateTaskWithAction() {
         Action<Task> action = Mock()
 
@@ -118,7 +135,7 @@ class TaskFactoryTest extends Specification {
 
     public void testCreateTaskForTypeWhichDoesNotImplementTask() {
         when:
-        taskFactory.createTask([name: 'task', type:  NotATask])
+        taskFactory.createTask([name: 'task', type: NotATask])
 
         then:
         InvalidUserDataException e = thrown()
@@ -129,7 +146,7 @@ class TaskFactoryTest extends Specification {
         def failure = new RuntimeException()
 
         when:
-        taskFactory.createTask([name: 'task', type:  TestDefaultTask])
+        taskFactory.createTask([name: 'task', type: TestDefaultTask])
 
         then:
         TaskInstantiationException e = thrown()

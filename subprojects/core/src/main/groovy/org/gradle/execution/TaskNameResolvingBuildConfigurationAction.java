@@ -15,11 +15,9 @@
  */
 package org.gradle.execution;
 
-import com.google.common.collect.Multimap;
-import org.gradle.api.Task;
+import org.gradle.TaskExecutionRequest;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.execution.commandline.CommandLineTaskParser;
-import org.gradle.util.GUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,37 +29,26 @@ import java.util.List;
  */
 public class TaskNameResolvingBuildConfigurationAction implements BuildConfigurationAction {
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskNameResolvingBuildConfigurationAction.class);
-    private final TaskNameResolver taskNameResolver;
+    private final CommandLineTaskParser commandLineTaskParser;
 
-    public TaskNameResolvingBuildConfigurationAction() {
-        this(new TaskNameResolver());
-    }
-
-    TaskNameResolvingBuildConfigurationAction(TaskNameResolver taskNameResolver) {
-        this.taskNameResolver = taskNameResolver;
+    public TaskNameResolvingBuildConfigurationAction(CommandLineTaskParser commandLineTaskParser) {
+        this.commandLineTaskParser = commandLineTaskParser;
     }
 
     public void configure(BuildExecutionContext context) {
         GradleInternal gradle = context.getGradle();
-        List<String> taskNames = gradle.getStartParameter().getTaskNames();
-        Multimap<String, Task> selectedTasks = doSelect(gradle, taskNames, taskNameResolver);
-
         TaskGraphExecuter executer = gradle.getTaskGraph();
-        for (String name : selectedTasks.keySet()) {
-            executer.addTasks(selectedTasks.get(name));
-        }
 
-        if (selectedTasks.keySet().size() == 1) {
-            LOGGER.info("Selected primary task {}", GUtil.toString(selectedTasks.keySet()));
-        } else {
-            LOGGER.info("Selected primary tasks {}", GUtil.toString(selectedTasks.keySet()));
+        List<TaskExecutionRequest> taskParameters = gradle.getStartParameter().getTaskRequests();
+        for (TaskExecutionRequest taskParameter : taskParameters) {
+            List<TaskSelector.TaskSelection> taskSelections = commandLineTaskParser.parseTasks(taskParameter);
+            for (TaskSelector.TaskSelection taskSelection : taskSelections) {
+                LOGGER.info("Selected primary task '{}' from project {}", taskSelection.getTaskName(), taskSelection.getProjectPath());
+                executer.addTasks(taskSelection.getTasks());
+            }
         }
 
         context.proceed();
     }
 
-    private Multimap<String, Task> doSelect(GradleInternal gradle, List<String> paths, TaskNameResolver taskNameResolver) {
-        TaskSelector selector = new TaskSelector(gradle, taskNameResolver);
-        return new CommandLineTaskParser().parseTasks(paths, selector);
-    }
 }

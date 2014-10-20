@@ -17,9 +17,8 @@
 package org.gradle.api.internal.artifacts;
 
 import org.gradle.api.Project;
-import org.gradle.api.artifacts.Module;
 
-public class ProjectBackedModule implements Module {
+public class ProjectBackedModule implements ModuleInternal {
 
     private final Project project;
 
@@ -41,5 +40,32 @@ public class ProjectBackedModule implements Module {
 
     public String getStatus() {
         return project.getStatus().toString();
+    }
+
+    public String getProjectPath() {
+        return project.getPath();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        ProjectBackedModule that = (ProjectBackedModule) o;
+
+        if (project != null ? !project.equals(that.project) : that.project != null) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return project != null ? project.hashCode() : 0;
     }
 }

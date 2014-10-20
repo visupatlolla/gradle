@@ -15,12 +15,10 @@
  */
 package org.gradle.plugins.ide.eclipse.model
 
-/**
- * @author Hans Dockter
- */
 
 class Facet {
 
+    @SuppressWarnings("FieldName")
     enum FacetType { installed, fixed }
 
     FacetType type

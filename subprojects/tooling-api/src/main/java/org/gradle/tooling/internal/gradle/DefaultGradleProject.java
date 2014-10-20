@@ -1,5 +1,5 @@
 /*
- * Copyright 2011 the original author or authors.
+ * Copyright 2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,111 +16,65 @@
 
 package org.gradle.tooling.internal.gradle;
 
-import org.gradle.tooling.internal.protocol.ProjectVersion3;
-import org.gradle.tooling.model.DomainObjectSet;
-import org.gradle.tooling.model.GradleProject;
-import org.gradle.tooling.model.GradleTask;
-import org.gradle.tooling.model.internal.ImmutableDomainObjectSet;
-
 import java.io.File;
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
-/**
- * @author: Szczepan Faber, created at: 7/27/11
- */
-public class DefaultGradleProject implements ProjectVersion3, GradleProject, Serializable {
+public class DefaultGradleProject<T> extends PartialGradleProject implements Serializable, GradleProjectIdentity {
+    private DefaultGradleScript buildScript = new DefaultGradleScript();
+    private File buildDirectory;
+    private List<T> tasks = new LinkedList<T>();
 
-    private String name;
-    private String description;
-    private String path;
-    private GradleProject parent;
-    private List<? extends GradleProject> children = new LinkedList<GradleProject>();
-    private List<GradleTask> tasks = new LinkedList<GradleTask>();
-
-    public DefaultGradleProject() {}
-
-    public DefaultGradleProject(String path) {
-        this.path = path;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public DefaultGradleProject setName(String name) {
-        this.name = name;
+    @Override
+    public DefaultGradleProject<T> setName(String name) {
+        super.setName(name);
         return this;
     }
 
-    public String getDescription() {
-        return description;
-    }
-
-    public DefaultGradleProject setDescription(String description) {
-        this.description = description;
+    @Override
+    public DefaultGradleProject<T> setPath(String path) {
+        super.setPath(path);
         return this;
     }
 
-    public GradleProject getParent() {
-        return parent;
-    }
-
-    public DefaultGradleProject setParent(GradleProject parent) {
-        this.parent = parent;
+    @Override
+    public DefaultGradleProject<T> setDescription(String description) {
+        super.setDescription(description);
         return this;
     }
 
-    public DomainObjectSet<? extends GradleProject> getChildren() {
-        return new ImmutableDomainObjectSet<GradleProject>(children);
-    }
-
-    public DefaultGradleProject setChildren(List<? extends GradleProject> children) {
-        this.children = children;
+    @Override
+    public DefaultGradleProject<T> setChildren(List<? extends PartialGradleProject> children) {
+        super.setChildren(children);
         return this;
     }
 
-    public DomainObjectSet<GradleTask> getTasks() {
-        return new ImmutableDomainObjectSet<GradleTask>(tasks);
+    public Collection<T> getTasks() {
+        return tasks;
     }
 
-    public DefaultGradleProject setTasks(List<GradleTask> tasks) {
+    public DefaultGradleProject<T> setTasks(List<T> tasks) {
         this.tasks = tasks;
         return this;
     }
 
-    public String getPath() {
-        return path;
+    public File getBuildDirectory() {
+        return buildDirectory;
     }
 
-    public DefaultGradleProject setPath(String path) {
-        this.path = path;
+    public DefaultGradleProject<T> setBuildDirectory(File buildDirectory) {
+        this.buildDirectory = buildDirectory;
         return this;
     }
 
-    public File getProjectDirectory() {
-        throw new RuntimeException("ProjectVersion3 methods are deprecated.");
+    public DefaultGradleScript getBuildScript() {
+        return buildScript;
     }
 
-    public GradleProject findByPath(String path) {
-        if (path.equals(this.path)) {
-            return this;
-        }
-        for (GradleProject child : children) {
-            GradleProject found = child.findByPath(path);
-            if (found != null) {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-    public String toString() {
-        return "GradleProject{"
-                + "path='" + path + '\''
-                + "tasks='" + tasks + '\''
-                + '}';
+    @Override
+    public DefaultGradleProject<T> findByPath(String path) {
+        return (DefaultGradleProject<T>) super.findByPath(path);
     }
 }

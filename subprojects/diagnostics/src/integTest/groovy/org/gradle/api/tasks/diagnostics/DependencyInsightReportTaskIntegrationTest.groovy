@@ -17,12 +17,94 @@
 package org.gradle.api.tasks.diagnostics
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import spock.lang.Ignore
 
 import static org.gradle.util.TextUtil.toPlatformLineSeparators
 
 class DependencyInsightReportTaskIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
         executer.requireOwnGradleUserHomeDir()
+    }
+
+    def "requires use of configuration flag if Java plugin isn't applied"() {
+        given:
+        file("build.gradle") << """
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf
+            }
+            dependencies {
+                conf 'org:top:1.0'
+            }
+        """
+
+        when:
+        def failure = runAndFail("dependencyInsight", "--dependency", "unknown")
+
+        then:
+        failure.assertHasCause("Dependency insight report cannot be generated because the input configuration was not specified.")
+    }
+
+    def "indicates that requested dependency cannot be found for default configuration"() {
+        given:
+        mavenRepo.module("org", "leaf1").publish()
+        mavenRepo.module("org", "leaf2").publish()
+        mavenRepo.module("org", "middle").dependsOn("leaf1", "leaf2").publish()
+        mavenRepo.module("org", "top").dependsOn("middle", "leaf2").publish()
+
+        file("build.gradle") << """
+            apply plugin: 'java'
+
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf
+            }
+            dependencies {
+                conf 'org:top:1.0'
+            }
+        """
+
+        when:
+        run "dependencyInsight", "--dependency", "unknown"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+No dependencies matching given input were found in configuration ':compile'
+"""))
+    }
+
+    def "indicates that requested dependency cannot be found for custom configuration"() {
+        given:
+        mavenRepo.module("org", "leaf1").publish()
+        mavenRepo.module("org", "leaf2").publish()
+        mavenRepo.module("org", "middle").dependsOn("leaf1", "leaf2").publish()
+        mavenRepo.module("org", "top").dependsOn("middle", "leaf2").publish()
+
+        file("build.gradle") << """
+            apply plugin: 'java'
+
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf
+            }
+            dependencies {
+                conf 'org:top:1.0'
+            }
+        """
+
+        when:
+        run "dependencyInsight", "--dependency", "unknown", "--configuration", "conf"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+No dependencies matching given input were found in configuration ':conf'
+"""))
     }
 
     def "shows basic single tree with repeated dependency"() {
@@ -45,7 +127,7 @@ class DependencyInsightReportTaskIntegrationTest extends AbstractIntegrationSpec
                 conf 'org:top:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'leaf2' }
+                setDependencySpec { it.requested.module == 'leaf2' }
                 configuration = configurations.conf
             }
         """
@@ -142,7 +224,7 @@ org:leaf2:1.5 -> 2.5
             }
             task insight(type: DependencyInsightReportTask) {
                 configuration = configurations.conf
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
             }
         """
 
@@ -163,13 +245,13 @@ org:leaf:2.0 -> 1.0
 
     def "shows multiple outgoing dependencies"() {
         given:
-        mavenRepo.module("org", "leaf", "1.0").publish()
-        mavenRepo.module("org", "middle", "1.0")
+        ivyRepo.module("org", "leaf", "1.0").publish()
+        ivyRepo.module("org", "middle", "1.0")
                 .dependsOn("org", "leaf", "1.0")
                 .dependsOn("org", "leaf", "[1.0,2.0]")
                 .dependsOn("org", "leaf", "latest.integration")
                 .publish()
-        mavenRepo.module("org", "top", "1.0")
+        ivyRepo.module("org", "top", "1.0")
                 .dependsOn("org", "middle", "1.0")
                 .dependsOn("org", "middle", "[1.0,2.0]")
                 .dependsOn("org", "middle", "latest.integration")
@@ -177,7 +259,7 @@ org:leaf:2.0 -> 1.0
 
         file("build.gradle") << """
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                ivy { url "${ivyRepo.uri}" }
             }
             configurations {
                 conf
@@ -188,7 +270,7 @@ org:leaf:2.0 -> 1.0
                 conf 'org:top:latest.integration'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
                 configuration = configurations.conf
             }
         """
@@ -197,21 +279,18 @@ org:leaf:2.0 -> 1.0
         run "insight"
 
         then:
-        // TODO - need to use a fixed ordering for dynamic requested versions
         output.contains(toPlatformLineSeparators("""
 org:leaf:1.0
 \\--- org:middle:1.0
      \\--- org:top:1.0
           \\--- conf
-"""))
-        output.contains(toPlatformLineSeparators("""
-org:leaf:latest.integration -> 1.0
+
+org:leaf:[1.0,2.0] -> 1.0
 \\--- org:middle:1.0
      \\--- org:top:1.0
           \\--- conf
-"""))
-        output.contains(toPlatformLineSeparators("""
-org:leaf:[1.0,2.0] -> 1.0
+
+org:leaf:latest.integration -> 1.0
 \\--- org:middle:1.0
      \\--- org:top:1.0
           \\--- conf
@@ -240,7 +319,7 @@ org:leaf:[1.0,2.0] -> 1.0
             }
             task insight(type: DependencyInsightReportTask) {
                 configuration = configurations.conf
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
             }
         """
 
@@ -255,6 +334,94 @@ org:leaf:1.0 (selected by rule)
 
 org:leaf:2.0 -> 1.0
 \\--- org:bar:1.0
+     \\--- conf
+"""))
+    }
+
+    def "shows substituted modules"() {
+        given:
+        mavenRepo.module("org", "new-leaf", 77).publish()
+
+        mavenRepo.module("org", "foo", 1.0).dependsOn('org', 'leaf', '1.0').publish()
+        mavenRepo.module("org", "bar", 1.0).dependsOn('org', 'leaf', '2.0').publish()
+
+        file("build.gradle") << """
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf {
+                    resolutionStrategy.eachDependency { if (it.requested.name == 'leaf') { it.useTarget('org:new-leaf:77') } }
+                }
+            }
+            dependencies {
+                conf 'org:foo:1.0', 'org:bar:1.0'
+            }
+            task insight(type: DependencyInsightReportTask) {
+                configuration = configurations.conf
+                setDependencySpec { it.requested.module == 'leaf' }
+            }
+        """
+
+        when:
+        run "insight"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+org:new-leaf:77 (selected by rule)
+
+org:leaf:1.0 -> org:new-leaf:77
+\\--- org:foo:1.0
+     \\--- conf
+
+org:leaf:2.0 -> org:new-leaf:77
+\\--- org:bar:1.0
+     \\--- conf
+"""))
+    }
+
+    def "shows version resolved from dynamic selectors"() {
+        given:
+        ivyRepo.module("org", "leaf", "1.6").publish()
+        ivyRepo.module("org", "top", "1.0")
+                .dependsOn("org", "leaf", "[1.5,1.9]")
+                .dependsOn("org", "leaf", "latest.integration")
+                .dependsOn("org", "leaf", "1.+")
+                .publish()
+
+        file("build.gradle") << """
+            repositories {
+                ivy { url "${ivyRepo.uri}" }
+            }
+            configurations {
+                conf
+            }
+            dependencies {
+                conf 'org:top:1.0'
+            }
+            task insight(type: DependencyInsightReportTask) {
+                setDependencySpec { it.requested.module == 'leaf' }
+                configuration = configurations.conf
+            }
+        """
+
+        when:
+        run "insight"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+org:leaf:1.6
+
+org:leaf:1.+ -> 1.6
+\\--- org:top:1.0
+     \\--- conf
+
+org:leaf:[1.5,1.9] -> 1.6
+\\--- org:top:1.0
+     \\--- conf
+
+org:leaf:latest.integration -> 1.6
+\\--- org:top:1.0
      \\--- conf
 """))
     }
@@ -280,7 +447,7 @@ org:leaf:2.0 -> 1.0
             }
             task insight(type: DependencyInsightReportTask) {
                 configuration = configurations.conf
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
             }
         """
 
@@ -321,7 +488,7 @@ org:leaf:1.0 -> 2.0
             }
             task insight(type: DependencyInsightReportTask) {
                 configuration = configurations.conf
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
             }
         """
 
@@ -365,7 +532,7 @@ org:leaf:2.0 -> 1.5
             }
             task insight(type: DependencyInsightReportTask) {
                 configuration = configurations.conf
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
             }
         """
 
@@ -389,7 +556,7 @@ org:leaf:2.0 -> 1.0
         given:
         file("build.gradle") << """
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'leaf2' }
+                setDependencySpec { it.requested.module == 'leaf2' }
             }
         """
 
@@ -407,7 +574,7 @@ org:leaf:2.0 -> 1.0
                 conf
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'whatever' }
+                setDependencySpec { it.requested.module == 'whatever' }
                 configuration = configurations.conf
             }
         """
@@ -434,7 +601,7 @@ org:leaf:2.0 -> 1.0
                 conf 'org:top:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'foo.unknown' }
+                setDependencySpec { it.requested.module == 'foo.unknown' }
                 configuration = configurations.conf
             }
         """
@@ -461,7 +628,7 @@ org:leaf:2.0 -> 1.0
                 conf 'org:top:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'middle' }
+                setDependencySpec { it.requested.module == 'middle' }
                 configuration = configurations.conf
             }
         """
@@ -497,7 +664,7 @@ org:middle:1.0 FAILED
                 conf 'org:top:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'middle' }
+                setDependencySpec { it.requested.module == 'middle' }
                 configuration = configurations.conf
             }
         """
@@ -532,7 +699,7 @@ org:middle:1.0 -> 2.0 FAILED
                 conf 'org:middle:2.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'middle' }
+                setDependencySpec { it.requested.module == 'middle' }
                 configuration = configurations.conf
             }
         """
@@ -569,7 +736,7 @@ org:middle:1.0 -> 2.0 FAILED
                 conf 'org:top:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'middle' }
+                setDependencySpec { it.requested.module == 'middle' }
                 configuration = configurations.conf
             }
         """
@@ -587,13 +754,14 @@ org:middle:1.0 -> 2.0+ FAILED
 """))
     }
 
-    def "shows multiple failed outgoing dependencies"() {
+    @Ignore
+    def "shows version resolved from a range where some selectors did not match anything"() {
         given:
-        mavenRepo.module("org", "leaf", "1.0")
+        mavenRepo.module("org", "leaf", "1.5").publish()
         mavenRepo.module("org", "top", "1.0")
                 .dependsOn("org", "leaf", "1.0")
-                .dependsOn("org", "leaf", "[1.5,2.0]")
-                .dependsOn("org", "leaf", "1.6+")
+                .dependsOn("org", "leaf", "[1.5,1.9]")
+                .dependsOn("org", "leaf", "0.8+")
                 .publish()
 
         file("build.gradle") << """
@@ -607,7 +775,7 @@ org:middle:1.0 -> 2.0+ FAILED
                 conf 'org:top:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'leaf' }
+                setDependencySpec { it.requested.module == 'leaf' }
                 configuration = configurations.conf
             }
         """
@@ -616,18 +784,60 @@ org:middle:1.0 -> 2.0+ FAILED
         run "insight"
 
         then:
-        // TODO - need to use a fixed ordering for dynamic requested versions
+        output.contains(toPlatformLineSeparators("""
+org:leaf:1.5 (conflict resolution)
+
+org:leaf:1.0 -> 1.5
+\\--- org:top:1.0
+     \\--- conf
+
+org:leaf:0.8+ -> 1.5
+\\--- org:top:1.0
+     \\--- conf
+
+org:leaf:[1.5,1.9] -> 1.5
+\\--- org:top:1.0
+     \\--- conf
+"""))
+    }
+
+    def "shows multiple failed outgoing dependencies"() {
+        given:
+        ivyRepo.module("org", "top", "1.0")
+                .dependsOn("org", "leaf", "1.0")
+                .dependsOn("org", "leaf", "[1.5,2.0]")
+                .dependsOn("org", "leaf", "1.6+")
+                .publish()
+
+        file("build.gradle") << """
+            repositories {
+                ivy { url "${ivyRepo.uri}" }
+            }
+            configurations {
+                conf
+            }
+            dependencies {
+                conf 'org:top:1.0'
+            }
+            task insight(type: DependencyInsightReportTask) {
+                setDependencySpec { it.requested.module == 'leaf' }
+                configuration = configurations.conf
+            }
+        """
+
+        when:
+        run "insight"
+
+        then:
         output.contains(toPlatformLineSeparators("""
 org:leaf:1.0 FAILED
 \\--- org:top:1.0
      \\--- conf
-"""))
-        output.contains(toPlatformLineSeparators("""
+
 org:leaf:1.6+ FAILED
 \\--- org:top:1.0
      \\--- conf
-"""))
-        output.contains(toPlatformLineSeparators("""
+
 org:leaf:[1.5,2.0] FAILED
 \\--- org:top:1.0
      \\--- conf
@@ -650,7 +860,7 @@ org:leaf:[1.5,2.0] FAILED
                 conf 'org:leaf1:1.0'
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'leaf2' }
+                setDependencySpec { it.requested.module == 'leaf2' }
                 configuration = configurations.conf
             }
         """
@@ -697,12 +907,13 @@ org:leaf2:1.0
 
         then:
         output.contains(toPlatformLineSeparators("""
-org.foo:root:1.0
-\\--- org.foo:impl:1.0
-     \\--- org.foo:root:1.0 (*)"""))
+project :
+\\--- project :impl
+     \\--- project : (*)
+"""))
     }
 
-    def "shows project dependencies"() {
+    def "selects a module component dependency with a given name"() {
         given:
         mavenRepo.module("org", "leaf1").dependsOn("leaf2").publish()
         mavenRepo.module("org", "leaf2").dependsOn("leaf3").publish()
@@ -728,7 +939,7 @@ org.foo:root:1.0
                 }
             }
             task insight(type: DependencyInsightReportTask) {
-                setDependencySpec { it.requested.name == 'leaf2' }
+                setDependencySpec { it.requested instanceof ModuleComponentSelector && it.requested.module == 'leaf2' }
                 configuration = configurations.compile
             }
         """
@@ -740,8 +951,187 @@ org.foo:root:1.0
         output.contains(toPlatformLineSeparators("""
 org:leaf2:1.0
 \\--- org:leaf1:1.0
-     \\--- org.foo:impl:1.0-SNAPSHOT
+     \\--- project :impl
           \\--- compile
+"""))
+    }
+
+    def "selects a project component dependency with a given project path"() {
+        given:
+        mavenRepo.module("org", "leaf1").dependsOn("leaf2").publish()
+        mavenRepo.module("org", "leaf2").dependsOn("leaf3").publish()
+        mavenRepo.module("org", "leaf3").publish()
+
+        file("settings.gradle") << "include 'impl'; rootProject.name='root'"
+
+        file("build.gradle") << """
+            allprojects {
+                apply plugin: 'java'
+                group = 'org.foo'
+                version = '1.0-SNAPSHOT'
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+            }
+            dependencies {
+                compile project(':impl')
+            }
+            project(':impl') {
+                dependencies {
+                    compile 'org:leaf1:1.0'
+                }
+            }
+            task insight(type: DependencyInsightReportTask) {
+                setDependencySpec { it.requested instanceof ProjectComponentSelector && it.requested.projectPath == ':impl' }
+                configuration = configurations.compile
+            }
+        """
+
+        when:
+        run "insight"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+project :impl
+\\--- compile
+"""))
+    }
+
+    def "selects a module component dependency with a given name with dependency command line option"() {
+        given:
+        mavenRepo.module("org", "leaf1").dependsOn("leaf2").publish()
+        mavenRepo.module("org", "leaf2").dependsOn("leaf3").publish()
+        mavenRepo.module("org", "leaf3").publish()
+        mavenRepo.module("org", "leaf4").publish()
+
+        file("settings.gradle") << "include 'api', 'impl'; rootProject.name='root'"
+
+        file("build.gradle") << """
+            allprojects {
+                apply plugin: 'java'
+                group = 'org.foo'
+                version = '1.0-SNAPSHOT'
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+            }
+            dependencies {
+                compile project(':impl')
+            }
+            project(':api') {
+                dependencies {
+                    compile 'org:leaf1:1.0'
+                }
+            }
+            project(':impl') {
+                dependencies {
+                    compile project(':api')
+                    compile 'org:leaf4:1.0'
+                }
+            }
+        """
+
+        when:
+        run "dependencyInsight", "--dependency", "leaf4"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+org:leaf4:1.0
+\\--- project :impl
+     \\--- compile
+"""))
+    }
+
+    def "selects a project component dependency with a given name with dependency command line option"() {
+        given:
+        mavenRepo.module("org", "leaf1").dependsOn("leaf2").publish()
+        mavenRepo.module("org", "leaf2").dependsOn("leaf3").publish()
+        mavenRepo.module("org", "leaf3").publish()
+        mavenRepo.module("org", "leaf4").publish()
+
+        file("settings.gradle") << "include 'api', 'impl'; rootProject.name='root'"
+
+        file("build.gradle") << """
+            allprojects {
+                apply plugin: 'java'
+                group = 'org.foo'
+                version = '1.0-SNAPSHOT'
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+            }
+            dependencies {
+                compile project(':impl')
+            }
+            project(':api') {
+                dependencies {
+                    compile 'org:leaf1:1.0'
+                }
+            }
+            project(':impl') {
+                dependencies {
+                    compile project(':api')
+                    compile 'org:leaf4:1.0'
+                }
+            }
+        """
+
+        when:
+        run "dependencyInsight", "--dependency", ":api"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+project :api
+\\--- project :impl
+     \\--- compile
+"""))
+    }
+
+    def "renders tree with a mix of project and external dependencies"() {
+        given:
+        mavenRepo.module("org", "leaf1").dependsOn("leaf2").publish()
+        mavenRepo.module("org", "leaf2").dependsOn("leaf3").publish()
+        mavenRepo.module("org", "leaf3").publish()
+
+        file("settings.gradle") << "include 'api', 'impl'; rootProject.name='root'"
+
+        file("build.gradle") << """
+            allprojects {
+                apply plugin: 'java'
+                group = 'org.foo'
+                version = '1.0-SNAPSHOT'
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+            }
+            dependencies {
+                compile project(':impl')
+            }
+            project(':api') {
+                dependencies {
+                    compile 'org:leaf2:1.0'
+                }
+            }
+            project(':impl') {
+                dependencies {
+                    compile project(':api')
+                    compile 'org:leaf1:1.0'
+                }
+            }
+        """
+
+        when:
+        run "dependencyInsight", "--dependency", "leaf3"
+
+        then:
+        output.contains(toPlatformLineSeparators("""
+org:leaf3:1.0
+\\--- org:leaf2:1.0
+     +--- project :api
+     |    \\--- project :impl
+     |         \\--- compile
+     \\--- org:leaf1:1.0
+          \\--- project :impl (*)
 """))
     }
 }

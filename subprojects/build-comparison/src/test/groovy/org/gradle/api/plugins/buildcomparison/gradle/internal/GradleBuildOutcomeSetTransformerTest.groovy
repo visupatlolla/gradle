@@ -17,12 +17,12 @@
 package org.gradle.api.plugins.buildcomparison.gradle.internal
 
 import org.gradle.api.Action
-import org.gradle.api.internal.filestore.AbstractFileStoreEntry
-import org.gradle.api.internal.filestore.FileStore
-import org.gradle.api.internal.filestore.FileStoreEntry
+import org.gradle.internal.resource.local.FileStore
 import org.gradle.api.plugins.buildcomparison.fixtures.ProjectOutcomesBuilder
 import org.gradle.api.plugins.buildcomparison.outcome.internal.archive.GeneratedArchiveBuildOutcome
 import org.gradle.api.plugins.buildcomparison.outcome.internal.unknown.UnknownBuildOutcome
+import org.gradle.internal.resource.local.DefaultLocallyAvailableResource
+import org.gradle.internal.resource.local.LocallyAvailableResource
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.tooling.model.internal.outcomes.GradleBuildOutcome
@@ -31,32 +31,24 @@ import org.gradle.tooling.model.internal.outcomes.ProjectOutcomes
 import org.junit.Rule
 import spock.lang.Specification
 
-import static org.gradle.tooling.internal.provider.FileOutcomeIdentifier.*
+import static org.gradle.api.plugins.buildcomparison.outcome.internal.FileOutcomeIdentifier.*
 
 class GradleBuildOutcomeSetTransformerTest extends Specification {
 
     def store = new FileStore<String>() {
-        FileStoreEntry move(String key, File source) {
-            new AbstractFileStoreEntry() {
-                File getFile() {
-                    source
-                }
-            }
+        LocallyAvailableResource move(String key, File source) {
+            new DefaultLocallyAvailableResource(source)
         }
 
-        FileStoreEntry copy(String key, File source) {
-            new AbstractFileStoreEntry() {
-                File getFile() {
-                    source
-                }
-            }
+        LocallyAvailableResource copy(String key, File source) {
+            new DefaultLocallyAvailableResource(source)
         }
 
         void moveFilestore(File destination) {
             throw new UnsupportedOperationException()
         }
 
-        FileStoreEntry add(String key, Action<File> addAction) {
+        LocallyAvailableResource add(String key, Action<File> addAction) {
             throw new UnsupportedOperationException()
         }
     }

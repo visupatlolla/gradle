@@ -16,37 +16,33 @@
 
 package org.gradle.execution.taskgraph;
 
-import org.gradle.api.internal.DocumentationRegistry;
-import org.gradle.api.internal.changedetection.TaskArtifactStateCacheAccess;
 import org.gradle.internal.Factory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.gradle.internal.concurrent.ExecutorFactory;
 
 public class TaskPlanExecutorFactory implements Factory<TaskPlanExecutor> {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(TaskPlanExecutorFactory.class);
-
-    private final TaskArtifactStateCacheAccess taskArtifactStateCacheAccess;
     private final int parallelThreads;
-    private final DocumentationRegistry documentationRegistry;
+    private final ExecutorFactory executorFactory;
 
-    public TaskPlanExecutorFactory(TaskArtifactStateCacheAccess taskArtifactStateCacheAccess, int parallelThreads, DocumentationRegistry documentationRegistry) {
-        this.taskArtifactStateCacheAccess = taskArtifactStateCacheAccess;
+    public TaskPlanExecutorFactory(int parallelThreads, ExecutorFactory executorFactory) {
         this.parallelThreads = parallelThreads;
-        this.documentationRegistry = documentationRegistry;
+        this.executorFactory = executorFactory;
     }
 
     public TaskPlanExecutor create() {
-        ExecutionOptions options = new ExecutionOptions(parallelThreads);
-        if (options.executeProjectsInParallel()) {
-            String parallelWarningMessage = String.format(
-                    "Parallel project execution is an \"incubating\" feature (%s). Many builds will not run correctly with this option.",
-                    documentationRegistry.getFeatureLifecycle()
-            );
-            LOGGER.warn(parallelWarningMessage);
-            return new ParallelTaskPlanExecutor(taskArtifactStateCacheAccess, options.numberOfParallelThreads());
+        if (executeProjectsInParallel()) {
+            return new ParallelTaskPlanExecutor(numberOfParallelThreads(), executorFactory);
         }
         return new DefaultTaskPlanExecutor();
+    }
 
+    private boolean executeProjectsInParallel() {
+        return parallelThreads != 0;
+    }
+
+    private int numberOfParallelThreads() {
+        if (parallelThreads == -1) {
+            return Runtime.getRuntime().availableProcessors();
+        }
+        return parallelThreads;
     }
 }

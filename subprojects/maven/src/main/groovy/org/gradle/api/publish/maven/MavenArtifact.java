@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 the original author or authors.
+ * Copyright 2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,20 @@
  */
 package org.gradle.api.publish.maven;
 
+import org.gradle.api.Buildable;
+import org.gradle.api.Incubating;
+import org.gradle.api.Nullable;
+
 import java.io.File;
 
 /**
  * An artifact published as part of a {@link MavenPublication}.
  */
-public interface MavenArtifact {
+@Incubating
+public interface MavenArtifact extends Buildable {
     /**
-     * The extension used to publish the artifact file.
+     * The extension used to publish the artifact file, never <code>null</code>.
+     * For an artifact without an extension, this value will be an empty String.
      */
     String getExtension();
 
@@ -34,17 +40,26 @@ public interface MavenArtifact {
 
     /**
      * The classifier used to publish the artifact file.
+     * A <code>null</code> value (the default) indicates that this artifact will be published without a classifier.
      */
+    @Nullable
     String getClassifier();
 
     /**
      * Sets the classifier used to publish the artifact file.
      * @param classifier The classifier.
      */
-    void setClassifier(String classifier);
+    void setClassifier(@Nullable String classifier);
 
     /**
      * The actual file contents to publish.
      */
     File getFile();
+
+    /**
+     * Registers some tasks which build this artifact.
+     *
+     * @param tasks The tasks. These are evaluated as per {@link org.gradle.api.Task#dependsOn(Object...)}.
+     */
+    void builtBy(Object... tasks);
 }

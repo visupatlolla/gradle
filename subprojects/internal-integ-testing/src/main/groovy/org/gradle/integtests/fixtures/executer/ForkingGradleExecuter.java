@@ -16,17 +16,19 @@
 
 package org.gradle.integtests.fixtures.executer;
 
+import org.gradle.api.Action;
 import org.gradle.internal.Factory;
-import org.gradle.internal.nativeplatform.jna.WindowsHandlesManipulator;
 import org.gradle.internal.os.OperatingSystem;
-import org.gradle.launcher.daemon.registry.DaemonRegistry;
-import org.gradle.launcher.daemon.registry.DaemonRegistryServices;
 import org.gradle.process.internal.ExecHandleBuilder;
+import org.gradle.process.internal.JvmOptions;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.test.fixtures.file.TestFile;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.fail;
 
@@ -36,12 +38,21 @@ class ForkingGradleExecuter extends AbstractGradleExecuter {
         super(distribution, testDirectoryProvider);
     }
 
-    public DaemonRegistry getDaemonRegistry() {
-        return new DaemonRegistryServices(getDaemonBaseDir()).get(DaemonRegistry.class);
-    }
-
     public void assertCanExecute() throws AssertionError {
-        // Can run any build
+        if (!getDistribution().isSupportsSpacesInGradleAndJavaOpts()) {
+            Map<String, String> mergedEnvironmentVars = getMergedEnvironmentVars();
+            for (String envVarName : Arrays.asList("JAVA_OPTS", "GRADLE_OPTS")) {
+                String envVarValue = mergedEnvironmentVars.get(envVarName);
+                if (envVarValue == null) {
+                    continue;
+                }
+                for (String arg : JvmOptions.fromString(envVarValue)) {
+                    if (arg.contains(" ")) {
+                        throw new AssertionError(String.format("Env var %s contains arg with space (%s) which is not supported", envVarName, arg));
+                    }
+                }
+            }
+        }
     }
 
     @Override
@@ -68,13 +79,13 @@ class ForkingGradleExecuter extends AbstractGradleExecuter {
             }
         };
 
-        // Override some of the user's environment
+        // Clear the user's environment
         builder.environment("GRADLE_HOME", "");
-        builder.environment("JAVA_HOME", getJavaHome());
-        builder.environment("GRADLE_OPTS", getGradleOptsString());
+        builder.environment("JAVA_HOME", "");
+        builder.environment("GRADLE_OPTS", "");
         builder.environment("JAVA_OPTS", "");
 
-        builder.environment(getAllEnvironmentVars());
+        builder.environment(getMergedEnvironmentVars());
         builder.workingDir(getWorkingDir());
         builder.setStandardInput(getStdin());
 
@@ -90,15 +101,15 @@ class ForkingGradleExecuter extends AbstractGradleExecuter {
 
     @Override
     public GradleHandle doStart() {
-        return createGradleHandle(getDefaultCharacterEncoding(), new Factory<ExecHandleBuilder>() {
+        return createGradleHandle(getResultAssertion(), getDefaultCharacterEncoding(), new Factory<ExecHandleBuilder>() {
             public ExecHandleBuilder create() {
                 return createExecHandleBuilder();
             }
         }).start();
     }
 
-    protected ForkingGradleHandle createGradleHandle(String encoding, Factory<ExecHandleBuilder> execHandleFactory) {
-        return new ForkingGradleHandle(encoding, execHandleFactory);
+    protected ForkingGradleHandle createGradleHandle(Action<ExecutionResult> resultAssertion, String encoding, Factory<ExecHandleBuilder> execHandleFactory) {
+        return new ForkingGradleHandle(resultAssertion, encoding, execHandleFactory);
     }
 
     protected ExecutionResult doRun() {
@@ -110,22 +121,13 @@ class ForkingGradleExecuter extends AbstractGradleExecuter {
     }
 
     @Override
-    public List<String> getGradleOpts() {
+    protected List<String> getGradleOpts() {
         List<String> gradleOpts = new ArrayList<java.lang.String>(super.getGradleOpts());
         for (Map.Entry<String, String> entry : getImplicitJvmSystemProperties().entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue();
-
-            if (value.contains(" ") && !getDistribution().isSupportsSpacesInGradleAndJavaOpts()) {
-                getLogger().warn("Removing '{}' from GRADLE_OPTS (value: {}) as it contains spaces, and this Gradle version ({}) cannot handle spaces in GRADLE_OPTS",
-                        key, value, getDistribution().getVersion().getVersion()
-                );
-                continue;
-            }
-
             gradleOpts.add(String.format("-D%s=%s", key, value));
         }
-
         gradleOpts.add("-ea");
 
         //uncomment for debugging
@@ -133,32 +135,6 @@ class ForkingGradleExecuter extends AbstractGradleExecuter {
 //        gradleOpts.add("-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005");
 
         return gradleOpts;
-    }
-
-    @Override
-    protected Map<String, String> getImplicitJvmSystemProperties() {
-        Map<String, String> implicitJvmSystemProperties = new LinkedHashMap<String, String>(super.getImplicitJvmSystemProperties());
-        implicitJvmSystemProperties.put("file.encoding", getDefaultCharacterEncoding());
-        return implicitJvmSystemProperties;
-    }
-
-    private String getGradleOptsString() {
-        StringBuilder result = new StringBuilder();
-        for (String gradleOpt : getGradleOpts()) {
-            if (result.length() > 0) {
-                result.append(" ");
-            }
-            if (gradleOpt.contains(" ")) {
-                assert !gradleOpt.contains("\"");
-                result.append('"');
-                result.append(gradleOpt);
-                result.append('"');
-            } else {
-                result.append(gradleOpt);
-            }
-        }
-
-        return result.toString();
     }
 
     private interface ExecHandlerConfigurer {
@@ -189,11 +165,10 @@ class ForkingGradleExecuter extends AbstractGradleExecuter {
             if (path == null) {
                 path = builder.getEnvironment().get("Path");
             }
-            builder.environment("Path", String.format("%s\\bin;%s", gradleHome, path));
+            path = String.format("%s\\bin;%s", gradleHome, path);
+            builder.environment("PATH", path);
+            builder.environment("Path", path);
             builder.environment("GRADLE_EXIT_CONSOLE", "true");
-
-            getLogger().info("Initializing windows process so that child process will be fully detached...");
-            new WindowsHandlesManipulator().uninheritStandardStreams();
         }
     }
 

@@ -17,54 +17,59 @@
 package org.gradle.initialization;
 
 import org.gradle.StartParameter;
+import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.SettingsInternal;
+import org.gradle.api.internal.initialization.ClassLoaderScope;
+import org.gradle.api.internal.initialization.ScriptHandlerFactory;
 import org.gradle.configuration.ScriptPlugin;
 import org.gradle.configuration.ScriptPluginFactory;
+import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.util.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URLClassLoader;
 import java.util.Collections;
 import java.util.Map;
 
 
-/**
- * @author Hans Dockter
- */
 public class ScriptEvaluatingSettingsProcessor implements SettingsProcessor {
     private static Logger logger = LoggerFactory.getLogger(ScriptEvaluatingSettingsProcessor.class);
 
+    private final ScriptHandlerFactory scriptHandlerFactory;
     private final SettingsFactory settingsFactory;
     private final IGradlePropertiesLoader propertiesLoader;
     private final ScriptPluginFactory configurerFactory;
 
     public ScriptEvaluatingSettingsProcessor(ScriptPluginFactory configurerFactory,
+                                             ScriptHandlerFactory scriptHandlerFactory,
                                              SettingsFactory settingsFactory,
                                              IGradlePropertiesLoader propertiesLoader) {
         this.configurerFactory = configurerFactory;
+        this.scriptHandlerFactory = scriptHandlerFactory;
         this.settingsFactory = settingsFactory;
         this.propertiesLoader = propertiesLoader;
     }
 
     public SettingsInternal process(GradleInternal gradle,
                                     SettingsLocation settingsLocation,
-                                    URLClassLoader buildSourceClassLoader,
+                                    ClassLoaderScope baseClassLoaderScope,
                                     StartParameter startParameter) {
         Clock settingsProcessingClock = new Clock();
         Map<String, String> properties = propertiesLoader.mergeProperties(Collections.<String, String>emptyMap());
         SettingsInternal settings = settingsFactory.createSettings(gradle, settingsLocation.getSettingsDir(),
-                settingsLocation.getSettingsScriptSource(), properties, startParameter, buildSourceClassLoader);
-        applySettingsScript(settingsLocation, buildSourceClassLoader, settings);
+                settingsLocation.getSettingsScriptSource(), properties, startParameter, baseClassLoaderScope);
+        applySettingsScript(settingsLocation, settings);
         logger.debug("Timing: Processing settings took: {}", settingsProcessingClock.getTime());
         return settings;
     }
 
-    private void applySettingsScript(SettingsLocation settingsLocation, ClassLoader buildSourceClassLoader, SettingsInternal settings) {
-        ScriptPlugin configurer = configurerFactory.create(settingsLocation.getSettingsScriptSource());
-        configurer.setClassLoader(buildSourceClassLoader);
-        configurer.setScriptBaseClass(SettingsScript.class);
+    private void applySettingsScript(SettingsLocation settingsLocation, final SettingsInternal settings) {
+        ScriptSource settingsScriptSource = settingsLocation.getSettingsScriptSource();
+        ClassLoaderScope settingsClassLoaderScope = settings.getClassLoaderScope();
+        ScriptHandler scriptHandler = scriptHandlerFactory.create(settingsScriptSource, settingsClassLoaderScope);
+        ScriptPlugin configurer = configurerFactory.create(settingsScriptSource, scriptHandler, settingsClassLoaderScope, settings.getRootClassLoaderScope(), "buildscript", SettingsScript.class, false);
         configurer.apply(settings);
     }
+
 }

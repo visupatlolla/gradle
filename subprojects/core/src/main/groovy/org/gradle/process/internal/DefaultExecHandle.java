@@ -17,11 +17,12 @@
 package org.gradle.process.internal;
 
 import com.google.common.base.Joiner;
-
+import net.rubygrapefruit.platform.ProcessLauncher;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.StoppableExecutor;
+import org.gradle.internal.nativeintegration.services.NativeServices;
 import org.gradle.listener.ListenerBroadcast;
 import org.gradle.process.ExecResult;
 import org.gradle.process.internal.shutdown.ShutdownHookActionRegister;
@@ -52,8 +53,6 @@ import java.util.concurrent.locks.ReentrantLock;
  * <li>{@link #start()} allowed when state is INIT</li>
  * <li>{@link #abort()} allowed when state is STARTED or DETACHED</li>
  * </ul>
- *
- * @author Tom Eyckmans
  */
 public class DefaultExecHandle implements ExecHandle, ProcessSettings {
     private static final Logger LOGGER = Logging.getLogger(DefaultExecHandle.class);
@@ -78,6 +77,7 @@ public class DefaultExecHandle implements ExecHandle, ProcessSettings {
     private final Map<String, String> environment;
     private final StreamsHandler streamsHandler;
     private final boolean redirectErrorStream;
+    private final ProcessLauncher processLauncher;
     private int timeoutMillis;
     private boolean daemon;
 
@@ -122,6 +122,7 @@ public class DefaultExecHandle implements ExecHandle, ProcessSettings {
         this.condition = lock.newCondition();
         this.state = ExecHandleState.INIT;
         executor = new DefaultExecutorFactory().create(String.format("Run %s", displayName));
+        processLauncher = NativeServices.getInstance().get(ProcessLauncher.class);
         shutdownHookAction = new ExecHandleShutdownHookAction(this);
         broadcast = new ListenerBroadcast<ExecHandleListener>(ExecHandleListener.class);
         broadcast.addAll(listeners);
@@ -200,13 +201,13 @@ public class DefaultExecHandle implements ExecHandle, ProcessSettings {
                 }
             }
             setState(newState);
-            execResult = new ExecResultImpl(exitValue, wrappedException);
+            execResult = new ExecResultImpl(exitValue, wrappedException, displayName);
             result = execResult;
         } finally {
             lock.unlock();
         }
 
-        LOGGER.info("Process '{}' finished with exit value {} (state: {})", displayName, exitValue, newState);
+        LOGGER.debug("Process '{}' finished with exit value {} (state: {})", displayName, exitValue, newState);
 
         if (currentState != ExecHandleState.DETACHED && newState != ExecHandleState.DETACHED) {
             broadcast.getSource().executionFinished(this, result);
@@ -222,13 +223,12 @@ public class DefaultExecHandle implements ExecHandle, ProcessSettings {
         }
         lock.lock();
         try {
-            ProcessParentingInitializer.intitialize();
             if (!stateIn(ExecHandleState.INIT)) {
                 throw new IllegalStateException(String.format("Cannot start process '%s' because it has already been started", displayName));
             }
             setState(ExecHandleState.STARTING);
 
-            execHandleRunner = new ExecHandleRunner(this, streamsHandler);
+            execHandleRunner = new ExecHandleRunner(this, streamsHandler, processLauncher);
             executor.execute(execHandleRunner);
 
             while(stateIn(ExecHandleState.STARTING)) {
@@ -345,13 +345,15 @@ public class DefaultExecHandle implements ExecHandle, ProcessSettings {
         return timeoutMillis;
     }
 
-    private class ExecResultImpl implements ExecResult {
+    private static class ExecResultImpl implements ExecResult {
         private final int exitValue;
         private final ExecException failure;
+        private final String displayName;
 
-        public ExecResultImpl(int exitValue, ExecException failure) {
+        public ExecResultImpl(int exitValue, ExecException failure, String displayName) {
             this.exitValue = exitValue;
             this.failure = failure;
+            this.displayName = displayName;
         }
 
         public int getExitValue() {

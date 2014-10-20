@@ -16,35 +16,30 @@
 
 package org.gradle.performance
 
-import org.gradle.performance.fixture.PerformanceTestRunner
-import spock.lang.Specification
 import spock.lang.Unroll
 
-import static org.gradle.performance.fixture.DataAmount.kbytes
-import static org.gradle.performance.fixture.Duration.millis
+import static org.gradle.performance.measure.Duration.millis
 
-/**
- * by Szczepan Faber, created at: 2/9/12
- */
-class CleanBuildPerformanceTest extends Specification {
-
+class CleanBuildPerformanceTest extends AbstractPerformanceTest {
     @Unroll("Project '#testProject' clean build")
     def "clean build"() {
-        expect:
-        def result = new PerformanceTestRunner(testProject: testProject,
-                tasksToRun: ['clean', 'build'],
-                runs: 5,
-                warmUpRuns: 1,
-                targetVersions: ['1.0', 'last'],
-                maxExecutionTimeRegression: [maxExecutionTimeRegression, maxExecutionTimeRegression],
-                maxMemoryRegression: [kbytes(3000), kbytes(3000)]
-        ).run()
+        given:
+        runner.testId = "clean build $testProject"
+        runner.testProject = testProject
+        runner.tasksToRun = ['clean', 'build']
+        runner.maxExecutionTimeRegression = maxExecutionTimeRegression
+        runner.targetVersions = ['1.0', '1.4', '1.8', 'last']
+
+        when:
+        def result = runner.run()
+
+        then:
         result.assertCurrentVersionHasNotRegressed()
 
         where:
         testProject       | maxExecutionTimeRegression
-        "small"           | millis(500)
-        "multi"           | millis(1000)
+        "small"           | millis(1000)
+        "multi"           | millis(1300)
         "lotDependencies" | millis(1000)
     }
 }

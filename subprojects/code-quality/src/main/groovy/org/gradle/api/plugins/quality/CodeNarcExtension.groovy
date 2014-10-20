@@ -15,18 +15,59 @@
  */
 package org.gradle.api.plugins.quality
 
+import org.gradle.api.Incubating
 import org.gradle.api.InvalidUserDataException
+import org.gradle.api.Project
+import org.gradle.api.resources.TextResource
 
 class CodeNarcExtension extends CodeQualityExtension {
+    private final Project prj
+
+    CodeNarcExtension(Project project) {
+        prj = project
+    }
+
     /**
-     * The CodeNarc configuration file to use.
+     * The CodeNarc configuration to use. Replaces the {@code configFile} property.
+     *
+     * @since 2.2
      */
-    File configFile
+    @Incubating
+    TextResource config
+
+    /**
+     * The maximum number of priority 1 violations allowed before failing the build.
+     */
+    int maxPriority1Violations
+
+    /**
+     * The maximum number of priority 2 violations allowed before failing the build.
+     */
+    int maxPriority2Violations
+
+    /**
+     * The maximum number of priority 3 violations allowed before failing the build.
+     */
+    int maxPriority3Violations
 
     /**
      * The format type of the CodeNarc report. One of <tt>html</tt>, <tt>xml</tt>, <tt>text</tt>, <tt>console</tt>.
      */
     String reportFormat
+
+    /**
+     * The CodeNarc configuration file to use.
+     */
+    File getConfigFile() {
+        getConfig()?.asFile()
+    }
+
+    /**
+     * The CodeNarc configuration file to use.
+     */
+    void setConfigFile(File file) {
+        setConfig(prj.resources.text.fromFile(file))
+    }
 
     void setReportFormat(String reportFormat) {
         if (reportFormat in ["xml", "html", "console", "text"]) {

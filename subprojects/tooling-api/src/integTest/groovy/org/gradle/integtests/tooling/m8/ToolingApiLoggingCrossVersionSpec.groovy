@@ -16,26 +16,22 @@
 
 package org.gradle.integtests.tooling.m8
 
-import org.gradle.integtests.tooling.fixture.MinTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
-import org.gradle.tooling.internal.consumer.ConnectorServices
+import org.junit.Assume
 
-@MinToolingApiVersion('1.0-milestone-8')
-@MinTargetGradleVersion('1.0-milestone-8')
 class ToolingApiLoggingCrossVersionSpec extends ToolingApiSpecification {
 
     def setup() {
         //for embedded tests we don't mess with global logging. Run with forks only.
-        toolingApi.isEmbedded = false
-        new ConnectorServices().reset()
+        toolingApi.requireDaemons()
+        reset()
     }
 
     def cleanup() {
-        new ConnectorServices().reset()
+        reset()
     }
 
-    def "logs necessary information when verbose"() {
+    def "client receives same stdout and stderr when in verbose mode as if running from the command-line in debug mode"() {
         toolingApi.verboseLogging = true
 
         file("build.gradle") << """
@@ -50,18 +46,11 @@ project.logger.quiet("quiet logging yyy");
 project.logger.info ("info logging yyy");
 project.logger.debug("debug logging yyy");
 """
-        def output = new ByteArrayOutputStream()
-        def error = new ByteArrayOutputStream()
         when:
-        withConnection {
-            it.newBuild()
-                .setStandardOutput(output)
-                .setStandardError(error)
-                .run()
-        }
+        def op = withBuild()
 
         then:
-        def out = output.toString()
+        def out = op.standardOutput
         out.count("debug logging yyy") == 1
         out.count("info logging yyy") == 1
         out.count("quiet logging yyy") == 1
@@ -72,7 +61,7 @@ project.logger.debug("debug logging yyy");
 
         shouldNotContainProviderLogging(out)
 
-        def err = error.toString()
+        def err = op.standardError
         err.count("error logging") == 1
         err.toString().count("sys err") == 1
         err.toString().count("logging yyy") == 0
@@ -80,53 +69,57 @@ project.logger.debug("debug logging yyy");
         shouldNotContainProviderLogging(err)
     }
 
-    def "logs necessary information"() {
+    def "client receives same standard output and standard error as if running from the command-line"() {
+        Assume.assumeTrue targetDist.toolingApiNonAsciiOutputSupported
         toolingApi.verboseLogging = false
 
         file("build.gradle") << """
-System.err.println "sys err logging xxx"
+System.err.println "System.err \u03b1\u03b2"
 
-println "println logging yyy"
+println "System.out \u03b1\u03b2"
 
-project.logger.error("error logging xxx");
-project.logger.warn("warn logging yyy");
-project.logger.lifecycle("lifecycle logging yyy");
-project.logger.quiet("quiet logging yyy");
-project.logger.info ("info logging yyy");
-project.logger.debug("debug logging yyy");
+project.logger.error("error logging \u03b1\u03b2");
+project.logger.warn("warn logging");
+project.logger.lifecycle("lifecycle logging \u03b1\u03b2");
+project.logger.quiet("quiet logging");
+project.logger.info ("info logging");
+project.logger.debug("debug logging");
 """
-        def output = new ByteArrayOutputStream()
-        def error = new ByteArrayOutputStream()
         when:
-        withConnection {
-            it.newBuild()
-                    .setStandardOutput(output)
-                    .setStandardError(error)
-                    .run()
-        }
+        def commandLineResult = targetDist.executer(temporaryFolder).run();
+
+        and:
+        def op = withBuild()
 
         then:
-        def out = output.toString()
-        out.count("debug logging yyy") == 0
-        out.count("info logging yyy") == 0
-        out.count("quiet logging yyy") == 1
-        out.count("lifecycle logging yyy") == 1
-        out.count("warn logging yyy") == 1
-        out.count("println logging yyy") == 1
-        out.count("error logging xxx") == 0
+        def out = op.standardOutput
+        def err = op.standardError
+        normaliseOutput(filterToolingApiSpecific(out)) == normaliseOutput(commandLineResult.output)
+        err == commandLineResult.error
 
-        shouldNotContainProviderLogging(out)
+        and:
+        err.count("System.err \u03b1\u03b2") == 1
+        err.count("error logging \u03b1\u03b2") == 1
 
-        def err = error.toString()
-        err.count("error logging") == 1
-        err.count("sys err") == 1
-        err.count("logging yyy") == 0
+        and:
+        out.count("lifecycle logging \u03b1\u03b2") == 1
+        out.count("warn logging") == 1
+        out.count("quiet logging") == 1
+        out.count("info") == 0
+        out.count("debug") == 0
+    }
 
-        shouldNotContainProviderLogging(err)
+    String normaliseOutput(String output) {
+        return output.replaceFirst("Total time: .+ secs", "Total time: 0 secs")
+    }
+
+    String filterToolingApiSpecific(String output) {
+        return output.replaceFirst("Connection from tooling API older than version 1.2 has been deprecated and is scheduled to be removed in Gradle 3.0" + System.getProperty("line.separator"), "")
     }
 
     void shouldNotContainProviderLogging(String output) {
         assert !output.contains("Provider implementation created.")
         assert !output.contains("Tooling API uses target gradle version:")
+        assert !output.contains("Tooling API is using target Gradle version:")
     }
 }

@@ -19,8 +19,8 @@ package org.gradle.api.plugins.buildcomparison.gradle.internal;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.Transformer;
-import org.gradle.api.internal.IoActions;
-import org.gradle.api.internal.filestore.FileStore;
+import org.gradle.internal.IoActions;
+import org.gradle.internal.resource.local.FileStore;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.plugins.buildcomparison.compare.internal.*;
@@ -239,7 +239,7 @@ public class GradleBuildComparison {
         fileStore.moveFilestore(new File(reportDir, FILES_DIR_NAME));
 
         final Charset encoding = Charset.defaultCharset();
-        IoActions.writeFile(new File(reportDir, HTML_REPORT_FILE_NAME), encoding.name(), new Action<BufferedWriter>() {
+        IoActions.writeTextFile(new File(reportDir, HTML_REPORT_FILE_NAME), encoding.name(), new Action<BufferedWriter>() {
             public void execute(BufferedWriter writer) {
                 createResultRenderer(encoding, reportDir, hostAttributes).render(result, writer);
             }

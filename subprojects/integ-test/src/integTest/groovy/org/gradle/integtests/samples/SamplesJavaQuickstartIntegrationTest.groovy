@@ -28,12 +28,9 @@ import java.util.jar.Manifest
 import static org.hamcrest.Matchers.equalTo
 import static org.junit.Assert.assertThat
 
-/**
- * @author Hans Dockter
- */
 class SamplesJavaQuickstartIntegrationTest extends  AbstractIntegrationTest {
 
-    @Rule public final Sample sample = new Sample('java/quickstart')
+    @Rule public final Sample sample = new Sample(testDirectoryProvider, 'java/quickstart')
 
     @Test
     public void canBuildAndUploadJar() {
@@ -43,7 +40,7 @@ class SamplesJavaQuickstartIntegrationTest extends  AbstractIntegrationTest {
         executer.inDirectory(javaprojectDir).withTasks('clean', 'build', 'uploadArchives').run()
 
         // Check tests have run
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(javaprojectDir)
+        def result = new DefaultTestExecutionResult(javaprojectDir)
         result.assertTestClassesExecuted('org.gradle.PersonTest')
 
         // Check jar exists

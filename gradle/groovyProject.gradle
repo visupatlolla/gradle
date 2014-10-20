@@ -8,8 +8,7 @@ sourceCompatibility = 1.5
 targetCompatibility = 1.5
 
 ext {
-    hasGroovySource = sourceSets.main.groovy.srcDirs.any { it.exists() }
-    compileTasks = tasks.matching { it instanceof Compile || it instanceof GroovyCompile }
+    compileTasks = tasks.matching { it instanceof JavaCompile || it instanceof GroovyCompile }
     testTasks = tasks.withType(Test)
     generatedResourcesDir = file("$buildDir/generated-resources/main")
     generatedTestResourcesDir = file("$buildDir/generated-resources/test")
@@ -18,11 +17,6 @@ ext {
 
 dependencies {
     testCompile libraries.junit, libraries.jmock, libraries.spock
-}
-
-if (!hasGroovySource) {
-    // Remove Groovy configuration from compile classpath
-    configurations.compile.extendsFrom = []
 }
 
 // Extracted as it's also used by buildSrc
@@ -34,8 +28,23 @@ sourceSets {
     main.output.dir generatedResourcesDir, builtBy: classpathManifest
 }
 
+if (!javaVersion.java6Compatible) {
+    sourceSets.all {
+        java.exclude '**/jdk6/**'
+        groovy.exclude '**/jdk6/**'
+    }
+}
+if (!javaVersion.java7) {
+    sourceSets.all {
+        java.exclude '**/jdk7/**'
+        groovy.exclude '**/jdk7/**'
+    }
+}
+
 testTasks.all { task ->
-    maxParallelForks = rootProject.maxParallelForks
+    if (isCiServer) {
+        maxParallelForks = rootProject.maxParallelForks
+    }
     if (isCiServer) {
         doFirst {
             println "maxParallelForks for '$task.path' is $task.maxParallelForks"
@@ -98,3 +107,17 @@ class ClasspathManifest extends DefaultTask {
     }
 }
 ext.ClasspathManifest = ClasspathManifest
+
+// This is here mostly for the TravisCI build.
+// It advertises as an ANSI capable terminal but isn't, so we run with -q there to make
+// the output legible, but we still want test result info
+if (buildTypes.isActive("pullRequestValidation")) {
+    tasks.withType(Test) {
+        testLogging {
+            quiet {
+                events "failed"
+                exceptionFormat "full"
+            }
+        }
+    }
+}

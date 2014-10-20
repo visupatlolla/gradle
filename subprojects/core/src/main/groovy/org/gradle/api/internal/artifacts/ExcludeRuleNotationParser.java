@@ -18,30 +18,24 @@ package org.gradle.api.internal.artifacts;
 
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ExcludeRule;
-import org.gradle.api.internal.notations.parsers.MapKey;
-import org.gradle.api.internal.notations.parsers.MapNotationParser;
 import org.gradle.api.tasks.Optional;
+import org.gradle.internal.typeconversion.MapKey;
+import org.gradle.internal.typeconversion.MapNotationParser;
 
 import java.util.Collection;
 
-/**
- * @author Rene Groeschke
- */
-public class ExcludeRuleNotationParser<T extends ExcludeRule> extends MapNotationParser<T> {
+public class ExcludeRuleNotationParser extends MapNotationParser<ExcludeRule> {
 
     @Override
     public void describe(Collection<String> candidateFormats) {
-        candidateFormats.add("Maps, e.g. [group: 'org.gradle', module:'gradle-core'].");
+        candidateFormats.add("Maps with 'group' and/or 'module', e.g. [group: 'com.google.collections', module: 'google-collections'].");
     }
 
-    protected T parseMap(@MapKey(ExcludeRule.GROUP_KEY) @Optional String group,
+    protected ExcludeRule parseMap(@MapKey(ExcludeRule.GROUP_KEY) @Optional String group,
                          @MapKey(ExcludeRule.MODULE_KEY) @Optional String module) {
         if (group == null && module == null) {
-            throw new InvalidUserDataException("Either a group or module must be specified. For example: [group:'org.gradle']");
+            throw new InvalidUserDataException("Dependency exclude rule requires 'group' and/or 'module' specified. For example: [group: 'com.google.collections']");
         }
-        DefaultExcludeRule excluderule = new DefaultExcludeRule();
-        excluderule.setGroup(group);
-        excluderule.setModule(module);
-        return (T) excluderule;
+        return new DefaultExcludeRule(group, module);
     }
 }

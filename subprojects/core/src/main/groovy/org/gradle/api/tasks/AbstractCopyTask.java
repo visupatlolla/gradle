@@ -19,13 +19,14 @@ import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.file.*;
 import org.gradle.api.internal.ConventionTask;
-import org.gradle.api.internal.file.copy.CopyActionImpl;
-import org.gradle.api.internal.file.copy.CopySpecSource;
-import org.gradle.api.internal.file.copy.ReadableCopySpec;
+import org.gradle.api.internal.file.FileLookup;
+import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.file.copy.*;
 import org.gradle.api.specs.Spec;
-import org.gradle.internal.Factory;
-import org.gradle.util.DeprecationLogger;
+import org.gradle.internal.nativeplatform.filesystem.FileSystem;
+import org.gradle.internal.reflect.Instantiator;
 
+import javax.inject.Inject;
 import java.io.FilterReader;
 import java.util.Map;
 import java.util.Set;
@@ -36,30 +37,51 @@ import java.util.regex.Pattern;
  */
 public abstract class AbstractCopyTask extends ConventionTask implements CopySpec, CopySpecSource {
 
+    private final CopySpecInternal rootSpec;
+    private final CopySpecInternal mainSpec;
+
+    protected AbstractCopyTask() {
+        this.rootSpec = createRootSpec();
+        this.mainSpec = rootSpec.addChild();
+    }
+
+    protected CopySpecInternal createRootSpec() {
+        Instantiator instantiator = getInstantiator();
+        FileResolver fileResolver = getFileResolver();
+        return instantiator.newInstance(DefaultCopySpec.class, fileResolver, instantiator);
+    }
+
+    protected abstract CopyAction createCopyAction();
+
+    @Inject
+    protected Instantiator getInstantiator() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    protected FileSystem getFileSystem() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    protected FileResolver getFileResolver() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Inject
+    protected FileLookup getFileLookup() {
+        throw new UnsupportedOperationException();
+    }
+
     @TaskAction
     protected void copy() {
-        configureRootSpec();
-        getCopyAction().execute();
-        setDidWork(getCopyAction().getDidWork());
-    }
+        Instantiator instantiator = getInstantiator();
+        FileSystem fileSystem = getFileSystem();
 
-    protected void configureRootSpec() {
-        if (!getCopyAction().hasSource()) {
-            Object srcDirs = getDefaultSource();
-            if (srcDirs != null) {
-                from(srcDirs);
-            }
-        }
-    }
-
-    /**
-     * Returns the default source for this task.
-     * @deprecated Use getSource() instead.
-     */
-    @Deprecated
-    public FileCollection getDefaultSource() {
-        DeprecationLogger.nagUserOfReplacedMethod("AbstractCopyTask.getDefaultSource()", "getSource()");
-        return null;
+        CopyActionExecuter copyActionExecuter = new CopyActionExecuter(instantiator, fileSystem);
+        CopyAction copyAction = createCopyAction();
+        WorkResult didWork = copyActionExecuter.execute(rootSpec, copyAction);
+        setDidWork(didWork.getDidWork());
     }
 
     /**
@@ -68,29 +90,19 @@ public abstract class AbstractCopyTask extends ConventionTask implements CopySpe
      */
     @InputFiles @SkipWhenEmpty @Optional
     public FileCollection getSource() {
-        if(getCopyAction().hasSource()){
-            return getCopyAction().getAllSource();
-        }else{
-            return DeprecationLogger.whileDisabled(new Factory<FileCollection>() {
-                public FileCollection create() {
-                    return getDefaultSource();
-                }
-            });
-        }
+        return rootSpec.buildRootResolver().getAllSource();
     }
-    
-    protected abstract CopyActionImpl getCopyAction();
 
-    public ReadableCopySpec getRootSpec() {
-        return getCopyAction().getRootSpec();
+    public CopySpecInternal getRootSpec() {
+        return rootSpec;
     }
 
     // -----------------------------------------------
     // ---- Delegate CopySpec methods to rootSpec ----
     // -----------------------------------------------
 
-    protected CopySpec getMainSpec() {
-        return getCopyAction();
+    protected CopySpecInternal getMainSpec() {
+        return mainSpec;
     }
 
     /**
@@ -124,8 +136,38 @@ public abstract class AbstractCopyTask extends ConventionTask implements CopySpe
     /**
      * {@inheritDoc}
      */
+    public void setDuplicatesStrategy(DuplicatesStrategy strategy) {
+        getRootSpec().setDuplicatesStrategy(strategy);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public DuplicatesStrategy getDuplicatesStrategy() {
+        return getRootSpec().getDuplicatesStrategy();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public AbstractCopyTask from(Object... sourcePaths) {
         getMainSpec().from(sourcePaths);
+        return this;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AbstractCopyTask filesMatching(String pattern, Action<? super FileCopyDetails> action) {
+        getMainSpec().filesMatching(pattern, action);
+        return this;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AbstractCopyTask filesNotMatching(String pattern, Action<? super FileCopyDetails> action) {
+        getMainSpec().filesNotMatching(pattern, action);
         return this;
     }
 
@@ -149,7 +191,7 @@ public abstract class AbstractCopyTask extends ConventionTask implements CopySpe
      * {@inheritDoc}
      */
     public AbstractCopyTask into(Object destDir) {
-        getMainSpec().into(destDir);
+        getRootSpec().into(destDir);
         return this;
     }
 
@@ -356,4 +398,5 @@ public abstract class AbstractCopyTask extends ConventionTask implements CopySpe
         getMainSpec().eachFile(closure);
         return this;
     }
+
 }

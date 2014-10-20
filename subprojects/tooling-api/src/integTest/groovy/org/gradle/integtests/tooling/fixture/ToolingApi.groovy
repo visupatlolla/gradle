@@ -15,14 +15,16 @@
  */
 package org.gradle.integtests.tooling.fixture
 
-import org.gradle.integtests.fixtures.IntegrationTestHint
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
+import org.gradle.launcher.daemon.testing.DaemonLogsAnalyzer
+import org.gradle.launcher.daemon.testing.DaemonsFixture
 import org.gradle.test.fixtures.file.TestDirectoryProvider
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
-import org.gradle.tooling.UnsupportedVersionException
+import org.gradle.tooling.internal.consumer.DefaultGradleConnector
+import org.gradle.util.GradleVersion
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -33,21 +35,50 @@ class ToolingApi {
 
     private GradleDistribution dist
     private TestDirectoryProvider testWorkDirProvider
-    private File userHomeDir
+    private File gradleUserHomeDir
+    private File daemonBaseDir
+    private boolean baseDirSupported
+    private boolean inProcess;
+    private boolean requiresDaemon
 
     private final List<Closure> connectorConfigurers = []
-    boolean isEmbedded
     boolean verboseLogging = LOGGER.debugEnabled
 
     ToolingApi(GradleDistribution dist, TestDirectoryProvider testWorkDirProvider) {
-        this(dist, new IntegrationTestBuildContext().gradleUserHomeDir, testWorkDirProvider, GradleContextualExecuter.embedded)
+        this.dist = dist
+        def context = new IntegrationTestBuildContext()
+        this.baseDirSupported = dist.toolingApiDaemonBaseDirSupported && DefaultGradleConnector.metaClass.respondsTo(null, "daemonBaseDir")
+        this.gradleUserHomeDir = context.gradleUserHomeDir
+        this.daemonBaseDir = context.daemonBaseDir
+        this.requiresDaemon = !GradleContextualExecuter.embedded
+        this.inProcess = GradleContextualExecuter.embedded
+        this.testWorkDirProvider = testWorkDirProvider
     }
 
-    ToolingApi(GradleDistribution dist, File userHomeDir, TestDirectoryProvider testWorkDirProvider, boolean isEmbedded) {
-        this.dist = dist
-        this.userHomeDir = userHomeDir
-        this.testWorkDirProvider = testWorkDirProvider
-        this.isEmbedded = isEmbedded
+    /**
+     * Specifies that the test use real daemon processes (not embedded) and a test-specific daemon registry.
+     */
+    void requireIsolatedDaemons() {
+        if (baseDirSupported) {
+            daemonBaseDir = new File(testWorkDirProvider.testDirectory, "daemons")
+        } else {
+            gradleUserHomeDir = new File(testWorkDirProvider.testDirectory, "user-home-dir")
+        }
+        requiresDaemon = true
+    }
+
+    /**
+     * Specifies that the test use real daemon processes (not embedded).
+     */
+    void requireDaemons() {
+        requiresDaemon = true
+    }
+
+    DaemonsFixture getDaemons() {
+        if (baseDirSupported) {
+            return new DaemonLogsAnalyzer(daemonBaseDir)
+        }
+        return new DaemonLogsAnalyzer(new File(gradleUserHomeDir, "daemon"))
     }
 
     void withConnector(Closure cl) {
@@ -60,46 +91,58 @@ class ToolingApi {
     }
 
     public <T> T withConnection(GradleConnector connector, Closure<T> cl) {
-        try {
-            return withConnectionRaw(connector, cl)
-        } catch (UnsupportedVersionException e) {
-            throw new IntegrationTestHint(e);
-        }
+        return withConnectionRaw(connector, cl)
     }
 
-    public void maybeFailWithConnection(Closure cl) {
-        GradleConnector connector = connector()
-        try {
-            withConnectionRaw(connector, cl)
-        } catch (Throwable e) {
-            throw e
+    private validate(Throwable throwable) {
+        if (dist.version != GradleVersion.current()) {
+            return
         }
+
+        // Verify that the exception carries the calling thread's stack information
+        def currentThreadStack = Thread.currentThread().stackTrace as List
+        while (!currentThreadStack.empty && (currentThreadStack[0].className != ToolingApi.name || currentThreadStack[0].methodName != 'withConnectionRaw')) {
+            currentThreadStack.remove(0)
+        }
+        assert currentThreadStack.size() > 1
+        currentThreadStack.remove(0)
+        String currentThreadStackStr = currentThreadStack.join("\n")
+
+        def throwableStack = throwable.stackTrace.join("\n")
+
+        assert throwableStack.endsWith(currentThreadStackStr)
     }
 
     private <T> T withConnectionRaw(GradleConnector connector, Closure<T> cl) {
         ProjectConnection connection = connector.connect()
         try {
             return cl.call(connection)
+        } catch (Throwable t) {
+            validate(t)
+            throw t
         } finally {
             connection.close()
         }
     }
 
     GradleConnector connector() {
-        GradleConnector connector = GradleConnector.newConnector()
-        connector.useGradleUserHomeDir(userHomeDir)
+        DefaultGradleConnector connector = GradleConnector.newConnector()
+        connector.useGradleUserHomeDir(gradleUserHomeDir)
+        if (baseDirSupported) {
+            connector.daemonBaseDir(daemonBaseDir)
+        }
         connector.forProjectDirectory(testWorkDirProvider.testDirectory)
         connector.searchUpwards(false)
-        connector.daemonMaxIdleTime(60, TimeUnit.SECONDS)
+        connector.daemonMaxIdleTime(120, TimeUnit.SECONDS)
         if (connector.metaClass.hasProperty(connector, 'verboseLogging')) {
             connector.verboseLogging = verboseLogging
         }
-        if (isEmbedded) {
-            LOGGER.info("Using embedded tooling API provider");
+        if (!requiresDaemon && GradleVersion.current() == dist.version) {
+            println("Using embedded tooling API provider from ${GradleVersion.current().version} to classpath (${dist.version.version})")
             connector.useClasspathDistribution()
             connector.embedded(true)
         } else {
-            LOGGER.info("Using daemon tooling API provider");
+            println("Using daemon tooling API provider from ${GradleVersion.current().version} to ${dist.version.version}")
             connector.useInstallation(dist.gradleHomeDir.absoluteFile)
             connector.embedded(false)
         }

@@ -15,14 +15,10 @@
  */
 package org.gradle.integtests.tooling.m5
 
-import org.gradle.integtests.tooling.fixture.MinTargetGradleVersion
-import org.gradle.integtests.tooling.fixture.MinToolingApiVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.eclipse.EclipseProject
 
-@MinToolingApiVersion('1.0-milestone-5')
-@MinTargetGradleVersion('1.0-milestone-5')
 class ToolingApiHonorsProjectCustomizationsCrossVersionSpec extends ToolingApiSpecification {
 
     def "should honour reconfigured project names"() {
@@ -47,9 +43,10 @@ project(':impl') {
         EclipseProject eclipseProject = withConnection { connection -> connection.getModel(EclipseProject.class) }
 
         then:
-        EclipseProject api = eclipseProject.children[1]
+        def children = eclipseProject.children.sort { it.name }
+        EclipseProject api = children[0]
         assert api.name == 'gradle-api'
-        EclipseProject impl = eclipseProject.children[0]
+        EclipseProject impl = children[1]
         assert impl.name == 'gradle-impl'
     }
 

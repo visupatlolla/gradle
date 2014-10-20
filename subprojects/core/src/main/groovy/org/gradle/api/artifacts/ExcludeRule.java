@@ -15,13 +15,9 @@
  */
 package org.gradle.api.artifacts;
 
-import java.util.Map;
-
 /**
  * An {@code ExcludeRule} is used to describe transitive dependencies that should be excluded when resolving
  * dependencies.
- *
- * @author Hans Dockter
  */
 public interface ExcludeRule {
     String GROUP_KEY = "group";
@@ -29,24 +25,11 @@ public interface ExcludeRule {
 
     /**
      * The exact name of the organization or group that should be excluded.
-     * */
+      */
     String getGroup();
 
     /**
      * The exact name of the module that should be excluded.
      */
     String getModule();
-    
-    /**
-     * Returns the arguments of an exclude rule. The possible keys for the map are:
-     *
-     * <ul>
-     * <li><code>group</code> - The exact name of the organization or group that should be excluded.
-     * <li><code>module</code> - The exact name of the module that should be excluded.
-     * </ul>
-     * 
-     * @deprecated Use {@link #getGroup()} or {@link #getModule()} instead.
-     */
-    @Deprecated
-    Map<String, String> getExcludeArgs();
 }

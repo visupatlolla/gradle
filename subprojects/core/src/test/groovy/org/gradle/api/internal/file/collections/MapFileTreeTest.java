@@ -15,13 +15,16 @@
  */
 package org.gradle.api.internal.file.collections;
 
-import groovy.lang.Closure;
+import org.gradle.api.Action;
+import org.gradle.api.UncheckedIOException;
+import org.gradle.api.internal.file.TestFiles;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
-import org.gradle.util.HelperUtil;
 import org.junit.Rule;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.List;
 
 import static org.gradle.api.file.FileVisitorUtil.assertCanStopVisiting;
@@ -34,7 +37,7 @@ public class MapFileTreeTest {
     @Rule
     public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
     private TestFile rootDir = tmpDir.getTestDirectory();
-    private final MapFileTree tree = new MapFileTree(rootDir);
+    private final MapFileTree tree = new MapFileTree(rootDir, TestFiles.fileSystem());
 
     @Test
     public void isEmptyByDefault() {
@@ -45,8 +48,8 @@ public class MapFileTreeTest {
     
     @Test
     public void canAddAnElementUsingAClosureToGeneratedContent() {
-        Closure closure = HelperUtil.toClosure("{it.write('content'.getBytes())}");
-        tree.add("path/file.txt", closure);
+        Action<OutputStream> action = getAction();
+        tree.add("path/file.txt", action);
 
         assertVisits(tree, toList("path/file.txt"), toList("path"));
         assertSetContainsForAllTypes(tree, toList("path/file.txt"));
@@ -57,10 +60,10 @@ public class MapFileTreeTest {
 
     @Test
     public void canAddMultipleElementsInDifferentDirs() {
-        Closure closure = HelperUtil.toClosure("{it.write('content'.getBytes())}");
-        tree.add("path/file.txt", closure);
-        tree.add("file.txt", closure);
-        tree.add("path/subdir/file.txt", closure);
+        Action<OutputStream> action = getAction();
+        tree.add("path/file.txt", action);
+        tree.add("file.txt", action);
+        tree.add("path/subdir/file.txt", action);
 
         assertVisits(tree, toList("path/file.txt", "file.txt", "path/subdir/file.txt"), toList("path", "path/subdir"));
         assertSetContainsForAllTypes(tree, toList("path/file.txt", "file.txt", "path/subdir/file.txt"));
@@ -68,9 +71,21 @@ public class MapFileTreeTest {
 
     @Test
     public void canStopVisitingElements() {
-        Closure closure = HelperUtil.toClosure("{it.write('content'.getBytes())}");
+        Action<OutputStream> closure = getAction();
         tree.add("path/file.txt", closure);
         tree.add("file.txt", closure);
         assertCanStopVisiting(tree);
+    }
+
+    private Action<OutputStream> getAction() {
+        return new Action<OutputStream>() {
+            public void execute(OutputStream outputStream) {
+                try {
+                    outputStream.write("content".getBytes());
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+        };
     }
 }

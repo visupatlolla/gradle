@@ -15,6 +15,7 @@
  */
 package org.gradle.util
 
+import org.gradle.api.JavaVersion
 import org.gradle.internal.os.OperatingSystem
 
 enum TestPrecondition {
@@ -69,6 +70,9 @@ enum TestPrecondition {
     LINUX({
         OperatingSystem.current().linux
     }),
+    NOT_LINUX({
+        !LINUX.fulfilled
+    }),
     UNIX({
         OperatingSystem.current().unix
     }),
@@ -78,23 +82,40 @@ enum TestPrecondition {
     NOT_UNKNOWN_OS({
         !UNKNOWN_OS.fulfilled
     }),
-    JDK5({
-        System.getProperty("java.version").startsWith("1.5")
-    }),
     JDK6({
-        System.getProperty("java.version").startsWith("1.6")
+        JavaVersion.current() == JavaVersion.VERSION_1_6
     }),
-    JDK7({
-        System.getProperty("java.version").startsWith("1.7")
+    JDK6_OR_LATER({
+        JavaVersion.current() >= JavaVersion.VERSION_1_6
     }),
-    NOT_JDK5({
-        !JDK5.fulfilled
+    JDK7_OR_LATER({
+        JavaVersion.current() >= JavaVersion.VERSION_1_7
     }),
-    NOT_JDK7({
-        !JDK7.fulfilled
+    JDK7_OR_EARLIER({
+        JavaVersion.current() <= JavaVersion.VERSION_1_7
+    }),
+    JDK8_OR_LATER({
+        JavaVersion.current() >= JavaVersion.VERSION_1_8
+    }),
+    JDK8_OR_EARLIER({
+        JavaVersion.current() <= JavaVersion.VERSION_1_8
     }),
     JDK7_POSIX({
-        JDK7.fulfilled && NOT_WINDOWS.fulfilled
+        JDK7_OR_LATER.fulfilled && NOT_WINDOWS.fulfilled
+    }),
+    NOT_JDK_IBM({
+        System.getProperty('java.vm.vendor') != 'IBM Corporation'
+    }),
+    ONLINE({
+        try {
+            new URL("http://google.com").openConnection().getInputStream().close()
+            true
+        } catch (IOException) {
+            false
+        }
+    }),
+    CAN_INSTALL_EXECUTABLE({
+        FILE_PERMISSIONS.fulfilled || WINDOWS.fulfilled
     });
 
     /**

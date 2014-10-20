@@ -15,8 +15,10 @@
  */
 package org.gradle.api.plugins.quality
 
+import org.gradle.api.Incubating
 import org.gradle.api.Project
 import org.gradle.api.file.FileCollection
+import org.gradle.api.resources.TextResource
 
 /**
  * Configuration options for the PMD plugin.
@@ -37,7 +39,21 @@ class PmdExtension extends CodeQualityExtension {
      * Example: ruleSets = ["basic", "braces"]
      */
     List<String> ruleSets
-    
+
+    /**
+     * The target jdk to use with pmd, 1.3, 1.4, 1.5, 1.6, 1.7 or jsp
+     */
+    TargetJdk targetJdk
+
+    /**
+     * Sets the target jdk used with pmd.
+     *
+     * @value The value for the target jdk as defined by {@link TargetJdk#toVersion(Object)}
+     */
+    void setTargetJdk(def value) {
+        targetJdk = TargetJdk.toVersion(value)
+    }
+
     /**
      * Convenience method for adding rule sets.
      *
@@ -48,6 +64,21 @@ class PmdExtension extends CodeQualityExtension {
     void ruleSets(String... ruleSets) {
         this.ruleSets.addAll(ruleSets)
     }
+
+    /**
+     * The custom rule set to be used (if any). Replaces {@code ruleSetFiles}, except that
+     * it does not currently support multiple rule sets.
+     *
+     * See the
+     * <a href="http://pmd.sourceforge.net/howtomakearuleset.html">official documentation</a>
+     * for how to author a rule set.
+     *
+     * Example: ruleSetConfig = resources.text.fromFile("config/pmd/myRuleSet.xml")
+     *
+     * @since 2.2
+     */
+    @Incubating
+    TextResource ruleSetConfig
 
     /**
      * The custom rule set files to be used. See the <a href="http://pmd.sourceforge.net/howtomakearuleset.html">official documentation</a> for
@@ -68,4 +99,11 @@ class PmdExtension extends CodeQualityExtension {
     void ruleSetFiles(Object... ruleSetFiles) {
         this.ruleSetFiles.add(project.files(ruleSetFiles))
     }
+
+    /**
+     * Whether or not to write PMD results to {@code System.out}.
+     */
+    @Incubating
+    boolean consoleOutput
+
 }

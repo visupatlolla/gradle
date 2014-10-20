@@ -17,12 +17,14 @@ package org.gradle.scala.test
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
+import org.gradle.integtests.fixtures.ForkScalaCompileInDaemonModeFixture
 import org.gradle.integtests.fixtures.TestResources
 import org.junit.Rule
 
 class ScalaTestIntegrationTest extends AbstractIntegrationSpec {
-    @Rule TestResources resources
-    
+    @Rule TestResources resources = new TestResources(temporaryFolder)
+    @Rule public final ForkScalaCompileInDaemonModeFixture forkScalaCompileInDaemonModeFixture = new ForkScalaCompileInDaemonModeFixture(executer, temporaryFolder)
+
     def executesTestsWithMultiLineDescriptions() {
         file("build.gradle") << """
 apply plugin: 'scala'
@@ -32,8 +34,8 @@ repositories {
 }
 
 dependencies {
-    compile "org.scala-lang:scala-library:2.9.2"
-    testCompile "org.scalatest:scalatest_2.9.2:1.8"
+    compile "org.scala-lang:scala-library:2.11.1"
+    testCompile "org.scalatest:scalatest_2.11:2.1.5"
     testCompile "junit:junit:4.11"
 }
         """
@@ -57,7 +59,7 @@ class MultiLineSuite extends FunSuite {
         then:
         succeeds("test")
 
-        DefaultTestExecutionResult result = new DefaultTestExecutionResult(testDirectory)
+        def result = new DefaultTestExecutionResult(testDirectory)
         result.assertTestClassesExecuted("org.gradle.MultiLineSuite")
 	    result.testClass("org.gradle.MultiLineSuite").assertTestPassed("This test method name\nspans many\nlines")
     }

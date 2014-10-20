@@ -15,16 +15,12 @@
  */
 package org.gradle.api.tasks.bundling;
 
-import org.gradle.util.DeprecationLogger;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * Specifies the compression which should be applied to a TAR archive.
- * 
- * @author Hans Dockter
  */
 public enum Compression {
     NONE("tar"),
@@ -38,15 +34,6 @@ public enum Compression {
         this.defaultExtension = defaultExtension;
         this.supportedExtensions.addAll(Arrays.asList(additionalSupportedExtensions));
         this.supportedExtensions.add(defaultExtension);
-    }
-
-    /**
-     * <p>Returns the file extension of the type of Compression.</p>
-     * @deprecated Use {@link #getDefaultExtension()} instead.
-     */
-    public String getExtension() {
-        DeprecationLogger.nagUserOfDiscontinuedMethod("Compression.getExtension()");
-        return defaultExtension;
     }
 
     public String getDefaultExtension(){

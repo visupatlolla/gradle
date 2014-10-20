@@ -19,61 +19,51 @@ package org.gradle.execution.taskgraph;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionListener;
-import org.gradle.api.internal.changedetection.TaskArtifactStateCacheAccess;
-import org.gradle.api.specs.Spec;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
+import org.gradle.internal.concurrent.ExecutorFactory;
+import org.gradle.internal.concurrent.StoppableExecutor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executor;
 
-class ParallelTaskPlanExecutor extends DefaultTaskPlanExecutor {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ParallelTaskPlanExecutor.class);
-
-    private final List<Thread> executorThreads = new ArrayList<Thread>();
-    private final TaskArtifactStateCacheAccess stateCacheAccess;
+class ParallelTaskPlanExecutor extends AbstractTaskPlanExecutor {
+    private static final Logger LOGGER = Logging.getLogger(ParallelTaskPlanExecutor.class);
     private final int executorCount;
+    private final ExecutorFactory executorFactory;
 
-    public ParallelTaskPlanExecutor(TaskArtifactStateCacheAccess cacheAccess, int numberOfParallelExecutors) {
+    public ParallelTaskPlanExecutor(int numberOfParallelExecutors, ExecutorFactory executorFactory) {
+        this.executorFactory = executorFactory;
         if (numberOfParallelExecutors < 1) {
             throw new IllegalArgumentException("Not a valid number of parallel executors: " + numberOfParallelExecutors);
         }
 
-        LOGGER.info("Using {} parallel executor threads", numberOfParallelExecutors);
-
-        this.stateCacheAccess = cacheAccess;
         this.executorCount = numberOfParallelExecutors;
     }
 
     public void process(final TaskExecutionPlan taskExecutionPlan, final TaskExecutionListener taskListener) {
-        stateCacheAccess.longRunningOperation("Executing all tasks", new Runnable() {
-            public void run() {
-                doProcess(taskExecutionPlan, taskListener);
-                // TODO This needs to wait until all tasks have been executed, not just started....
-                taskExecutionPlan.awaitCompletion();
-            }
-        });
+        StoppableExecutor executor = executorFactory.create("Task worker");
+        try {
+            startAdditionalWorkers(taskExecutionPlan, taskListener, executor);
+            taskWorker(taskExecutionPlan, taskListener).run();
+            taskExecutionPlan.awaitCompletion();
+        } finally {
+            executor.stop();
+        }
     }
 
-    private void doProcess(TaskExecutionPlan taskExecutionPlan, TaskExecutionListener taskListener) {
+    private void startAdditionalWorkers(TaskExecutionPlan taskExecutionPlan, TaskExecutionListener taskListener, Executor executor) {
         List<Project> projects = getAllProjects(taskExecutionPlan);
         int numExecutors = Math.min(executorCount, projects.size());
 
-        for (int i = 0; i < numExecutors; i++) {
-            TaskExecutorWorker worker = new TaskExecutorWorker(taskExecutionPlan, taskListener);
+        LOGGER.info("Using {} parallel executor threads", numExecutors);
 
-            for (int j = i; j < projects.size(); j += numExecutors) {
-                worker.addProject(projects.get(j));
-            }
-
-            executorThreads.add(new Thread(worker));
-        }
-
-        for (Thread executorThread : executorThreads) {
-            // TODO A bunch more stuff to contextualise the thread
-            executorThread.start();
+        for (int i = 1; i < numExecutors; i++) {
+            Runnable worker = taskWorker(taskExecutionPlan, taskListener);
+            executor.execute(worker);
         }
     }
 
@@ -83,49 +73,5 @@ class ParallelTaskPlanExecutor extends DefaultTaskPlanExecutor {
             uniqueProjects.add(task.getProject());
         }
         return new ArrayList<Project>(uniqueProjects);
-    }
-
-    private class TaskExecutorWorker implements Runnable {
-        private final TaskExecutionPlan taskExecutionPlan;
-        private final TaskExecutionListener taskListener;
-
-        private final List<Project> projects = new ArrayList<Project>();
-
-        private TaskExecutorWorker(TaskExecutionPlan taskExecutionPlan, TaskExecutionListener taskListener) {
-            this.taskExecutionPlan = taskExecutionPlan;
-            this.taskListener = taskListener;
-        }
-
-        public void run() {
-            TaskInfo taskInfo;
-            while ((taskInfo = taskExecutionPlan.getTaskToExecute(getTaskSpec())) != null) {
-                executeTaskWithCacheLock(taskInfo);
-            }
-
-            LOGGER.info(Thread.currentThread() + " stopping");
-        }
-
-        private void executeTaskWithCacheLock(final TaskInfo taskInfo) {
-            final String taskPath = taskInfo.getTask().getPath();
-            LOGGER.info(taskPath + " (" + Thread.currentThread() + " - start");
-            stateCacheAccess.useCache("Executing " + taskPath, new Runnable() {
-                public void run() {
-                    processTask(taskInfo, taskExecutionPlan, taskListener);
-                }
-            });
-            LOGGER.info(taskPath + " (" + Thread.currentThread() + ") - complete");
-        }
-
-        public void addProject(Project project) {
-            projects.add(project);
-        }
-
-        private Spec<TaskInfo> getTaskSpec() {
-            return new Spec<TaskInfo>() {
-                public boolean isSatisfiedBy(TaskInfo element) {
-                    return projects.contains(element.getTask().getProject());
-                }
-            };
-        }
     }
 }

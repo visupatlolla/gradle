@@ -18,9 +18,6 @@ package org.gradle.integtests.fixtures.executer
 
 import static org.hamcrest.Matchers.startsWith
 
-/**
- * by Szczepan Faber, created at: 11/26/12
- */
 class DetailedExecutionFailure {
     ExecutionFailure failure
 
@@ -31,6 +28,6 @@ class DetailedExecutionFailure {
     public assertTestsFailed() {
         failure
             .assertHasDescription("Execution failed for task ':test'.")
-            .assertThatCause(startsWith("There were failing tests."));
+            .assertThatCause(startsWith("There were failing tests"));
     }
 }

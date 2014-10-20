@@ -16,11 +16,11 @@
 
 package org.gradle.process.internal
 
+import org.gradle.internal.jvm.Jvm
 import org.gradle.process.ExecResult
 import org.gradle.process.internal.streams.StreamsHandler
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.GUtil
-import org.gradle.util.Jvm
 import org.junit.Rule
 import spock.lang.Ignore
 import spock.lang.Specification
@@ -28,9 +28,6 @@ import spock.lang.Timeout
 
 import java.util.concurrent.Callable
 
-/**
- * @author Tom Eyckmans, Szczepan Faber
- */
 @Timeout(60)
 class DefaultExecHandleSpec extends Specification {
     @Rule final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider();
@@ -146,7 +143,7 @@ class DefaultExecHandleSpec extends Specification {
         execHandle.abort()
     }
 
-    @Ignore //TODO SF not yet implemented, as following @Ignores
+    @Ignore //not yet implemented
     void "aborts daemon"() {
         def output = new ByteArrayOutputStream()
         def execHandle = handle().setDaemon(true).setStandardOutput(output).args(args(SlowDaemonApp.class)).build();
@@ -185,7 +182,7 @@ class DefaultExecHandleSpec extends Specification {
         execHandle.abort()
     }
 
-    @Ignore
+    @Ignore //not yet implemented
     void "can detach from long daemon and then wait for finish"() {
         def out = new ByteArrayOutputStream()
         def execHandle = handle().setStandardOutput(out).args(args(SlowDaemonApp.class, "200")).build();
@@ -204,7 +201,7 @@ class DefaultExecHandleSpec extends Specification {
         execHandle.state == ExecHandleState.SUCCEEDED
     }
 
-    @Ignore
+    @Ignore //not yet implemented
     void "can detach from fast app then wait for finish"() {
         def out = new ByteArrayOutputStream()
         def execHandle = handle().setStandardOutput(out).args(args(TestApp.class)).build();
@@ -218,7 +215,7 @@ class DefaultExecHandleSpec extends Specification {
         execHandle.state == ExecHandleState.SUCCEEDED
     }
 
-    @Ignore
+    @Ignore //not yet implemented
     //it may not be easily testable
     void "detach detects when process did not start or died prematurely"() {
         def execHandle = handle().args(args(BrokenApp.class)).build();
@@ -263,7 +260,7 @@ class DefaultExecHandleSpec extends Specification {
     }
 
     @Timeout(2)
-    @Ignore
+    @Ignore //not yet implemented
     void "exec handle can detach with timeout"() {
         given:
         def execHandle = handle().args(args(SlowApp.class)).setTimeout(1).build();
@@ -277,7 +274,7 @@ class DefaultExecHandleSpec extends Specification {
         //the timeout does not hit
     }
 
-    @Ignore
+    @Ignore //not yet implemented
     void "exec handle can wait with timeout"() {
         given:
         def execHandle = handle().args(args(SlowApp.class)).setTimeout(1).build();
@@ -309,13 +306,6 @@ class DefaultExecHandleSpec extends Specification {
 
     private List args(Class mainClass, String ... args) {
         GUtil.flattenElements("-cp", System.getProperty("java.class.path"), mainClass.getName(), args);
-    }
-
-    public static class TestApp {
-        public static void main(String[] args) {
-            System.out.print("output args: " + Arrays.asList(args));
-            System.err.print("error args: " + Arrays.asList(args));
-        }
     }
 
     public static class BrokenApp {

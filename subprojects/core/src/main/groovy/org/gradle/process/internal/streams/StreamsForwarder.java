@@ -24,9 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-/**
- * by Szczepan Faber, created at: 4/17/12
- */
 public class StreamsForwarder implements StreamsHandler {
 
     private final OutputStream standardOutput;
@@ -47,6 +44,11 @@ public class StreamsForwarder implements StreamsHandler {
     }
 
     public void connectStreams(Process process, String processName) {
+        /*
+            There's a potential problem here in that DisconnectableInputStream reads from input in the background.
+            This won't automatically stop when the process is over. Therefore, if input is not closed then this thread
+            will run forever. It would be better to ensure that this thread stops when the process does.
+         */
         InputStream instr = new DisconnectableInputStream(input);
 
         standardOutputRunner = new ExecOutputHandleRunner("read standard output of: " + processName,
